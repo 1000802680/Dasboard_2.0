@@ -29,8 +29,10 @@
     },
   });
   window.google = window.google || {};
-  window.CLOUD_READ_ONLY = true;
+  // Las escrituras permitidas se validan en el endpoint de Cloudflare por sesión y permisos.
+  window.CLOUD_READ_ONLY = false;
   window.google.script = window.google.script || {};
   window.google.script.run = makeRunner(null, null);
 })();
+
 
