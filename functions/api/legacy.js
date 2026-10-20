@@ -1,4 +1,4 @@
-import { discoverTableNames, getDashboardColumnName, loadDashboardRecords, refreshForNewTables, updateDashboardRow } from "../_lib/seatable.js";
+import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardFileDownloadLink, getDashboardRow, loadDashboardRecords, refreshForNewTables, updateDashboardRow } from "../_lib/seatable.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const ESTADOS = [
@@ -53,10 +53,11 @@ export async function onRequestPost({ request, env }) {
           const resultados = registros.filter((r) => String(r.O || "").toLocaleLowerCase().includes(query));
           value = {
             ok: true,
-            resultados: resultados.map((r) => ({
+            resultados: await Promise.all(resultados.map(async (r) => ({
               hoja: r.H || "SeaTable", fila: "", rowId: r._id || "", numeroOPA: r.O || "", estadoPlataforma: r.E || "",
               proyecto: r.P || "", tipoProducto: r.T || "", territorio: r.TR || "",
               personaje: r.PJ || "", subOpa: r.SO || "", fechaUltima: latestDate(r),
+              imagenes: await Promise.all(normalizeImageAttachments(r.LF).map((item) => makeImagePreview(env, item))),
               fechas: { F: r.F, F1: r.F1, F2: r.F2, F3: r.F3, F4: r.F4, F5: r.F5, F6: r.F6, F7: r.F7, F8: r.F8, FM: r.FM },
               headers: {
                 F1: "Concepto Enviado", F2: "Concepto Aprobado", F3: "Pre-Producción Enviada",
@@ -65,7 +66,7 @@ export async function onRequestPost({ request, env }) {
                 F8: "Aprobada / Cerrada", FM: "Fecha Envío de Muestras",
               },
               todasLasFechas: r,
-            })),
+            }))),
           };
         }
         break;
@@ -81,12 +82,29 @@ export async function onRequestPost({ request, env }) {
         const newValue = isDateField(key) ? normalizeInputDate(rawValue) : String(rawValue ?? "").trim();
         const columnName = getDashboardColumnName(env, key);
         const updates = { [columnName]: newValue };
-        // Al registrar la fecha de una etapa, el estado de plataforma avanza a esa etapa.
         const stageIndex = /^F[1-8]$/.test(key) ? Number(key.slice(1)) - 1 : -1;
-        if (stageIndex >= 0 && newValue) updates[getDashboardColumnName(env, "E")] = ESTADOS[stageIndex];
+        let estadoActualizado = "";
+        if (stageIndex >= 0 && newValue) {
+          const statusColumn = getDashboardColumnName(env, "E");
+          const currentRow = await getDashboardRow(env, String(table), String(rowId || ""));
+          const currentState = String(currentRow[statusColumn] || currentRow.E || "").trim();
+          const statusStage = ESTADOS.findIndex((estado) => estado.toLocaleLowerCase() === currentState.toLocaleLowerCase());
+          let furthestStage = statusStage >= 0 && statusStage < 8 ? statusStage : -1;
+          for (let index = 0; index < 8; index++) {
+            const dateKey = `F${index + 1}`;
+            const dateValue = key === dateKey ? newValue : (currentRow[getDashboardColumnName(env, dateKey)] || currentRow[dateKey]);
+            if (dateValue) furthestStage = Math.max(furthestStage, index);
+          }
+          // Las fechas anteriores completan el historial sin hacer retroceder el estado.
+          // También repara estados ya retrocedidos mirando la etapa más avanzada con fecha.
+          if (currentState.toLocaleLowerCase() !== "cancelado" && furthestStage > statusStage) {
+            updates[statusColumn] = ESTADOS[furthestStage];
+            estadoActualizado = ESTADOS[furthestStage];
+          }
+        }
         await updateDashboardRow(env, String(table), String(rowId || ""), updates);
-        await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valor: newValue, ...(stageIndex >= 0 && newValue ? { estado: ESTADOS[stageIndex] } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
-        value = { ok: true, campo: columnName, valorNuevo: newValue, ...(stageIndex >= 0 && newValue ? { estado: ESTADOS[stageIndex] } : {}) };
+        await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valor: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
+        value = { ok: true, campo: columnName, valorNuevo: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) };
         break;
       }
       case "cambiarEstadoOPA": {
@@ -109,6 +127,44 @@ export async function onRequestPost({ request, env }) {
         await updateDashboardRow(env, table, rowId, updates);
         await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
         value = { ok: true, hoja: table, fila: rowId, estado: state, fechaCampo: stageIndex >= 0 && stageIndex < 8 && p.fechaElegida ? `F${stageIndex + 1}` : "", fechaEscrita: p.fechaElegida ? normalizeInputDate(p.fechaElegida) : "" };
+        break;
+      }
+      case "crearRegistroOPA": {
+        const p = args[0] || {};
+        const user = await getAuthenticatedUser(p.token, env);
+        if (!user) return Response.json({ ok: false, error: "Inicia sesión para agregar registros." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+        if (user.permisos?.cambiar_estado === false) return Response.json({ ok: false, error: "No tienes permiso para agregar registros. Contacta al administrador." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+        const table = String(p.hoja || "").trim();
+        const tableNames = await discoverTableNames(env);
+        if (!tableNames.includes(table)) return Response.json({ ok: false, error: "Selecciona una hoja válida de la base." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+        const allowed = ["O", "P", "T", "TE", "M", "TR", "PJ", "SO", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM", "PO", "B2B", "B2C", "D", "NP", "MR", "ME", "GE"];
+        const row = {};
+        for (const key of allowed) {
+          const raw = p.campos?.[key];
+          if (raw == null || String(raw).trim() === "") continue;
+          let value = String(raw).trim();
+          if (isDateField(key)) value = normalizeInputDate(value);
+          if (key === "MR" || key === "ME") {
+            value = Number(value);
+            if (!Number.isFinite(value) || value < 0) return Response.json({ ok: false, error: "Las cantidades de muestras deben ser números iguales o mayores que cero." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+          }
+          if (key === "E" && !ESTADOS.some((item) => item.toLocaleLowerCase() === value.toLocaleLowerCase())) return Response.json({ ok: false, error: "Selecciona un estado válido." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+          row[getDashboardColumnName(env, key)] = value;
+        }
+        if (!String(p.campos?.O || "").trim()) return Response.json({ ok: false, error: "El número de OPA es obligatorio." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+        const statusColumn = getDashboardColumnName(env, "E");
+        if (!row[statusColumn]) {
+          const latestStage = ["F8", "F7", "F6", "F5", "F4", "F3", "F2", "F1"].find((key) => row[getDashboardColumnName(env, key)]);
+          if (latestStage) row[statusColumn] = ESTADOS[Number(latestStage.slice(1)) - 1];
+        }
+        const result = await createDashboardRow(env, table, row);
+        const rowId = String(result.row_id || result._id || result.id || "");
+        try {
+          await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
+        } catch (auditError) {
+          console.warn("No se pudo guardar la auditoría del nuevo registro:", auditError);
+        }
+        value = { ok: true, hoja: table, rowId, numeroOPA: String(p.campos.O), mensaje: "Registro guardado en SeaTable." };
         break;
       }
       default:
@@ -149,6 +205,29 @@ function normalizeInputDate(value) {
 
 function latestDate(r) {
   return [r.F8, r.F7, r.F6, r.F5, r.F4, r.F3, r.F2, r.F1, r.F, r.FM].filter(Boolean).sort().at(-1) || "";
+}
+
+function normalizeImageAttachments(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return [value];
+  const text = String(value || "").trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+  } catch (_) {}
+  return text.split(/[\r\n]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+async function makeImagePreview(env, attachment) {
+  const original = typeof attachment === "string" ? attachment : String(attachment?.url || "");
+  const name = String(attachment?.name || original.split("/").pop() || "Imagen");
+  if (/^https?:\/\//i.test(original)) return { name, url: original };
+  const match = original.match(/\/(images|files)\/([0-9]{4}-[0-9]{2})\/([^/?#]+)/i);
+  if (!match) return { name, url: "" };
+  const path = `/${match[1].toLowerCase()}/${match[2]}/${match[3]}`;
+  try { return { name, url: await getDashboardFileDownloadLink(env, path) }; }
+  catch (_) { return { name, url: "" }; }
 }
 
 function buildAnalysis(records) {
@@ -214,5 +293,3 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
-
-
