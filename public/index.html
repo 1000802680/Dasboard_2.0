@@ -4193,7 +4193,7 @@
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 60000;  // 60 segundos; el botón manual fuerza una lectura actualizada
+    const POLL_INTERVAL_MS      = 30000;  // Actualiza cambios de SeaTable en segundo plano cada 30 segundos
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
@@ -10582,9 +10582,9 @@
 
 
     /* ============================================================
-       🏃 POLLING CADA 5 SEGUNDOS (checksum ligero → ETag diff)
+       🏃 POLLING CADA 30 SEGUNDOS (checksum ligero → ETag diff)
        Flujo óptimo:
-         Paso 1 (5s): obtenerChecksumDashboard() → ~2ms, sin leer datos.
+         Paso 1 (30s): obtenerChecksumDashboard() → revisa SeaTable y actualiza la caché vencida.
            Si ETag NO cambió → TODO LISTO, no hacemos nada más.
            Si ETag cambió     → Paso 2.
          Paso 2: recargar datos completos + análisis + re-render.
