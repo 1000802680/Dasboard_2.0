@@ -1,4 +1,5 @@
-import { loadDashboardRecords } from "../_lib/seatable.js";
+import { loadDashboardRecords, refreshForNewTables } from "../_lib/seatable.js";
+import { getAuthenticatedUser } from "../_lib/auth.js";
 
 const ESTADOS = [
   "Concepto Enviado", "Concepto Aprobado", "Pre-Producción Enviada",
@@ -17,18 +18,17 @@ export async function onRequestPost({ request, env }) {
         const registros = await loadDashboardRecords(env, { forceRefresh: functionName === "actualizarDashboardDatos" });
         value = {
           registros,
-          columnas: [...new Set(registros.flatMap((row) => Object.keys(row)))],
           totalRegistros: registros.length,
-          resumenRapido: buildSummary(registros),
-          analisis: buildAnalysis(registros),
-          etag: await digest(JSON.stringify(registros)),
+          etag: fastEtag(registros),
           fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
         };
         break;
       }
       case "obtenerChecksumDashboard": {
-        const registros = await loadDashboardRecords(env);
-        value = { etag: await digest(JSON.stringify(registros)), totalRegistros: registros.length, totalFilas: registros.length, fechaActualizacion: new Date().toISOString() };
+        // El polling revisa metadatos una vez por minuto para detectar pestañas nuevas
+        // sin releer todas las filas. Si aparece una tabla, sí reconstruye el dataset.
+        const registros = await refreshForNewTables(env);
+        value = { etag: fastEtag(registros), totalRegistros: registros.length, totalFilas: registros.length, fechaActualizacion: new Date().toISOString() };
         break;
       }
       case "obtenerEstadosDashboard":
@@ -43,6 +43,8 @@ export async function onRequestPost({ request, env }) {
         break;
       }
       case "searchOPAByNumber": {
+        const user = await getAuthenticatedUser(args[1], env);
+        if (!user) return Response.json({ ok: false, error: "Inicia sesión para buscar OPAs." }, { status: 401, headers: { "Cache-Control": "no-store" } });
         const query = String(args[0] || "").trim().toLocaleLowerCase();
         if (query.length < 2) value = { ok: false, error: "Ingresa al menos 2 caracteres para buscar." };
         else {
@@ -130,8 +132,18 @@ function buildSummary(records) {
   };
 }
 
-async function digest(value) {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+function fastEtag(records) {
+  // Firma corta basada en la identidad y última modificación de cada fila.
+  // Evita serializar todo el dataset y calcular SHA-256 en cada revisión automática.
+  let hash = 2166136261;
+  for (const row of records) {
+    const value = `${row._id || ""}|${row._mtime || ""};`;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
+
 
