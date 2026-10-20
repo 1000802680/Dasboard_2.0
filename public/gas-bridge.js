@@ -35,4 +35,3 @@
   window.google.script.run = makeRunner(null, null);
 })();
 
-
