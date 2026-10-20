@@ -1,5 +1,4 @@
-/* Compatibilidad temporal: traduce google.script.run a /api/legacy.
-   Las funciones no migradas se rechazan explícitamente; no se simulan. */
+/* Compatibilidad temporal: conecta la interfaz con los endpoints de Cloudflare. */
 (function () {
   "use strict";
   const makeRunner = (success, failure) => new Proxy({}, {
@@ -8,7 +7,13 @@
       if (property === "withFailureHandler") return (handler) => makeRunner(success, handler);
       if (property === "withUserObject") return () => makeRunner(success, failure);
       if (property === "then") return undefined;
-      return (...args) => fetch("/api/legacy", {
+      const authFunctions = new Set([
+        "registerUser", "loginUser", "getCurrentUser", "logoutUser",
+        "adminListarPermisos", "adminGuardarPermisos", "adminListarUsuarios",
+        "adminListarHistorial", "adminObtenerHistorialYEstadisticas",
+      ]);
+      const endpoint = authFunctions.has(String(property)) ? "/api/auth" : "/api/legacy";
+      return (...args) => fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ functionName: String(property), args }),
