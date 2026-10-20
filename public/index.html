@@ -2599,6 +2599,11 @@
         grid-template-columns: repeat(2,1fr);
       }
 
+      #card-usuario-esquina {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+      }
+
       .opa-summary {
         grid-template-columns: repeat(2,1fr);
       }
@@ -9341,12 +9346,38 @@
     function _authInitAlArranque() {
       try {
         _authActualizarHeader();
-        try {
-          _authBorrarTokenSesion();
+        const token = _authLeerTokenSesion();
+        if (!token) {
           _authSesionActual = null;
           _authActualizarHeader();
-        } catch(_) {}
-        try { _aplicarPermisosUI(); } catch(_) {}
+          try { _aplicarPermisosUI(); } catch(_) {}
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (r && r.ok && r.logueado) {
+              _authSesionActual = {
+                logueado: true,
+                username: r.username,
+                rol: r.rol,
+                nombreCompleto: r.nombreCompleto,
+                token: token,
+                permisos: (r.permisos && typeof r.permisos === 'object') ? r.permisos : null
+              };
+            } else {
+              _authBorrarTokenSesion();
+              _authSesionActual = null;
+            }
+            _authActualizarHeader();
+            try { _aplicarPermisosUI(); } catch(_) {}
+          })
+          .withFailureHandler(function() {
+            // Conserva el token si el servidor no responde; se validará de nuevo al recargar.
+            _authSesionActual = null;
+            _authActualizarHeader();
+            try { _aplicarPermisosUI(); } catch(_) {}
+          })
+          .getCurrentUser(token);
       } catch(_) {}
     }
 
