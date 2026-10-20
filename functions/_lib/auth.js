@@ -15,7 +15,9 @@ const DEFAULT_PERMISSIONS = {
   cambiar_estado: false,
   panel_admin: false,
 };
-const ITERATIONS = 150_000;
+// Web Crypto in some Cloudflare/browser runtimes rejects PBKDF2 counts >100k.
+// Keep password derivation at the highest broadly compatible limit.
+const ITERATIONS = 100_000;
 const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 
 function authConfig(env) {
