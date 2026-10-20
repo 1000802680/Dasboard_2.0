@@ -3168,6 +3168,9 @@
       <button id="btn-tab-busqueda" type="button" class="tab-btn" data-tab="busqueda" onclick="cambiarTab('busqueda')">
         🔎 Búsqueda de OPA
       </button>
+      <button id="btn-tab-actividades" type="button" class="tab-btn" data-tab="actividades" onclick="cambiarTab('actividades')" style="display:none;">
+        👥 Actividades de usuarios
+      </button>
       <button id="btn-tab-registros" type="button" class="tab-btn" data-tab="registros" onclick="cambiarTab('registros')">
         🗂️ Registros de base
       </button>
@@ -3942,6 +3945,29 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div id="tab-actividades" class="tab-content">
+    <section style="margin:16px 0 22px;">
+      <div style="margin-bottom:14px;">
+        <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">👥 Actividades de usuarios</h2>
+        <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Consulta las OPAs, proyectos y marcas asignadas a cada usuario.</p>
+      </div>
+      <div id="actividades-mensaje" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;font-weight:700;"></div>
+      <div id="actividades-admin-panel" class="panel" style="display:none;padding:18px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+          <label style="font-size:12px;font-weight:800;color:#334155;">Usuario<select id="actividad-usuario" onchange="_actividadesRenderAdmin()" style="display:block;width:100%;margin-top:5px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"></select></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de asignación<select id="actividad-tipo" style="display:block;width:100%;margin-top:5px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"><option value="OPA">Número de OPA</option><option value="PROYECTO">Proyecto</option><option value="MARCA">Marca</option></select></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">OPA, proyecto o marca<input id="actividad-valor" maxlength="200" placeholder="Escribe el dato asignado" style="display:block;width:100%;margin-top:5px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <button type="button" class="btn-primary" onclick="_actividadesAgregar()" style="margin:0;">＋ Asignar actividad</button>
+        </div>
+        <div id="actividades-admin-lista" style="margin-top:16px;"></div>
+      </div>
+      <div id="actividades-mis-panel" class="panel" style="display:none;padding:18px;">
+        <h3 style="margin:0 0 12px;color:#0f172a;font-size:16px;">Mis actividades asignadas</h3>
+        <div id="actividades-mis-lista"></div>
+      </div>
+    </section>
   </div>
 
   <div id="tab-registros" class="tab-content">
@@ -7933,9 +7959,10 @@
         const tDias = document.getElementById('tab-analisis-dias');
         const tBusq = document.getElementById('tab-busqueda');
         const tHist = document.getElementById('tab-historial');
+        const tActividades = document.getElementById('tab-actividades');
         const tRegistros = document.getElementById('tab-registros');
         // Remover active de todos
-        [tDash, tDias, tBusq, tHist, tRegistros].forEach(function(t) {
+        [tDash, tDias, tBusq, tHist, tActividades, tRegistros].forEach(function(t) {
           try { if (t) t.classList.remove('active'); } catch(_) {}
         });
         if (tabKey === 'dashboard') {
@@ -7959,6 +7986,9 @@
             window.__historialYaCargadoUnaVez = true;
             setTimeout(function(){ try { _historialCargar(); } catch(_) {} }, 80);
           }
+        } else if (tabKey === 'actividades') {
+          if (tActividades) tActividades.classList.add('active');
+          try { _actividadesCargar(); } catch(_) {}
         } else if (tabKey === 'registros') {
           if (tRegistros) tRegistros.classList.add('active');
           // Aplicar en memoria los filtros vigentes; cambiar de pestaña no consulta SeaTable.
@@ -9243,6 +9273,125 @@
       } catch(_) {}
     }
 
+    var _actividadesUsuarios = [];
+
+    function _actividadesCargar() {
+      const mensaje = document.getElementById('actividades-mensaje');
+      const panelAdmin = document.getElementById('actividades-admin-panel');
+      const panelMis = document.getElementById('actividades-mis-panel');
+      if (!_authSesionActual || !_authSesionActual.token) {
+        if (mensaje) { mensaje.style.display = 'block'; mensaje.textContent = 'Inicia sesión para consultar las actividades asignadas.'; }
+        if (panelAdmin) panelAdmin.style.display = 'none';
+        if (panelMis) panelMis.style.display = 'none';
+        return;
+      }
+      const permisos = _authSesionActual.permisos || {};
+      const esAdmin = String(_authSesionActual.rol || '') === 'ADMINISTRADOR' || permisos.panel_admin === true;
+      if (mensaje) mensaje.style.display = 'none';
+      if (panelAdmin) panelAdmin.style.display = esAdmin ? 'block' : 'none';
+      if (panelMis) panelMis.style.display = esAdmin ? 'none' : 'block';
+      if (esAdmin) {
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (!r || !r.ok) { _actividadesMensaje(r && r.error || 'No se pudieron cargar los usuarios.', true); return; }
+            _actividadesUsuarios = Array.isArray(r.listado) ? r.listado : [];
+            const select = document.getElementById('actividad-usuario');
+            const anterior = select ? select.value : '';
+            if (select) {
+              select.innerHTML = _actividadesUsuarios.map(function(u) {
+                const nombre = String(u.nombreCompleto || u.username || '');
+                return '<option value="' + escapeAttr(String(u.username || '')) + '">' + escapeHTML(nombre + ' (@' + String(u.username || '') + ')') + '</option>';
+              }).join('');
+              if (_actividadesUsuarios.some(function(u) { return u.username === anterior; })) select.value = anterior;
+            }
+            _actividadesRenderAdmin();
+          })
+          .withFailureHandler(function(error) { _actividadesMensaje(error && error.message || 'Error al cargar usuarios.', true); })
+          .adminListarUsuarios(_authSesionActual.token);
+      } else {
+        google.script.run
+          .withSuccessHandler(function(r) {
+            const wrap = document.getElementById('actividades-mis-lista');
+            if (!wrap) return;
+            if (!r || !r.ok) { wrap.innerHTML = '<div style="color:#b91c1c;font-weight:700;">' + escapeHTML(r && r.error || 'No se pudieron cargar tus actividades.') + '</div>'; return; }
+            wrap.innerHTML = _actividadesListaHTML(r.asignaciones || [], false);
+          })
+          .withFailureHandler(function(error) { const wrap = document.getElementById('actividades-mis-lista'); if (wrap) wrap.textContent = error && error.message || 'Error al cargar tus actividades.'; })
+          .obtenerMisActividades(_authSesionActual.token);
+      }
+    }
+
+    function _actividadesMensaje(texto, error) {
+      const el = document.getElementById('actividades-mensaje');
+      if (!el) return;
+      el.style.display = 'block';
+      el.style.background = error ? '#fef2f2' : '#f0fdf4';
+      el.style.color = error ? '#b91c1c' : '#15803d';
+      el.style.border = error ? '1px solid #fecaca' : '1px solid #bbf7d0';
+      el.textContent = texto;
+    }
+
+    function _actividadesListaHTML(asignaciones, permitirEliminar) {
+      const items = Array.isArray(asignaciones) ? asignaciones : [];
+      if (!items.length) return '<div style="padding:14px;border:1px dashed #cbd5e1;border-radius:12px;color:#64748b;">Todavía no hay actividades asignadas.</div>';
+      return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">' + items.map(function(item, index) {
+        const tipo = String(item.tipo || '').toUpperCase();
+        const etiqueta = tipo === 'OPA' ? 'Número de OPA' : (tipo === 'PROYECTO' ? 'Proyecto' : 'Marca');
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbeafe;border-radius:12px;background:#eff6ff;">' +
+          '<div><div style="font-size:10px;font-weight:900;color:#1d4ed8;text-transform:uppercase;">' + etiqueta + '</div><div style="margin-top:3px;font-weight:800;color:#0f172a;">' + escapeHTML(String(item.valor || '')) + '</div></div>' +
+          (permitirEliminar ? '<button type="button" onclick="_actividadesEliminar(' + index + ')" title="Quitar asignación" style="border:1px solid #fecaca;border-radius:8px;background:#fff1f2;color:#b91c1c;font-weight:900;padding:6px 9px;cursor:pointer;">Quitar</button>' : '') +
+          '</div>';
+      }).join('') + '</div>';
+    }
+
+    function _actividadesUsuarioSeleccionado() {
+      const select = document.getElementById('actividad-usuario');
+      const username = String(select && select.value || '');
+      return _actividadesUsuarios.find(function(u) { return String(u.username || '') === username; }) || null;
+    }
+
+    function _actividadesRenderAdmin() {
+      const wrap = document.getElementById('actividades-admin-lista');
+      if (!wrap) return;
+      const user = _actividadesUsuarioSeleccionado();
+      wrap.innerHTML = user ? _actividadesListaHTML(user.permisos && user.permisos.asignaciones || [], true) : '<div style="color:#64748b;">No hay usuarios disponibles.</div>';
+    }
+
+    function _actividadesGuardar(user, asignaciones) {
+      _actividadesMensaje('Guardando las actividades en la base de usuarios…', false);
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (!r || !r.ok) { _actividadesMensaje(r && r.error || 'No se pudieron guardar las actividades.', true); return; }
+          if (!user.permisos) user.permisos = {};
+          user.permisos.asignaciones = r.asignaciones || asignaciones;
+          _actividadesRenderAdmin();
+          _actividadesMensaje('Actividades guardadas para @' + user.username + '.', false);
+        })
+        .withFailureHandler(function(error) { _actividadesMensaje(error && error.message || 'Error al guardar las actividades.', true); })
+        .adminGuardarActividadesUsuario(_authSesionActual.token, user.username, asignaciones);
+    }
+
+    function _actividadesAgregar() {
+      const user = _actividadesUsuarioSeleccionado();
+      const tipo = String(document.getElementById('actividad-tipo') && document.getElementById('actividad-tipo').value || '').toUpperCase();
+      const input = document.getElementById('actividad-valor');
+      const valor = String(input && input.value || '').trim();
+      if (!user || !valor) { _actividadesMensaje('Selecciona un usuario e ingresa el valor que vas a asignar.', true); return; }
+      const current = (user.permisos && Array.isArray(user.permisos.asignaciones)) ? user.permisos.asignaciones.slice() : [];
+      if (current.some(function(item) { return item.tipo === tipo && String(item.valor).toLocaleLowerCase() === valor.toLocaleLowerCase(); })) { _actividadesMensaje('Esa actividad ya está asignada a este usuario.', true); return; }
+      current.push({ tipo: tipo, valor: valor });
+      _actividadesGuardar(user, current);
+      if (input) input.value = '';
+    }
+
+    function _actividadesEliminar(index) {
+      const user = _actividadesUsuarioSeleccionado();
+      if (!user) return;
+      const current = (user.permisos && Array.isArray(user.permisos.asignaciones)) ? user.permisos.asignaciones.slice() : [];
+      current.splice(Number(index), 1);
+      _actividadesGuardar(user, current);
+    }
+
     var _adminTabActual = 'users';
     var _adminPermisosCache = {};
 
@@ -9426,6 +9575,7 @@
           { id: 'tab-dashboard', perm: 'ver_dashboard', btn: 'btn-tab-dashboard',  soloSesion: false, soloAdmin: false },
           { id: 'tab-analisis-dias', perm: 'ver_analisis', btn: 'btn-tab-analisis', soloSesion: false, soloAdmin: false },
           { id: 'tab-busqueda',      perm: 'ver_busqueda', btn: 'btn-tab-busqueda',  soloSesion: true,  soloAdmin: false },
+          { id: 'tab-actividades',   perm: null,           btn: 'btn-tab-actividades', soloSesion: true, soloAdmin: false },
           { id: 'tab-historial',     perm: 'panel_admin',  btn: 'btn-tab-historial', soloSesion: true,  soloAdmin: true  }
         ];
         let primeraVisibleBtn = null;
@@ -9440,7 +9590,7 @@
           } else if (t.soloAdmin) {
             // Regla estricta: Historial SOLO ADMIN
             permitidoBtn = !!esAdmin;
-          } else if (p) {
+          } else if (p && t.perm) {
             permitidoBtn = (p[t.perm] !== false);
           }
           if (tb) tb.style.display = permitidoBtn ? '' : 'none';
@@ -9502,6 +9652,14 @@
           try {
             const act = document.querySelector('.tab-btn.active');
             if (act && act.getAttribute && act.getAttribute('data-tab') === 'historial') {
+              cambiarTab(primeraVisibleBtn.replace('tab-',''));
+            }
+          } catch(_) {}
+        }
+        if (!haySesion && typeof cambiarTab === 'function' && primeraVisibleBtn) {
+          try {
+            const act = document.querySelector('.app-tabs .tab-btn.active');
+            if (act && act.getAttribute && act.getAttribute('data-tab') === 'actividades') {
               cambiarTab(primeraVisibleBtn.replace('tab-',''));
             }
           } catch(_) {}
