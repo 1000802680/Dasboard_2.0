@@ -139,7 +139,8 @@ function toInternalRecord(row, tableName, sourceKeyMap) {
   for (const [sourceKey, internal] of sourceKeyMap) {
     const value = row[sourceKey];
     if (value == null || value === "") continue;
-    if (internal === "MR" || internal === "ME") result[internal] = Number(value) || 0;
+    if (internal === "LF" && Array.isArray(value)) result[internal] = value;
+    else if (internal === "MR" || internal === "ME") result[internal] = Number(value) || 0;
     else if (internal === "F" || (internal.length === 2 && internal[0] === "F") || internal === "FM") result[internal] = normalizeDate(value);
     else result[internal] = String(value).trim();
   }
@@ -260,6 +261,67 @@ export async function updateDashboardRow(env, tableName, rowId, values) {
   return body;
 }
 
+export async function createDashboardRow(env, tableName, values) {
+  assertConfig(env);
+  if (!tableName || !values || typeof values !== "object" || !Object.keys(values).length) {
+    throw new Error("Falta la hoja o los datos del nuevo registro.");
+  }
+  const authBaseMatchesDashboard = !env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_AUTH_BASE_UUID === env.SEATABLE_BASE_UUID;
+  const writeApiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : env.SEATABLE_API_TOKEN;
+  const token = await getBaseToken(env, writeApiToken);
+  const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(env.SEATABLE_BASE_UUID)}/rows/`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ table_name: tableName, rows: [values] }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
+    throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
+  }
+  if (globalThis.__dashboardRowsCache?.key) globalThis.__dashboardRowsCache.expiresAt = 0;
+  return body;
+}
+
+export async function getDashboardColumnType(env, tableName, columnName) {
+  const token = await getBaseToken(env);
+  const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(env.SEATABLE_BASE_UUID)}/metadata/`;
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`No se pudo verificar la columna de imágenes en SeaTable (HTTP ${response.status}).`);
+  const tables = body.metadata?.tables || body.tables || [];
+  const table = tables.find((item) => item.name === tableName);
+  const column = table?.columns?.find((item) => normalizeHeader(item.name) === normalizeHeader(columnName));
+  if (!column) throw new Error(`No se encontró la columna "${columnName}" en la hoja "${tableName}".`);
+  return String(column.type || column.column_type || "").toLowerCase();
+}
+
+export async function getDashboardRow(env, tableName, rowId) {
+  const token = await getBaseToken(env);
+  const url = new URL(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(env.SEATABLE_BASE_UUID)}/rows/${encodeURIComponent(rowId)}/`);
+  url.searchParams.set("table_name", tableName);
+  url.searchParams.set("convert_keys", "true");
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`No se pudo leer la fila seleccionada en SeaTable (HTTP ${response.status}).`);
+  return body.row || body;
+}
+
+export async function getDashboardFileDownloadLink(env, path) {
+  const authBaseMatchesDashboard = !env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_AUTH_BASE_UUID === env.SEATABLE_BASE_UUID;
+  const apiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : env.SEATABLE_API_TOKEN;
+  if (!apiToken) throw new Error("Falta configurar el API token de SeaTable para mostrar imágenes.");
+  const url = new URL(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-download-link/`);
+  url.searchParams.set("path", path);
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`SeaTable no pudo generar el enlace de la imagen (HTTP ${response.status}).`);
+  const link = body.download_link || body.url || body.link;
+  if (!link) throw new Error("SeaTable no devolvió el enlace temporal de la imagen.");
+  return link;
+}
+
 export async function refreshForNewTables(env) {
   const cached = globalThis.__dashboardRowsCache;
   if (!cached || cached.expiresAt <= Date.now()) return loadDashboardRecords(env);
@@ -270,5 +332,6 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
+
 
 
