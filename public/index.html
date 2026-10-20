@@ -3168,6 +3168,9 @@
       <button id="btn-tab-busqueda" type="button" class="tab-btn" data-tab="busqueda" onclick="cambiarTab('busqueda')">
         🔎 Búsqueda de OPA
       </button>
+      <button id="btn-tab-registros" type="button" class="tab-btn" data-tab="registros" onclick="cambiarTab('registros')">
+        🗂️ Registros de base
+      </button>
       <button id="btn-tab-historial" type="button" class="tab-btn" data-tab="historial" onclick="cambiarTab('historial')" style="display:none;">
         📋 Historial Auditoría
       </button>
@@ -3764,7 +3767,7 @@
         <div>
           <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">🔎 Búsqueda de OPA</h2>
           <p style="margin:5px 0 0 0;color:#64748b;font-size:13px;font-weight:500;">
-            Ingresa el número de OPA (completo o parcial) → busca en <b>CUALQUIER HOJA</b> del libro y muestra su estado de plataforma actual, hoja, proyecto y más.
+            Ingresa el número de OPA y pulsa <b>Buscar</b> o Enter. Los resultados se conservan al cambiar de pestaña; solo se consulta de nuevo cuando solicitas una búsqueda.
           </p>
         </div>
         <div style="flex-shrink:0;">
@@ -3939,6 +3942,35 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div id="tab-registros" class="tab-content">
+    <section style="margin:16px 0 22px;">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+        <div>
+          <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">🗂️ Registros de la base</h2>
+          <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Vista ordenada de los datos cargados. Usa los filtros de arriba; esta pestaña no vuelve a consultar SeaTable.</p>
+        </div>
+        <span id="registros-contador" class="badge-total">0 registros</span>
+      </div>
+      <div class="panel" style="padding:0;overflow:hidden;">
+        <div style="overflow:auto;max-height:72vh;">
+          <table class="opa-table" style="width:100%;min-width:2600px;border-collapse:collapse;">
+            <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
+              <th>Hoja</th><th>Proyecto</th><th>Tipo producto</th><th>Tipo específico</th><th>Marca</th><th>Territorio</th><th>Personaje</th><th>Sub-OPA</th><th>Link producto</th><th>Portafolio</th><th>SKU B2B</th><th>SKU B2C</th><th>Descripción ERP</th><th>Nombre producto OPA</th><th>Número de OPA</th><th>Estado plataforma</th><th>Fecha</th><th>Concepto enviado</th><th>Concepto aprobado</th><th>Pre-producción enviada</th><th>Pre-producción aprobada</th><th>Fotos enviadas</th><th>Fotos aprobadas</th><th>Muestras finales</th><th>Aprobada / cerrada</th><th>Fecha envío muestras</th><th>Muestras recibidas</th><th>Muestras enviadas</th><th>Guía envío</th>
+            </tr></thead>
+            <tbody id="registros-base-body"><tr><td colspan="29" style="text-align:center;padding:24px;color:#64748b;">Cargando registros…</td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid #e2e8f0;flex-wrap:wrap;">
+          <span id="registros-pagina-info" style="font-size:12px;color:#64748b;font-weight:600;">—</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" type="button" onclick="cambiarPaginaRegistros(-1)">← Anterior</button>
+            <button class="btn-secondary" type="button" onclick="cambiarPaginaRegistros(1)">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
 
@@ -4161,6 +4193,8 @@
     let datos = [];
     let datosFiltrados = [];
     let estadoSeleccionado = '';
+    let paginaRegistrosBase = 1;
+    const REGISTROS_POR_PAGINA = 100;
 
     const ESTADOS_ORDEN = [
       'Concepto Enviado',
@@ -4905,7 +4939,45 @@
 
       // Los filtros modifican el universo de OPAs; no reutilizar conteos memoizados.
       _invalidateMemo();
+      actualizarTablaRegistrosBase();
 
+    }
+
+    function cambiarPaginaRegistros(delta) {
+      paginaRegistrosBase = Math.max(1, paginaRegistrosBase + (Number(delta) || 0));
+      actualizarTablaRegistrosBase();
+    }
+
+    function actualizarTablaRegistrosBase() {
+      const body = document.getElementById('registros-base-body');
+      if (!body) return;
+      const rows = Array.isArray(datosFiltrados) ? datosFiltrados.slice() : [];
+      rows.sort(function(a, b) {
+        const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
+        if (proyecto) return proyecto;
+        const hoja = compararTexto(limpiarTexto(a.H), limpiarTexto(b.H));
+        return hoja || compararOPA(limpiarTexto(a.O), limpiarTexto(b.O));
+      });
+      const total = rows.length;
+      const maxPagina = Math.max(1, Math.ceil(total / REGISTROS_POR_PAGINA));
+      paginaRegistrosBase = Math.min(paginaRegistrosBase, maxPagina);
+      const desde = (paginaRegistrosBase - 1) * REGISTROS_POR_PAGINA;
+      const pagina = rows.slice(desde, desde + REGISTROS_POR_PAGINA);
+      const contador = document.getElementById('registros-contador');
+      const info = document.getElementById('registros-pagina-info');
+      if (contador) contador.textContent = total.toLocaleString() + (total === 1 ? ' registro' : ' registros');
+      if (info) info.textContent = total ? 'Mostrando ' + (desde + 1).toLocaleString() + '–' + Math.min(desde + REGISTROS_POR_PAGINA, total).toLocaleString() + ' de ' + total.toLocaleString() + ' · Página ' + paginaRegistrosBase + ' de ' + maxPagina : 'No hay registros para los filtros seleccionados.';
+      const fields = ['H','P','T','TE','M','TR','PJ','SO','LF','PO','B2B','B2C','D','NP','O','E','F','F1','F2','F3','F4','F5','F6','F7','F8','FM','MR','ME','GE'];
+      if (!pagina.length) {
+        body.innerHTML = '<tr><td colspan="' + fields.length + '" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
+        return;
+      }
+      body.innerHTML = pagina.map(function(row) {
+        return '<tr>' + fields.map(function(key) {
+          const value = row[key] == null ? '' : String(row[key]);
+          return '<td>' + escapeHTML(value || '—') + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
     }
 
 
@@ -7728,8 +7800,9 @@
         const tDias = document.getElementById('tab-analisis-dias');
         const tBusq = document.getElementById('tab-busqueda');
         const tHist = document.getElementById('tab-historial');
+        const tRegistros = document.getElementById('tab-registros');
         // Remover active de todos
-        [tDash, tDias, tBusq, tHist].forEach(function(t) {
+        [tDash, tDias, tBusq, tHist, tRegistros].forEach(function(t) {
           try { if (t) t.classList.remove('active'); } catch(_) {}
         });
         if (tabKey === 'dashboard') {
@@ -7743,16 +7816,9 @@
         } else if (tabKey === 'busqueda') {
           if (tBusq) tBusq.classList.add('active');
           try { _forzarInputBusquedaEditable(); } catch(_) {}
-          setTimeout(function(){
-            try {
-              const inp = document.getElementById('inp-busca-opa');
-              if (inp && inp.value && inp.value.trim().length >= 2) {
-                _buscarOPA();
-              } else {
-                if (inp) try { inp.focus(); } catch(_) {}
-              }
-            } catch(_) {}
-          }, 20);
+          // Mantiene los resultados ya cargados; solo consulta al pulsar Buscar o Enter.
+          const inp = document.getElementById('inp-busca-opa');
+          if (inp && !inp.value) try { inp.focus(); } catch(_) {}
         } else if (tabKey === 'historial') {
           if (tHist) tHist.classList.add('active');
           // Cargar historial solo si no hay datos cargados (evitar spam)
@@ -7760,6 +7826,10 @@
             window.__historialYaCargadoUnaVez = true;
             setTimeout(function(){ try { _historialCargar(); } catch(_) {} }, 80);
           }
+        } else if (tabKey === 'registros') {
+          if (tRegistros) tRegistros.classList.add('active');
+          // Aplicar en memoria los filtros vigentes; cambiar de pestaña no consulta SeaTable.
+          try { procesarDatos(); actualizarTablaRegistrosBase(); } catch(_) {}
         }
       } catch(err) {
         try { console.error('cambiarTab error:', err && err.message ? err.message : err); } catch(_) {}
@@ -9838,11 +9908,12 @@
         if (!ev) return;
         const val = String(ev && ev.target && ev.target.value || '').trim();
         try { clearTimeout(window.__buscOPATimer); } catch(_) {}
-        if (val.length >= 2) {
-          window.__buscOPATimer = setTimeout(function(){ try { _buscarOPA(); } catch(_) {} }, 350);
-        } else {
-          _limpiarBuscaOPA(false);
-        }
+        const wrap = document.getElementById('busca-resultados-wrap');
+        const badge = document.getElementById('badge-busca-total');
+        if (wrap) wrap.style.display = 'none';
+        if (badge) badge.textContent = val.length >= 2 ? 'Pendiente de búsqueda' : '0 resultados';
+        if (val.length >= 2) _buscarOPA_setStatus('Número cambiado. Pulsa Buscar o Enter para consultar la OPA.', 'info');
+        else if (!val.length) _buscarOPA_setStatus(null);
       } catch(_) {}
     }
 
@@ -10247,7 +10318,7 @@
                           '</div>' +
                           lapizEtapa +
                         '</div>' +
-                        '<div style="font-size:12.5px;color:' + fgFecha + ';font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;margin-top:2px;">' + (hayFecha ? escapeHTML(colFecha) : '<span style="color:#cbd5e1;font-weight:700;">—</span>') + '</div>' +
+                        '<div data-opa-date-field="' + escapeAttr(dataId + ':' + e.clave) + '" style="font-size:12.5px;color:' + fgFecha + ';font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;margin-top:2px;">' + (hayFecha ? escapeHTML(colFecha) : '<span style="color:#cbd5e1;font-weight:700;">—</span>') + '</div>' +
                       '</div>';
                   }
                   const filaExpandir =
@@ -10263,14 +10334,14 @@
                   html += '<tr>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-flex;padding:3px 9px;border-radius:9999px;background:#0f172a;color:#f8fafc;font-weight:800;font-size:11.5px;">' + escapeHTML(String(rw.hoja || '')) + '</span></td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-weight:600;">' + escapeHTML(String(rw.fila || '')) + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;">' + escapeHTML(String(rw.numeroOPA || '')) + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-flex;padding:4px 10px;border-radius:9999px;background:' + estadoColor.bg + ';color:' + estadoColor.fg + ';border:1px solid ' + estadoColor.bd + ';font-weight:800;font-size:12px;">' + escapeHTML(estadoCol || 'Sin estado') + '</span></td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:600;">' + escapeHTML(String(rw.proyecto || '')) + funcionLapiz(dataId, 'P', 'Proyecto', '📁') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;">' + escapeHTML(String(rw.tipoProducto || '')) + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">' + escapeHTML(String(rw.territorio || '')) + funcionLapiz(dataId, 'TR', 'Territorio', '🌎') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;">' + escapeHTML(String(rw.personaje || '')) + funcionLapiz(dataId, 'PJ', 'Personaje', '🧍') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">' + escapeHTML(String(rw.subOpa || '')) + funcionLapiz(dataId, 'SO', 'Sub-OPA', '➗') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#172554;font-weight:700;white-space:nowrap;">' + escapeHTML(ultimaFecha || '—') + funcionLapiz(dataId, 'F', 'Última Fecha Etapa', '📅') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(String(rw.numeroOPA || '')) + '</span>' + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 10px;border-radius:9999px;background:' + estadoColor.bg + ';color:' + estadoColor.fg + ';border:1px solid ' + estadoColor.bd + ';font-weight:800;font-size:12px;">' + escapeHTML(estadoCol || 'Sin estado') + '</span></td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:600;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(String(rw.proyecto || '')) + '</span>' + funcionLapiz(dataId, 'P', 'Proyecto', '📁') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(String(rw.tipoProducto || '')) + '</span>' + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':TR') + '">' + escapeHTML(String(rw.territorio || '')) + '</span>' + funcionLapiz(dataId, 'TR', 'Territorio', '🌎') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':PJ') + '">' + escapeHTML(String(rw.personaje || '')) + '</span>' + funcionLapiz(dataId, 'PJ', 'Personaje', '🧍') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':SO') + '">' + escapeHTML(String(rw.subOpa || '')) + '</span>' + funcionLapiz(dataId, 'SO', 'Sub-OPA', '➗') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#172554;font-weight:700;white-space:nowrap;"><span data-opa-last-date="' + escapeAttr(dataId) + '">' + escapeHTML(ultimaFecha || '—') + '</span>' + funcionLapiz(dataId, 'F', 'Última Fecha Etapa', '📅') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">' +
                       '<button type="button" data-id="' + escapeAttr(dataId) + '" ' + onclickBtn +
                       ' style="padding:7px 12px;border-radius:9999px;font-weight:700;font-size:11.5px;cursor:pointer;' + btnStyle + 'white-space:nowrap;">' +
@@ -10342,6 +10413,7 @@
           dataId: String(dataId || ''),
           hoja: String(row.hoja || ''),
           fila: Number(row.fila) || 0,
+          rowId: String(row.rowId || ''),
           numeroOPA: String(row.numeroOPA || ''),
           estadoActual: String(row.estadoPlataforma || ''),
           proyecto: String(row.proyecto || ''),
@@ -10439,8 +10511,10 @@
                 return;
               }
               _ceSetStatus('✅ Estado actualizado correctamente. Hoja: ' + escapeHTML(String(r.hoja || '')) + ' · Fila #' + escapeHTML(String(r.fila || '')) + (r.fechaEscrita ? ' · Fecha guardada: ' + escapeHTML(String(r.fechaEscrita)) : ''), 'ok');
-              // cerrar y refrescar
-              setTimeout(function(){ try { _ceCerrar(); } catch(_) {} try { _buscarOPA(); } catch(_) {} try { recargarDatos(); } catch(_) {} }, 1200);
+              _opaAplicarEdicionLocal(_ceActual.dataId, 'E', String(r.estado || nuevoEstado));
+              if (r.fechaCampo && r.fechaEscrita) _opaAplicarEdicionLocal(_ceActual.dataId, r.fechaCampo, String(r.fechaEscrita));
+              // Actualiza la ficha visible; no vuelve a consultar ni reinicia la búsqueda.
+              setTimeout(function(){ try { _ceCerrar(); } catch(_) {} }, 800);
             } catch(e) { if(btn) btn.disabled=false; _ceSetStatus('❌ Error procesando: ' + String(e && e.message || e), 'error'); }
           })
           .withFailureHandler(function(err){
@@ -10451,6 +10525,7 @@
             token: _authSesionActual.token,
             hoja: _ceActual.hoja,
             fila: _ceActual.fila,
+            rowId: _ceActual.rowId,
             numeroOPA: _ceActual.numeroOPA,
             nuevoEstado: nuevoEstado,
             fechaElegida: fechaElegida
@@ -10465,6 +10540,36 @@
        ✏️ MODAL EDITAR CAMPO INDIVIDUAL (cliente) — lápiz celdas
     ============================================================ */
     var _ecActual = null; // { dataId, hoja, fila, numeroOPA, campoClave, label, icon, valorActual }
+
+    function _opaAplicarEdicionLocal(dataId, campoClave, valor) {
+      try {
+        const row = window._busqOpaCache && window._busqOpaCache[dataId];
+        if (!row) return;
+        const value = String(valor == null ? '' : valor);
+        const props = { O:'numeroOPA', P:'proyecto', T:'tipoProducto', TR:'territorio', PJ:'personaje', SO:'subOpa', E:'estadoPlataforma' };
+        if (props[campoClave]) row[props[campoClave]] = value;
+        if (/^F[1-8]$/.test(campoClave) && value) {
+          const etapas = ['Concepto Enviado','Concepto Aprobado','Pre-Producción Enviada','Pre-Producción Aprobada','Fotos de Producción Enviada','Fotos de Producción Aprobada','Muestras Finales Enviadas','Aprobada / Cerrada'];
+          row.estadoPlataforma = etapas[Number(campoClave.slice(1)) - 1] || row.estadoPlataforma;
+          const estado = document.querySelector('[data-opa-field="' + dataId + ':E"]');
+          if (estado) estado.textContent = row.estadoPlataforma;
+        }
+        if (!row.todasLasFechas) row.todasLasFechas = {};
+        if (!row.fechas) row.fechas = {};
+        if (campoClave === 'F' || campoClave === 'FM' || /^F[1-8]$/.test(campoClave)) {
+          row.fechas[campoClave] = value;
+          row.todasLasFechas[campoClave] = value;
+          const fecha = document.querySelector('[data-opa-date-field="' + dataId + ':' + campoClave + '"]');
+          if (fecha) fecha.textContent = value || '—';
+          const fechas = Object.keys(row.fechas).map(function(k){ return String(row.fechas[k] || '').trim(); }).filter(Boolean).sort();
+          row.fechaUltima = fechas.length ? fechas[fechas.length - 1] : '';
+          const ultima = document.querySelector('[data-opa-last-date="' + dataId + '"]');
+          if (ultima) ultima.textContent = row.fechaUltima || '—';
+        }
+        const field = document.querySelector('[data-opa-field="' + dataId + ':' + campoClave + '"]');
+        if (field) field.textContent = value || '—';
+      } catch(_) {}
+    }
 
     function _ecAbrir(dataId, campoClave, label, icon) {
       try {
@@ -10496,6 +10601,7 @@
           dataId: dataId,
           hoja: String(row.hoja || ''),
           fila: Number(row.fila) || 0,
+          rowId: String(row.rowId || ''),
           numeroOPA: String(row.numeroOPA || ''),
           campoClave: campoClave,
           label: label,
@@ -10521,7 +10627,12 @@
         }
         if (lbl) lbl.textContent = 'Nuevo valor para ' + label + ' :';
         if (ic) ic.textContent = icon;
-        if (inp) { inp.value = _ecActual.valorActual; try { inp.focus(); if(inp.select) inp.select(); } catch(_) {} }
+        if (inp) {
+          const esFecha = campoClave === 'F' || campoClave === 'FM' || /^F[1-8]$/.test(campoClave);
+          inp.type = esFecha ? 'date' : 'text';
+          inp.value = esFecha && /^\d{4}-\d{2}-\d{2}$/.test(_ecActual.valorActual) ? _ecActual.valorActual : _ecActual.valorActual;
+          try { inp.focus(); if(inp.select && !esFecha) inp.select(); } catch(_) {}
+        }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
         if (m) m.style.display = 'flex';
       } catch(err) {
@@ -10553,7 +10664,7 @@
         const inp = document.getElementById('ec-input-valor');
         const btn = document.getElementById('ec-btn-guardar');
         const nuevoValor = String(inp && inp.value !== undefined ? inp.value : '').trim();
-        _ecSetStatus('⌛ Guardando ' + _ecActual.label + ' en la hoja Excel...', 'info');
+        _ecSetStatus('⌛ Guardando ' + _ecActual.label + ' en SeaTable...', 'info');
         if (btn) btn.disabled = true;
         google.script.run
           .withSuccessHandler(function(r){
@@ -10561,7 +10672,9 @@
               if (btn) btn.disabled = false;
               if (!r || !r.ok) { _ecSetStatus('❌ ' + String(r && r.error || 'No se pudo guardar el campo.'), 'error'); return; }
               _ecSetStatus('✅ Campo guardado correctamente · ' + escapeHTML(String(r.campo || _ecActual.campoClave)) + ' → ' + escapeHTML(String(r.valorNuevo || '—')), 'ok');
-              setTimeout(function(){ try { _ecCerrar(); } catch(_) {} try { _buscarOPA(); } catch(_) {} try { recargarDatos(); } catch(_) {} }, 1100);
+              _opaAplicarEdicionLocal(_ecActual.dataId, _ecActual.campoClave, String(r.valorNuevo == null ? nuevoValor : r.valorNuevo));
+              if (r.estado) _opaAplicarEdicionLocal(_ecActual.dataId, 'E', String(r.estado));
+              setTimeout(function(){ try { _ecCerrar(); } catch(_) {} }, 800);
             } catch(e) { if (btn) btn.disabled=false; _ecSetStatus('❌ Error: ' + String(e && e.message || e), 'error'); }
           })
           .withFailureHandler(function(err){
@@ -10571,9 +10684,10 @@
           .editarCampoOPA(
             _authSesionActual.token,
             _ecActual.hoja,
-            _ecActual.fila,
+            _ecActual.rowId,
             _ecActual.campoClave,
-            nuevoValor
+            nuevoValor,
+            _ecActual.numeroOPA
           );
       } catch(err) {
         try { _ecSetStatus('Error: ' + String(err && err.message || err), 'error'); } catch(_) {}
