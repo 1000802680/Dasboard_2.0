@@ -105,8 +105,19 @@ function parsePermissions(raw, role) {
   const defaults = { ...DEFAULT_PERMISSIONS, panel_admin: String(role || "").toUpperCase() === "ADMINISTRADOR" };
   try {
     const obj = typeof raw === "string" ? JSON.parse(raw || "{}") : raw;
-    return Object.fromEntries(Object.keys(defaults).map((key) => [key, typeof obj?.[key] === "boolean" ? obj[key] : defaults[key]]));
+    return {
+      ...Object.fromEntries(Object.keys(defaults).map((key) => [key, typeof obj?.[key] === "boolean" ? obj[key] : defaults[key]])),
+      asignaciones: normalizeAssignments(obj?.asignaciones),
+    };
   } catch { return defaults; }
+}
+
+function normalizeAssignments(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => ({
+    tipo: String(item?.tipo || "").toUpperCase(),
+    valor: String(item?.valor || "").trim(),
+  })).filter((item) => ["OPA", "PROYECTO", "MARCA"].includes(item.tipo) && item.valor).slice(0, 200);
 }
 
 async function findUser(env, username) {
@@ -281,11 +292,35 @@ export async function handleAuthRequest(functionName, args, env) {
       const role = String(row.ROL || "USUARIO").toUpperCase();
       const defaults = { ...DEFAULT_PERMISSIONS, panel_admin: role === "ADMINISTRADOR", cambiar_estado: role === "ADMINISTRADOR" };
       const input = args[2] && typeof args[2] === "object" ? args[2] : {};
-      const permissions = Object.fromEntries(Object.keys(defaults).map((key) => [key, typeof input[key] === "boolean" ? input[key] : defaults[key]]));
+      const permissions = {
+        ...Object.fromEntries(Object.keys(defaults).map((key) => [key, typeof input[key] === "boolean" ? input[key] : defaults[key]])),
+        asignaciones: normalizeAssignments(parsePermissions(row.PERMISOS_JSON, role).asignaciones),
+      };
       if (role === "ADMINISTRADOR") permissions.panel_admin = true;
       await requestTable(env, USERS_TABLE, { method: "PUT", updates: [{ row_id: row._id, row: { PERMISOS_JSON: JSON.stringify(permissions) } }] });
       await addAudit(env, { username: admin.username, role: admin.rol, action: "CAMBIO_PERMISOS", detail: { usuario_objetivo: row.USERNAME, permisos: permissions } });
       return { ok: true, username: row.USERNAME, permisos: permissions };
+    }
+    case "obtenerMisActividades": {
+      const user = await authenticatedUser(args[0], env);
+      if (!user) return { ok: false, error: "Inicia sesión para ver tus actividades." };
+      return { ok: true, username: user.username, asignaciones: normalizeAssignments(user.permisos.asignaciones) };
+    }
+    case "adminGuardarActividadesUsuario": {
+      const admin = await requireAdmin(args[0], env);
+      if (admin.error) return { ok: false, error: admin.error };
+      const target = String(args[1] || "").trim().toLocaleLowerCase();
+      const users = await allRows(env, USERS_TABLE);
+      const row = users.find((item) => String(item.USERNAME || "").trim().toLocaleLowerCase() === target);
+      if (!row) return { ok: false, error: "Usuario no encontrado." };
+      const assignments = normalizeAssignments(args[2]);
+      if (Array.isArray(args[2]) && args[2].length !== assignments.length) return { ok: false, error: "Hay asignaciones incompletas o con un tipo no válido." };
+      const role = String(row.ROL || "USUARIO").toUpperCase();
+      const permissions = parsePermissions(row.PERMISOS_JSON, role);
+      permissions.asignaciones = assignments;
+      await requestTable(env, USERS_TABLE, { method: "PUT", updates: [{ row_id: row._id, row: { PERMISOS_JSON: JSON.stringify(permissions) } }] });
+      await addAudit(env, { username: admin.username, role: admin.rol, action: "ASIGNAR_ACTIVIDADES", detail: { usuario_objetivo: row.USERNAME, asignaciones: assignments } });
+      return { ok: true, username: row.USERNAME, asignaciones };
     }
     case "adminListarHistorial": {
       const admin = await requireAdmin(args[0], env);
@@ -334,4 +369,3 @@ function toAuditRecord(row) {
 }
 
 export const AUTH_TABLE_COLUMNS = { users: USER_COLUMNS, audit: AUDIT_COLUMNS };
-
