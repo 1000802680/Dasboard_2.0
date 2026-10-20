@@ -79,7 +79,12 @@ async function discoverTableNames(env, token) {
   const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
   const names = tables.map((table) => table.name).filter(Boolean);
   if (!names.length) throw new Error("SeaTable no devolvió pestañas. Verifica el UUID y los permisos del token.");
-  return [...new Set(names)].filter((name) => !["USUARIOS", "HISTORIAL_AUDITORIA"].includes(normalizeHeader(name)));
+  const excludedTables = new Set([
+    "USUARIOS",
+    "HISTORIAL_AUDITORIA",
+    "HISTORIAL DE AUTORIA",
+  ].map(normalizeHeader));
+  return [...new Set(names)].filter((name) => !excludedTables.has(normalizeHeader(name)));
 }
 
 async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
