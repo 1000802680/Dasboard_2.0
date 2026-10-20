@@ -3951,15 +3951,18 @@
           <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">🗂️ Registros de la base</h2>
           <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Vista ordenada de los datos cargados. Usa los filtros de arriba; esta pestaña no vuelve a consultar SeaTable.</p>
         </div>
-        <span id="registros-contador" class="badge-total">0 registros</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span id="registros-contador" class="badge-total">0 registros</span>
+          <button type="button" class="btn-primary" onclick="abrirModalCrearOPA()" style="margin:0;">＋ Agregar datos</button>
+        </div>
       </div>
       <div class="panel" style="padding:0;overflow:hidden;">
         <div style="overflow:auto;max-height:72vh;">
-          <table class="opa-table" style="width:100%;min-width:2600px;border-collapse:collapse;">
+          <table class="opa-table" style="width:100%;min-width:460px;border-collapse:collapse;">
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
-              <th>Hoja</th><th>Proyecto</th><th>Tipo producto</th><th>Tipo específico</th><th>Marca</th><th>Territorio</th><th>Personaje</th><th>Sub-OPA</th><th>Link producto</th><th>Portafolio</th><th>SKU B2B</th><th>SKU B2C</th><th>Descripción ERP</th><th>Nombre producto OPA</th><th>Número de OPA</th><th>Estado plataforma</th><th>Fecha</th><th>Concepto enviado</th><th>Concepto aprobado</th><th>Pre-producción enviada</th><th>Pre-producción aprobada</th><th>Fotos enviadas</th><th>Fotos aprobadas</th><th>Muestras finales</th><th>Aprobada / cerrada</th><th>Fecha envío muestras</th><th>Muestras recibidas</th><th>Muestras enviadas</th><th>Guía envío</th>
+              <th>Número de OPA</th>
             </tr></thead>
-            <tbody id="registros-base-body"><tr><td colspan="29" style="text-align:center;padding:24px;color:#64748b;">Cargando registros…</td></tr></tbody>
+            <tbody id="registros-base-body"><tr><td style="text-align:center;padding:24px;color:#64748b;">Cargando registros…</td></tr></tbody>
           </table>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid #e2e8f0;flex-wrap:wrap;">
@@ -3971,6 +3974,53 @@
         </div>
       </div>
     </section>
+  </div>
+
+  <div id="modal-crear-opa" style="position:fixed;inset:0;z-index:31000;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.62);backdrop-filter:blur(6px);padding:18px;">
+    <div style="width:min(880px,100%);max-height:94vh;display:flex;flex-direction:column;background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(15,23,42,.32);overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid #e2e8f0;">
+        <div><div style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">Registros de base</div><h3 style="margin:3px 0 0;font-size:19px;color:#0f172a;">Agregar un registro nuevo</h3></div>
+        <button type="button" onclick="cerrarModalCrearOPA()" aria-label="Cerrar" style="width:38px;height:38px;border:1px solid #cbd5e1;border-radius:50%;background:#fff;color:#334155;font-size:22px;cursor:pointer;">×</button>
+      </div>
+      <form id="crear-opa-form" onsubmit="event.preventDefault();guardarNuevoRegistroOPA();" style="overflow:auto;padding:18px 20px 20px;">
+        <p style="margin:0 0 14px;color:#64748b;font-size:13px;">Completa la información y elige la hoja donde se guardará. El número de OPA es obligatorio.</p>
+        <div id="crear-opa-status" style="display:none;margin-bottom:14px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+          <label style="font-size:12px;font-weight:800;color:#334155;">Hoja / marca *<select id="crear-opa-hoja" required style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Número de OPA *<input id="crear-opa-O" required maxlength="120" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Proyecto<input id="crear-opa-P" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de producto<input id="crear-opa-T" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo específico<input id="crear-opa-TE" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Marca<input id="crear-opa-M" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Territorio<input id="crear-opa-TR" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Personaje<input id="crear-opa-PJ" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Sub-OPA<input id="crear-opa-SO" maxlength="120" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Estado de plataforma<select id="crear-opa-E" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"><option value="">Sin estado</option><option>Concepto Enviado</option><option>Concepto Aprobado</option><option>Pre-Producción Enviada</option><option>Pre-Producción Aprobada</option><option>Fotos de Producción Enviada</option><option>Fotos de Producción Aprobada</option><option>Muestras Finales Enviadas</option><option>Aprobada / Cerrada</option><option>Cancelado</option></select></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fecha<input id="crear-opa-F" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Concepto enviado<input id="crear-opa-F1" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Concepto aprobado<input id="crear-opa-F2" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Pre-producción enviada<input id="crear-opa-F3" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Pre-producción aprobada<input id="crear-opa-F4" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fotos de producción enviadas<input id="crear-opa-F5" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fotos de producción aprobadas<input id="crear-opa-F6" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Muestras finales enviadas<input id="crear-opa-F7" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Aprobada / cerrada<input id="crear-opa-F8" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fecha envío muestras<input id="crear-opa-FM" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Portafolio<input id="crear-opa-PO" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2B<input id="crear-opa-B2B" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2C<input id="crear-opa-B2C" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras recibidas<input id="crear-opa-MR" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras enviadas<input id="crear-opa-ME" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Enlace guía de envío<input id="crear-opa-GE" type="url" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Descripción ERP<input id="crear-opa-D" maxlength="1000" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Nombre del producto en OPA<input id="crear-opa-NP" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap;">
+          <button type="button" class="btn-secondary" onclick="cerrarModalCrearOPA()">Cancelar</button>
+          <button id="crear-opa-submit" type="submit" class="btn-primary" style="margin:0;">Guardar en la base</button>
+        </div>
+      </form>
+    </div>
   </div>
 
 
@@ -4948,6 +4998,86 @@
       actualizarTablaRegistrosBase();
     }
 
+    function abrirModalCrearOPA() {
+      if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
+      if (_authSesionActual.permisos && _authSesionActual.permisos.cambiar_estado === false) {
+        alert('Tu usuario no tiene permiso para agregar registros. Contacta al administrador.');
+        return;
+      }
+      const select = document.getElementById('crear-opa-hoja');
+      const modal = document.getElementById('modal-crear-opa');
+      if (!select || !modal) return;
+      const actual = limpiarTexto(document.getElementById('filtroHoja') && document.getElementById('filtroHoja').value);
+      const tablas = Array.from(new Set((datos || []).map(function(row) { return limpiarTexto(row.H); }).filter(Boolean))).sort(compararTexto);
+      select.innerHTML = '<option value="">Selecciona la hoja donde guardar…</option>' + tablas.map(function(tabla) {
+        return '<option value="' + escapeAttr(tabla) + '">' + escapeHTML(tabla) + '</option>';
+      }).join('');
+      if (actual && tablas.includes(actual)) select.value = actual;
+      const status = document.getElementById('crear-opa-status');
+      if (status) { status.style.display = 'none'; status.textContent = ''; }
+      modal.style.display = 'flex';
+      setTimeout(function() { const input = document.getElementById('crear-opa-O'); if (input) input.focus(); }, 30);
+    }
+
+    function cerrarModalCrearOPA() {
+      const modal = document.getElementById('modal-crear-opa');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function _crearOPAStatus(message, error) {
+      const status = document.getElementById('crear-opa-status');
+      if (!status) return;
+      status.style.display = 'block';
+      status.style.background = error ? '#fef2f2' : '#eff6ff';
+      status.style.color = error ? '#b91c1c' : '#1d4ed8';
+      status.style.border = error ? '1px solid #fecaca' : '1px solid #bfdbfe';
+      status.textContent = message;
+    }
+
+    function guardarNuevoRegistroOPA() {
+      if (!_authSesionActual || !_authSesionActual.token) { cerrarModalCrearOPA(); _authAbrirModal(); return; }
+      const button = document.getElementById('crear-opa-submit');
+      const keys = ['O','P','T','TE','M','TR','PJ','SO','E','F','F1','F2','F3','F4','F5','F6','F7','F8','FM','PO','B2B','B2C','D','NP','MR','ME','GE'];
+      const campos = {};
+      keys.forEach(function(key) {
+        const input = document.getElementById('crear-opa-' + key);
+        if (input && String(input.value || '').trim()) campos[key] = String(input.value).trim();
+      });
+      const hoja = String(document.getElementById('crear-opa-hoja').value || '').trim();
+      if (!hoja) { _crearOPAStatus('Selecciona la hoja / marca donde se guardará el registro.', true); return; }
+      if (!campos.O) { _crearOPAStatus('El número de OPA es obligatorio.', true); return; }
+      _crearOPAStatus('Guardando el registro en SeaTable…', false);
+      if (button) button.disabled = true;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || !result.ok) {
+            if (button) button.disabled = false;
+            _crearOPAStatus(result && result.error || 'No se pudo crear el registro.', true);
+            return;
+          }
+          _crearOPAStatus('Registro guardado. Actualizando el dashboard y la tabla…', false);
+          recargarDatos(function(ok) {
+            if (button) button.disabled = false;
+            if (!ok) { _crearOPAStatus('El registro quedó guardado en SeaTable, pero no se pudo actualizar la vista. Pulsa “Actualizar datos”.', true); return; }
+            try { limpiarFiltros(); } catch(_) {}
+            const filterOPA = document.getElementById('filtroOPA');
+            if (filterOPA && Array.from(filterOPA.options).some(function(option) { return option.value === String(campos.O); })) {
+              filterOPA.value = String(campos.O);
+              actualizarDashboard();
+            }
+            cerrarModalCrearOPA();
+            cambiarTab('registros');
+            const form = document.getElementById('crear-opa-form');
+            if (form) form.reset();
+          });
+        })
+        .withFailureHandler(function(error) {
+          if (button) button.disabled = false;
+          _crearOPAStatus(error && error.message || 'Error al guardar el registro.', true);
+        })
+        .crearRegistroOPA({ token: _authSesionActual.token, hoja: hoja, campos: campos });
+    }
+
     function actualizarTablaRegistrosBase() {
       const body = document.getElementById('registros-base-body');
       if (!body) return;
@@ -4967,7 +5097,7 @@
       const info = document.getElementById('registros-pagina-info');
       if (contador) contador.textContent = total.toLocaleString() + (total === 1 ? ' registro' : ' registros');
       if (info) info.textContent = total ? 'Mostrando ' + (desde + 1).toLocaleString() + '–' + Math.min(desde + REGISTROS_POR_PAGINA, total).toLocaleString() + ' de ' + total.toLocaleString() + ' · Página ' + paginaRegistrosBase + ' de ' + maxPagina : 'No hay registros para los filtros seleccionados.';
-      const fields = ['H','P','T','TE','M','TR','PJ','SO','LF','PO','B2B','B2C','D','NP','O','E','F','F1','F2','F3','F4','F5','F6','F7','F8','FM','MR','ME','GE'];
+      const fields = ['O'];
       if (!pagina.length) {
         body.innerHTML = '<tr><td colspan="' + fields.length + '" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
         return;
@@ -7530,7 +7660,7 @@
     }
 
 
-    function recargarDatos() {
+    function recargarDatos(alFinalizar) {
 
       try { localStorage.removeItem(STORAGE_CACHE_KEY); } catch(e) {}
       _invalidateMemo();
@@ -7571,9 +7701,11 @@
               _ultimoEtag = String(respuesta.etag);
               try { localStorage.setItem(ETAG_STORAGE_KEY, _ultimoEtag); } catch(_) {}
             }
+            if (typeof alFinalizar === 'function') alFinalizar(true, respuesta);
           } catch(error) {
             try { actualizarSyncStatus('No se pudo mostrar la actualización', true); } catch(_) {}
             mostrarError(error.message || String(error));
+            if (typeof alFinalizar === 'function') alFinalizar(false, error);
           }
         })
         .withFailureHandler(function(error) {
@@ -7586,6 +7718,7 @@
               ? error.message
               : 'No se pudo actualizar la información. Intenta nuevamente.'
           );
+          if (typeof alFinalizar === 'function') alFinalizar(false, error);
 
         })
         .actualizarDashboardDatos();
@@ -10329,6 +10462,7 @@
                           '<div style="height:1px;background:#e2e8f0;flex:1;"></div>' +
                         '</div>' +
                         '<div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;">' + tarjetas + '</div>' +
+                        '<div data-opa-gallery="' + escapeAttr(dataId) + '" style="margin-top:16px;">' + _opaRenderGaleria(dataId, rw, haySesion && puedeCambiar) + '</div>' +
                       '</td>' +
                     '</tr>';
                   html += '<tr>' +
@@ -10374,6 +10508,82 @@
       try {
         return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       } catch(_) { return ''; }
+    }
+
+    function _opaSafeImageUrl(value) {
+      try {
+        const url = new URL(String(value || ''), window.location.href);
+        return (url.protocol === 'https:' || url.protocol === 'http:') ? url.href : '';
+      } catch (_) { return ''; }
+    }
+
+    function _opaRenderGaleria(dataId, row, canUpload) {
+      const images = Array.isArray(row && row.imagenes) ? row.imagenes : [];
+      const cards = images.map(function(image) {
+        const url = _opaSafeImageUrl(image && image.url);
+        const name = String(image && image.name || 'Imagen del producto');
+        if (!url) return '<div style="padding:10px 12px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;font-size:12px;">' + escapeHTML(name) + ' · No se pudo cargar la vista previa</div>';
+        return '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener noreferrer" title="Abrir ' + escapeAttr(name) + '" style="display:block;width:118px;text-decoration:none;color:#334155;">' +
+          '<img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:118px;height:92px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;display:block;" onerror="this.style.display=\'none\';" />' +
+          '<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:700;margin-top:5px;">' + escapeHTML(name) + '</span></a>';
+      }).join('');
+      const picker = canUpload ? '<label for="opa-files-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar imágenes</label>' +
+        '<input id="opa-files-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />' : '';
+      return '<div style="padding:12px 14px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
+          '<div><div style="font-size:12px;font-weight:900;color:#0f172a;">🖼️ Fotos del producto</div><div style="font-size:11px;color:#64748b;margin-top:2px;">' + images.length + ' adjunta' + (images.length === 1 ? '' : 's') + ' · se guardan en LINK O FOTO PRODUCTO</div></div>' + picker +
+        '</div>' +
+        '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' + (cards || '<span style="font-size:12px;color:#94a3b8;padding:8px 2px;">Todavía no hay fotos para esta OPA.</span>') + '</div>' +
+        '<div data-opa-upload-status="' + escapeAttr(dataId) + '" style="display:none;margin-top:10px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;"></div>' +
+      '</div>';
+    }
+
+    async function _subirImagenesOPA(dataId, input) {
+      const row = window._busqOpaCache && window._busqOpaCache[dataId];
+      const files = Array.from(input && input.files || []);
+      if (!row || !files.length) return;
+      if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
+      const status = document.querySelector('[data-opa-upload-status="' + dataId + '"]');
+      const setStatus = function(message, error) {
+        if (!status) return;
+        status.style.display = 'block';
+        status.style.background = error ? '#fef2f2' : '#eff6ff';
+        status.style.color = error ? '#b91c1c' : '#1d4ed8';
+        status.style.border = error ? '1px solid #fecaca' : '1px solid #bfdbfe';
+        status.textContent = message;
+      };
+      if (files.length > 6) { setStatus('Selecciona hasta 6 imágenes por carga.', true); input.value = ''; return; }
+      if (files.some(function(file) { return file.size > 8 * 1024 * 1024; })) { setStatus('Cada imagen puede pesar máximo 8 MB.', true); input.value = ''; return; }
+      const form = new FormData();
+      form.append('token', _authSesionActual.token);
+      form.append('table', row.hoja || '');
+      form.append('rowId', row.rowId || '');
+      form.append('numeroOPA', row.numeroOPA || '');
+      files.forEach(function(file) { form.append('files', file, file.name); });
+      setStatus('Subiendo ' + files.length + ' imagen' + (files.length === 1 ? '' : 'es') + ' a SeaTable…', false);
+      const button = document.querySelector('label[for="opa-files-' + dataId + '"]');
+      if (button) { button.style.opacity = '.55'; button.style.pointerEvents = 'none'; }
+      try {
+        const response = await fetch('/api/upload-opa-image', { method: 'POST', body: form });
+        const result = await response.json().catch(function() { return {}; });
+        if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las fotos.');
+        row.imagenes = Array.isArray(result.imagenes) ? result.imagenes : row.imagenes;
+        const gallery = document.querySelector('[data-opa-gallery="' + dataId + '"]');
+        if (gallery) gallery.innerHTML = _opaRenderGaleria(dataId, row, true);
+        _buscarOPA_setStatus('✅ ' + String(result.mensaje || 'Imágenes guardadas en SeaTable.'), 'ok');
+        const currentStatus = document.querySelector('[data-opa-upload-status="' + dataId + '"]');
+        if (currentStatus) {
+          currentStatus.style.display = 'block';
+          currentStatus.style.background = '#f0fdf4'; currentStatus.style.color = '#15803d'; currentStatus.style.border = '1px solid #bbf7d0';
+          currentStatus.textContent = String(result.mensaje || 'Imágenes guardadas en SeaTable.');
+        }
+      } catch (error) {
+        setStatus(error && error.message || 'Error al subir las imágenes.', true);
+      } finally {
+        if (input) input.value = '';
+        const currentButton = document.querySelector('label[for="opa-files-' + dataId + '"]');
+        if (currentButton) { currentButton.style.opacity = '1'; currentButton.style.pointerEvents = 'auto'; }
+      }
     }
 
     function _limpiarBuscaOPA(enfocar) {
@@ -10500,7 +10710,7 @@
         const nuevoEstado = String(sel && sel.value ? sel.value : '').trim();
         const fechaElegida = String(inpF && inpF.value ? inpF.value : '').trim();
         if (!nuevoEstado) { _ceSetStatus('⚠️ Selecciona un nuevo estado.', 'error'); return; }
-        _ceSetStatus('⌛ Guardando cambios en la hoja Excel...', 'info');
+        _ceSetStatus('⌛ Guardando estado y fecha en SeaTable...', 'info');
         if (btn) btn.disabled = true;
         google.script.run
           .withSuccessHandler(function(r){
@@ -10510,9 +10720,10 @@
                 _ceSetStatus('❌ ' + String(r && r.error || 'No se pudo cambiar el estado.'), 'error');
                 return;
               }
-              _ceSetStatus('✅ Estado actualizado correctamente. Hoja: ' + escapeHTML(String(r.hoja || '')) + ' · Fila #' + escapeHTML(String(r.fila || '')) + (r.fechaEscrita ? ' · Fecha guardada: ' + escapeHTML(String(r.fechaEscrita)) : ''), 'ok');
+              _ceSetStatus('✅ Estado y datos de la etapa actualizados en SeaTable. El dashboard también se actualizó.' + (r.fechaEscrita ? ' · Fecha: ' + escapeHTML(String(r.fechaEscrita)) : ''), 'ok');
               _opaAplicarEdicionLocal(_ceActual.dataId, 'E', String(r.estado || nuevoEstado));
               if (r.fechaCampo && r.fechaEscrita) _opaAplicarEdicionLocal(_ceActual.dataId, r.fechaCampo, String(r.fechaEscrita));
+              _opaRefrescarDashboardLocal(_ceActual.dataId);
               // Actualiza la ficha visible; no vuelve a consultar ni reinicia la búsqueda.
               setTimeout(function(){ try { _ceCerrar(); } catch(_) {} }, 800);
             } catch(e) { if(btn) btn.disabled=false; _ceSetStatus('❌ Error procesando: ' + String(e && e.message || e), 'error'); }
@@ -10550,9 +10761,14 @@
         if (props[campoClave]) row[props[campoClave]] = value;
         if (/^F[1-8]$/.test(campoClave) && value) {
           const etapas = ['Concepto Enviado','Concepto Aprobado','Pre-Producción Enviada','Pre-Producción Aprobada','Fotos de Producción Enviada','Fotos de Producción Aprobada','Muestras Finales Enviadas','Aprobada / Cerrada'];
-          row.estadoPlataforma = etapas[Number(campoClave.slice(1)) - 1] || row.estadoPlataforma;
-          const estado = document.querySelector('[data-opa-field="' + dataId + ':E"]');
-          if (estado) estado.textContent = row.estadoPlataforma;
+          const nuevoIndice = Number(campoClave.slice(1)) - 1;
+          const indiceActual = etapas.findIndex(function(item) { return item.toLowerCase() === String(row.estadoPlataforma || '').toLowerCase(); });
+          // Refleja el avance local solo cuando la fecha corresponde a una etapa posterior.
+          if (!row.estadoPlataforma || (indiceActual >= 0 && nuevoIndice > indiceActual)) {
+            row.estadoPlataforma = etapas[nuevoIndice] || row.estadoPlataforma;
+            const estado = document.querySelector('[data-opa-field="' + dataId + ':E"]');
+            if (estado) estado.textContent = row.estadoPlataforma;
+          }
         }
         if (!row.todasLasFechas) row.todasLasFechas = {};
         if (!row.fechas) row.fechas = {};
@@ -10569,6 +10785,30 @@
         const field = document.querySelector('[data-opa-field="' + dataId + ':' + campoClave + '"]');
         if (field) field.textContent = value || '—';
       } catch(_) {}
+    }
+
+    function _opaRefrescarDashboardLocal(dataId) {
+      try {
+        const row = window._busqOpaCache && window._busqOpaCache[dataId];
+        if (!row || !Array.isArray(datos)) return;
+        const mainRow = datos.find(function(item) { return String(item._id || '') === String(row.rowId || '') && String(item.H || '') === String(row.hoja || ''); });
+        if (mainRow) {
+          mainRow.E = String(row.estadoPlataforma || '');
+          mainRow.O = String(row.numeroOPA || '');
+          mainRow.P = String(row.proyecto || '');
+          mainRow.T = String(row.tipoProducto || '');
+          mainRow.TR = String(row.territorio || '');
+          mainRow.PJ = String(row.personaje || '');
+          mainRow.SO = String(row.subOpa || '');
+          Object.keys(row.fechas || {}).forEach(function(key) { mainRow[key] = row.fechas[key] || ''; });
+          try { localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify({ _ts: Date.now(), registros: datos })); } catch(_) {}
+        }
+        _invalidateMemo();
+        actualizarDashboard();
+        actualizarSyncStatus('Cambio guardado en SeaTable · dashboard actualizado', false);
+      } catch(error) {
+        try { console.warn('No se pudo refrescar el dashboard local:', error && error.message || error); } catch(_) {}
+      }
     }
 
     function _ecAbrir(dataId, campoClave, label, icon) {
@@ -10674,6 +10914,7 @@
               _ecSetStatus('✅ Campo guardado correctamente · ' + escapeHTML(String(r.campo || _ecActual.campoClave)) + ' → ' + escapeHTML(String(r.valorNuevo || '—')), 'ok');
               _opaAplicarEdicionLocal(_ecActual.dataId, _ecActual.campoClave, String(r.valorNuevo == null ? nuevoValor : r.valorNuevo));
               if (r.estado) _opaAplicarEdicionLocal(_ecActual.dataId, 'E', String(r.estado));
+              _opaRefrescarDashboardLocal(_ecActual.dataId);
               setTimeout(function(){ try { _ecCerrar(); } catch(_) {} }, 800);
             } catch(e) { if (btn) btn.disabled=false; _ecSetStatus('❌ Error: ' + String(e && e.message || e), 'error'); }
           })
