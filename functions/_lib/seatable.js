@@ -212,10 +212,10 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       if (!current || activityTime(record) >= activityTime(current)) latest.set(key, record);
     }, tableNames);
     const records = [...latest.values(), ...withoutOPA];
-    // El chequeo automático puede ejecutarse cada minuto; conserva el conjunto
-    // durante cinco minutos para no volver a procesar toda la base por cada poll.
-    // La acción manual "Actualizar datos" usa forceRefresh y siempre consulta SeaTable.
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 5 * 60_000 };
+    // Refresca los registros junto con el sondeo del dashboard, para que los
+    // cambios en filas existentes no queden ocultos detrás de una caché larga.
+    // La acción manual "Actualizar datos" sigue forzando una lectura inmediata.
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 30_000 };
     return records;
   })();
   globalThis.__dashboardRowsLoading = { key: cacheKey, promise };
@@ -233,6 +233,4 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
-
-
 
