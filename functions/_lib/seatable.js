@@ -66,8 +66,25 @@ async function getBaseToken(env, apiToken = env.SEATABLE_API_TOKEN) {
   if (!response.ok || !body.access_token) {
     throw new Error(`SeaTable no entregó un token de base (HTTP ${response.status}). Revisa URL y API token.`);
   }
-  globalThis.__seatableToken = { key: apiToken, value: body.access_token, expiresAt: now + 2 * 24 * 60 * 60 * 1000 };
+  globalThis.__seatableToken = { key: apiToken, value: body.access_token, workspaceId: body.workspace_id || "", expiresAt: now + 2 * 24 * 60 * 60 * 1000 };
   return body.access_token;
+}
+
+export async function getDashboardWorkspaceId(env, apiToken = env.SEATABLE_API_TOKEN) {
+  const cached = globalThis.__seatableToken;
+  if (cached?.key === apiToken && cached.workspaceId) return String(cached.workspaceId);
+  const response = await fetch(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-access-token/`, {
+    headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.workspace_id || !body.access_token) throw new Error(`SeaTable no devolvió el identificador del espacio de trabajo (HTTP ${response.status}).`);
+  globalThis.__seatableToken = {
+    key: apiToken,
+    value: body.access_token,
+    workspaceId: body.workspace_id,
+    expiresAt: Date.now() + 2 * 24 * 60 * 60 * 1000,
+  };
+  return String(body.workspace_id);
 }
 
 function assertConfig(env) {
