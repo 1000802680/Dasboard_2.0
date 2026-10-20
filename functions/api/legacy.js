@@ -1,5 +1,5 @@
-import { loadDashboardRecords, refreshForNewTables } from "../_lib/seatable.js";
-import { getAuthenticatedUser } from "../_lib/auth.js";
+import { discoverTableNames, getDashboardColumnName, loadDashboardRecords, refreshForNewTables, updateDashboardRow } from "../_lib/seatable.js";
+import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const ESTADOS = [
   "Concepto Enviado", "Concepto Aprobado", "Pre-Producción Enviada",
@@ -7,6 +7,7 @@ const ESTADOS = [
   "Fotos de Producción Aprobada", "Muestras Finales Enviadas",
   "Aprobada / Cerrada", "Cancelado",
 ];
+const EDITABLE_FIELDS = new Set(["O", "P", "T", "TR", "PJ", "SO", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM"]);
 
 export async function onRequestPost({ request, env }) {
   try {
@@ -53,7 +54,7 @@ export async function onRequestPost({ request, env }) {
           value = {
             ok: true,
             resultados: resultados.map((r) => ({
-              hoja: r.H || "SeaTable", fila: "", numeroOPA: r.O || "", estadoPlataforma: r.E || "",
+              hoja: r.H || "SeaTable", fila: "", rowId: r._id || "", numeroOPA: r.O || "", estadoPlataforma: r.E || "",
               proyecto: r.P || "", tipoProducto: r.T || "", territorio: r.TR || "",
               personaje: r.PJ || "", subOpa: r.SO || "", fechaUltima: latestDate(r),
               fechas: { F: r.F, F1: r.F1, F2: r.F2, F3: r.F3, F4: r.F4, F5: r.F5, F6: r.F6, F7: r.F7, F8: r.F8, FM: r.FM },
@@ -69,6 +70,47 @@ export async function onRequestPost({ request, env }) {
         }
         break;
       }
+      case "editarCampoOPA": {
+        const [sessionToken, table, rowId, fieldKey, rawValue] = args;
+        const user = await getAuthenticatedUser(sessionToken, env);
+        if (!user) return Response.json({ ok: false, error: "Inicia sesión para editar la OPA." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+        if (user.permisos?.cambiar_estado === false) return Response.json({ ok: false, error: "No tienes permiso para editar OPAs." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+        const key = String(fieldKey || "");
+        if (!EDITABLE_FIELDS.has(key)) return Response.json({ ok: false, error: "Este campo no se puede editar desde la búsqueda." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+        await assertEditableTable(env, table);
+        const newValue = isDateField(key) ? normalizeInputDate(rawValue) : String(rawValue ?? "").trim();
+        const columnName = getDashboardColumnName(env, key);
+        const updates = { [columnName]: newValue };
+        // Al registrar la fecha de una etapa, el estado de plataforma avanza a esa etapa.
+        const stageIndex = /^F[1-8]$/.test(key) ? Number(key.slice(1)) - 1 : -1;
+        if (stageIndex >= 0 && newValue) updates[getDashboardColumnName(env, "E")] = ESTADOS[stageIndex];
+        await updateDashboardRow(env, String(table), String(rowId || ""), updates);
+        await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valor: newValue, ...(stageIndex >= 0 && newValue ? { estado: ESTADOS[stageIndex] } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
+        value = { ok: true, campo: columnName, valorNuevo: newValue, ...(stageIndex >= 0 && newValue ? { estado: ESTADOS[stageIndex] } : {}) };
+        break;
+      }
+      case "cambiarEstadoOPA": {
+        const p = args[0] || {};
+        const user = await getAuthenticatedUser(p.token, env);
+        if (!user) return Response.json({ ok: false, error: "Inicia sesión para actualizar la OPA." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+        if (user.permisos?.cambiar_estado === false) return Response.json({ ok: false, error: "No tienes permiso para cambiar el estado de las OPAs." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+        const table = String(p.hoja || "");
+        const rowId = String(p.rowId || "");
+        const state = String(p.nuevoEstado || "").trim();
+        if (!state || !ESTADOS.some((item) => item.toLocaleLowerCase() === state.toLocaleLowerCase())) {
+          return Response.json({ ok: false, error: "Selecciona un estado válido." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+        }
+        await assertEditableTable(env, table);
+        const updates = { [getDashboardColumnName(env, "E")]: state };
+        const stageIndex = ESTADOS.findIndex((item) => item.toLocaleLowerCase() === state.toLocaleLowerCase());
+        if (stageIndex >= 0 && stageIndex < 8 && p.fechaElegida) {
+          updates[getDashboardColumnName(env, `F${stageIndex + 1}`)] = normalizeInputDate(p.fechaElegida);
+        }
+        await updateDashboardRow(env, table, rowId, updates);
+        await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
+        value = { ok: true, hoja: table, fila: rowId, estado: state, fechaCampo: stageIndex >= 0 && stageIndex < 8 && p.fechaElegida ? `F${stageIndex + 1}` : "", fechaEscrita: p.fechaElegida ? normalizeInputDate(p.fechaElegida) : "" };
+        break;
+      }
       default:
         return Response.json({ ok: false, error: `La función ${functionName} todavía debe migrarse antes de habilitarse.` }, { status: 501 });
     }
@@ -76,6 +118,33 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     return Response.json({ ok: false, error: error.message || "Error procesando la solicitud." }, { status: 502 });
   }
+}
+
+async function assertEditableTable(env, tableName) {
+  const names = await discoverTableNames(env);
+  if (!names.some((name) => name === tableName)) throw new Error("La hoja seleccionada no pertenece a las tablas de datos del dashboard.");
+}
+
+function isDateField(key) {
+  return key === "F" || key === "FM" || /^F[1-8]$/.test(key);
+}
+
+function normalizeInputDate(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  let year, month, day;
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) [, year, month, day] = match;
+  else {
+    match = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (!match) throw new Error("Ingresa la fecha en formato AAAA-MM-DD.");
+    [, day, month, year] = match;
+  }
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) {
+    throw new Error("La fecha ingresada no es válida.");
+  }
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function latestDate(r) {
