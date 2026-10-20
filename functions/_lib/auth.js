@@ -58,7 +58,11 @@ async function requestTable(env, table, { method = "GET", start = 0, rows, updat
     ...(method === "GET" ? {} : { body: JSON.stringify(method === "POST" ? { table_name: table, rows } : { table_name: table, updates }) }),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`No se pudo acceder a la tabla ${table} (HTTP ${response.status}). Verifica que exista y que el token de autenticación tenga permiso de escritura.`);
+  if (!response.ok) {
+    const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
+    const reason = detail ? ` Detalle de SeaTable: ${detail}` : "";
+    throw new Error(`No se pudo acceder a la tabla ${table} (HTTP ${response.status}). Verifica que el UUID y el token correspondan a la misma base, que la tabla exista y que el token tenga permiso de lectura y escritura.${reason}`);
+  }
   return body;
 }
 
