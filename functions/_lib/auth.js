@@ -334,3 +334,4 @@ function toAuditRecord(row) {
 }
 
 export const AUTH_TABLE_COLUMNS = { users: USER_COLUMNS, audit: AUDIT_COLUMNS };
+
