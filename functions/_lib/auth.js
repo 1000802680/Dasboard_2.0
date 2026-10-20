@@ -188,6 +188,10 @@ async function addAudit(env, { username, role, action, detail = {}, opa = "", ta
   try { await requestTable(env, AUDIT_TABLE, { method: "POST", rows: [record] }); } catch (error) { console.error("No se pudo escribir auditoría:", error.message); }
 }
 
+export async function recordBusinessAudit(env, { username, role, action, detail = {}, opa = "", table = "", row = "" }) {
+  await addAudit(env, { username, role, action, detail, opa, table, row });
+}
+
 function publicUser(user) {
   return {
     id: user.id, username: user.username, nombreCompleto: user.nombreCompleto,
