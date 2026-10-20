@@ -19,13 +19,18 @@ const ITERATIONS = 150_000;
 const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 
 function authConfig(env) {
-  const missing = ["SEATABLE_SERVER_URL", "SEATABLE_AUTH_API_TOKEN", "SEATABLE_BASE_UUID", "AUTH_SESSION_SECRET"]
+  // Por defecto, los usuarios viven en la misma base del dashboard y pueden
+  // usar el token existente. Un token de autenticación separado sigue siendo
+  // opcional para instalaciones que quieran aislar credenciales.
+  const apiToken = env.SEATABLE_AUTH_API_TOKEN || env.SEATABLE_API_TOKEN;
+  const missing = ["SEATABLE_SERVER_URL", "SEATABLE_BASE_UUID", "AUTH_SESSION_SECRET"]
     .filter((key) => !env[key]);
+  if (!apiToken) missing.push("SEATABLE_API_TOKEN");
   if (missing.length) throw new Error(`Falta configurar autenticación: ${missing.join(", ")}.`);
   return {
     server: env.SEATABLE_SERVER_URL.replace(/\/$/, ""),
     base: encodeURIComponent(env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID),
-    token: env.SEATABLE_AUTH_API_TOKEN,
+    token: apiToken,
   };
 }
 
