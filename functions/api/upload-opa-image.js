@@ -1,4 +1,4 @@
-import { discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, updateDashboardRow } from "../_lib/seatable.js";
+import { discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardWorkspaceId, updateDashboardRow } from "../_lib/seatable.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const MAX_IMAGES = 6;
@@ -46,7 +46,8 @@ export async function onRequestPost({ request, env }) {
     if (!linkResponse.ok || !uploadInfo.upload_link) throw new Error(`SeaTable no pudo preparar la carga de imágenes (HTTP ${linkResponse.status}).`);
 
     const relativePath = fileType === "image" ? uploadInfo.img_relative_path : uploadInfo.file_relative_path;
-    if (!relativePath || !uploadInfo.parent_path || !uploadInfo.workspace_id) throw new Error("SeaTable devolvió datos incompletos para guardar la imagen.");
+    const workspaceId = String(uploadInfo.workspace_id || await getDashboardWorkspaceId(env, apiToken));
+    if (!relativePath || !uploadInfo.parent_path || !workspaceId) throw new Error("SeaTable devolvió datos incompletos para guardar la imagen.");
     const saved = [];
     for (const file of files) {
       const uploadForm = new FormData();
@@ -57,10 +58,18 @@ export async function onRequestPost({ request, env }) {
       const uploadUrl = new URL(uploadInfo.upload_link);
       uploadUrl.searchParams.set("ret-json", "1");
       const uploadResponse = await fetch(uploadUrl, { method: "POST", body: uploadForm, headers: { Accept: "application/json" } });
-      const uploaded = await uploadResponse.json().catch(() => ({}));
-      if (!uploadResponse.ok || !uploaded.name) throw new Error(`SeaTable no pudo guardar "${file.name}" (HTTP ${uploadResponse.status}).`);
-      const relativeUrl = `/workspace/${uploadInfo.workspace_id}${uploadInfo.parent_path}/${relativePath}/${uploaded.name}`;
-      saved.push({ name: String(uploaded.name), size: file.size, path: relativeUrl, type: fileType });
+      const uploadText = await uploadResponse.text();
+      let uploadBody = {};
+      try { uploadBody = JSON.parse(uploadText); } catch (_) { uploadBody = uploadText; }
+      // SeaTable responde con una lista cuando ret-json=1, incluso al subir un solo archivo.
+      const uploaded = Array.isArray(uploadBody) ? uploadBody[0] : uploadBody;
+      if (!uploadResponse.ok || !uploaded || !uploaded.name) {
+        const detail = String(uploaded?.error || uploadBody?.error || uploadBody?.detail || (typeof uploadBody === "string" ? uploadBody : "")).trim().slice(0, 180);
+        throw new Error(`SeaTable no pudo confirmar la carga de "${file.name}" (HTTP ${uploadResponse.status}).${detail ? ` ${detail}` : ""}`);
+      }
+      const uploadedName = String(uploaded.name);
+      const relativeUrl = `/workspace/${workspaceId}${uploadInfo.parent_path}/${relativePath}/${uploadedName}`;
+      saved.push({ name: uploadedName, size: file.size, path: relativeUrl, type: fileType });
     }
 
     const existing = normalizeExisting(currentRow[columnName], fileType);
