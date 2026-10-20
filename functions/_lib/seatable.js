@@ -69,24 +69,25 @@ function assertConfig(env) {
   if (missing.length) throw new Error(`Falta configurar: ${missing.join(", ")}.`);
 }
 
-async function fetchAllRows(env) {
+async function discoverTableNames(env, token) {
+  const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
+  const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
+  const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
+  const metadataResponse = await fetch(metadataUrl, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+  const metadataBody = await metadataResponse.json().catch(() => ({}));
+  if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de pestañas de SeaTable (HTTP ${metadataResponse.status}).`);
+  const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
+  const names = tables.map((table) => table.name).filter(Boolean);
+  if (!names.length) throw new Error("SeaTable no devolvió pestañas. Verifica el UUID y los permisos del token.");
+  return [...new Set(names)].filter((name) => !["USUARIOS", "HISTORIAL_AUDITORIA"].includes(normalizeHeader(name)));
+}
+
+async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   assertConfig(env);
   const token = await getBaseToken(env);
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
-  const all = [];
-  let tableNames;
-  if (env.SEATABLE_TABLE_NAMES) {
-    tableNames = env.SEATABLE_TABLE_NAMES.split(",").map((name) => name.trim()).filter(Boolean);
-  } else {
-    const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
-    const metadataResponse = await fetch(metadataUrl, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
-    const metadataBody = await metadataResponse.json().catch(() => ({}));
-    if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de tablas de SeaTable (HTTP ${metadataResponse.status}).`);
-    tableNames = (metadataBody.metadata?.tables || metadataBody.tables || []).map((table) => table.name).filter(Boolean);
-  }
-  const systemTables = new Set(["USUARIOS", "HISTORIAL_AUDITORIA"]);
-  tableNames = tableNames.filter((name) => !systemTables.has(normalizeHeader(name)));
+  const tableNames = knownTableNames || await discoverTableNames(env, token);
   if (!tableNames.length) throw new Error("No se encontraron tablas en la base SeaTable. Revisa permisos y configuración.");
 
   const pageSize = 1000;
@@ -97,26 +98,37 @@ async function fetchAllRows(env) {
       url.searchParams.set("start", String(start));
       url.searchParams.set("limit", String(pageSize));
       url.searchParams.set("convert_keys", "true");
+      if (env.SEATABLE_VIEW_NAME) url.searchParams.set("view_name", env.SEATABLE_VIEW_NAME);
       const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(`Error leyendo la tabla "${tableName}" de SeaTable (HTTP ${response.status}).`);
       const rows = Array.isArray(body) ? body : (body.rows || body.results || []);
-      all.push(...rows.map((row) => ({ ...row, __table_name: tableName })));
+      for (const row of rows) onRow(row, tableName);
       if (rows.length < pageSize) break;
-      if (all.length >= 100_000) throw new Error("La lectura supera el tope de seguridad de 100.000 filas. Usa vistas o consulta por páginas/filtros.");
+      if (start + rows.length >= 100_000) throw new Error("La lectura supera el tope de seguridad de 100.000 filas. Usa vistas o consulta por páginas/filtros.");
     }
   }
-  return all;
+  return tableNames;
 }
 
-function toInternalRecord(row, columns) {
-  const byNormalizedName = new Map(Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]));
-  const result = { H: row.__table_name || "SeaTable" };
-  for (const [internal, external] of Object.entries(columns)) {
-    const value = byNormalizedName.get(normalizeHeader(external));
-    if (["MR", "ME"].includes(internal)) result[internal] = Number(value) || 0;
-    else if (["F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM"].includes(internal)) result[internal] = normalizeDate(value);
-    else result[internal] = value == null ? "" : String(value).trim();
+function getSourceKeyMap(row, columns) {
+  const wanted = new Map(Object.entries(columns).map(([internal, external]) => [normalizeHeader(external), internal]));
+  const map = [];
+  for (const key of Object.keys(row)) {
+    const internal = wanted.get(normalizeHeader(key));
+    if (internal) map.push([key, internal]);
+  }
+  return map;
+}
+
+function toInternalRecord(row, tableName, sourceKeyMap) {
+  const result = { H: tableName || "SeaTable" };
+  for (const [sourceKey, internal] of sourceKeyMap) {
+    const value = row[sourceKey];
+    if (value == null || value === "") continue;
+    if (internal === "MR" || internal === "ME") result[internal] = Number(value) || 0;
+    else if (internal === "F" || (internal.length === 2 && internal[0] === "F") || internal === "FM") result[internal] = normalizeDate(value);
+    else result[internal] = String(value).trim();
   }
   result._id = row._id || "";
   result._mtime = row._mtime || row._ctime || "";
@@ -156,27 +168,71 @@ function deduplicateLatestOPA(records) {
     const incomingTime = activityTime(record);
     if (!current || incomingTime >= currentTime) latest.set(key, record);
   }
-  return [...latest.values(), ...withoutOPA].map(({ _mtime, ...record }) => record);
+  return [...latest.values(), ...withoutOPA];
 }
 
 function activityTime(record) {
   if (!record) return 0;
-  const stageDates = [record.F8, record.F7, record.F6, record.F5, record.F4, record.F3, record.F2, record.F1, record.FM, record.F];
-  const latestStage = stageDates.filter(Boolean).map((value) => Date.parse(value) || 0).reduce((max, value) => Math.max(max, value), 0);
-  return latestStage || Date.parse(record._mtime || "") || 0;
+  // Fechas normalizadas como YYYY-MM-DD y marcas _mtime son comparables como texto.
+  let latestStage = "";
+  for (const key of ["F8", "F7", "F6", "F5", "F4", "F3", "F2", "F1", "FM", "F"]) {
+    const value = record[key];
+    if (value && value > latestStage) latestStage = value;
+  }
+  return latestStage || record._mtime || "";
 }
 
-export async function loadDashboardRecords(env, { forceRefresh = false } = {}) {
-  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_TABLE_NAMES || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+export async function loadDashboardRecords(env, { forceRefresh = false, tableNames = null } = {}) {
+  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
   const now = Date.now();
   const cached = globalThis.__dashboardRowsCache;
   if (!forceRefresh && cached?.key === cacheKey && cached.expiresAt > now) return cached.records;
+  if (!forceRefresh && globalThis.__dashboardRowsLoading?.key === cacheKey) return globalThis.__dashboardRowsLoading.promise;
 
-  const columnMap = getColumnMap(env);
-  const rows = await fetchAllRows(env);
-  const records = rows.map((row) => toInternalRecord(row, columnMap));
-  const uniqueRecords = deduplicateLatestOPA(records);
-  globalThis.__dashboardRowsCache = { key: cacheKey, records: uniqueRecords, expiresAt: now + 30_000 };
-  return uniqueRecords;
+  const promise = (async () => {
+    const columnMap = getColumnMap(env);
+    const schemaByTable = new Map();
+    const latest = new Map();
+    const withoutOPA = [];
+    let rowCount = 0;
+    const detectedTableNames = await forEachSeaTableRow(env, (row, tableName) => {
+      rowCount++;
+      if (rowCount > 100_000) throw new Error("La lectura supera el tope de seguridad de 100.000 filas. Usa vistas o consulta por páginas/filtros.");
+      let sourceKeyMap = schemaByTable.get(tableName);
+      if (!sourceKeyMap) {
+        sourceKeyMap = getSourceKeyMap(row, columnMap);
+        schemaByTable.set(tableName, sourceKeyMap);
+      }
+      const record = toInternalRecord(row, tableName, sourceKeyMap);
+      const opa = String(record.O || "").trim();
+      if (!opa) { withoutOPA.push(record); return; }
+      const project = String(record.P || "").trim().toLocaleUpperCase();
+      const key = `${project}\u0000${opa}`;
+      const current = latest.get(key);
+      if (!current || activityTime(record) >= activityTime(current)) latest.set(key, record);
+    }, tableNames);
+    const records = [...latest.values(), ...withoutOPA];
+    // El chequeo automático puede ejecutarse cada minuto; conserva el conjunto
+    // durante cinco minutos para no volver a procesar toda la base por cada poll.
+    // La acción manual "Actualizar datos" usa forceRefresh y siempre consulta SeaTable.
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 5 * 60_000 };
+    return records;
+  })();
+  globalThis.__dashboardRowsLoading = { key: cacheKey, promise };
+  try { return await promise; }
+  finally { if (globalThis.__dashboardRowsLoading?.promise === promise) globalThis.__dashboardRowsLoading = null; }
 }
+
+export async function refreshForNewTables(env) {
+  const cached = globalThis.__dashboardRowsCache;
+  if (!cached || cached.expiresAt <= Date.now()) return loadDashboardRecords(env);
+  const token = await getBaseToken(env);
+  const currentNames = await discoverTableNames(env, token);
+  const previous = [...(cached.tableNames || [])].sort().join("\u0000");
+  const current = [...currentNames].sort().join("\u0000");
+  if (previous === current) return cached.records;
+  return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
+}
+
+
 
