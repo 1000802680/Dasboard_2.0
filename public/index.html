@@ -2991,11 +2991,6 @@
       cursor: text !important;
     }
   </style>
-  <style id="cloudflare-read-only">
-    /* Esta copia se publica en Cloudflare como dashboard de consulta. */
-    #card-usuario-esquina,
-    #auth-modal { display: none !important; }
-  </style>
 </head>
 
 <body>
@@ -4092,7 +4087,7 @@
           Iniciar sesión
         </button>
         <div style="margin-top:14px;padding:10px 13px;border-radius:11px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;font-size:12px;font-weight:600;line-height:1.45;">
-          💡 El <b>primer usuario</b> que se registre en la hoja USUARIOS será automáticamente <b>ADMINISTRADOR</b>.
+          💡 La primera cuenta será administradora y requiere la clave inicial configurada en Cloudflare. Después podrás crear las cuentas del equipo.
         </div>
       </div>
 
@@ -4106,6 +4101,9 @@
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Correo electrónico</label>
         <input type="email" id="auth-reg-correo" placeholder="tu.correo@ejemplo.com (opcional)"
+          style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
+        <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Clave inicial de administrador (solo para crear la primera cuenta)</label>
+        <input type="password" id="auth-reg-bootstrap-key" autocomplete="off" placeholder="La clave configurada en Cloudflare"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Contraseña</label>
         <input type="password" id="auth-reg-pass1" placeholder="Mínimo 6 caracteres"
@@ -8938,7 +8936,7 @@
         _authSetStatus('⌛ Iniciando sesión...', 'info');
         _authCalcularHashCliente(passwd).then(function(hashPwd){
           if (!google || !google.script || !google.script.run) {
-            _authSetStatus('Sin conexión con Google Apps Script. Abre el Dashboard como Web App.', 'error');
+            _authSetStatus('No se pudo conectar con el servicio de inicio de sesión. Intenta de nuevo.', 'error');
             return;
           }
           google.script.run
@@ -8973,6 +8971,7 @@
         const c = document.getElementById('auth-reg-correo');
         const p1 = document.getElementById('auth-reg-pass1');
         const p2 = document.getElementById('auth-reg-pass2');
+        const bootstrap = document.getElementById('auth-reg-bootstrap-key');
         const username = String(u ? u.value : '').trim();
         const nombre   = String(n ? n.value : '').trim();
         const correo   = String(c ? c.value : '').trim();
@@ -8984,7 +8983,7 @@
         _authSetStatus('⌛ Creando usuario...', 'info');
         _authCalcularHashCliente(pass1).then(function(hashPwd){
           if (!google || !google.script || !google.script.run) {
-            _authSetStatus('Sin conexión con Google Apps Script. Abre el Dashboard como Web App.', 'error');
+            _authSetStatus('No se pudo conectar con el servicio de registro. Intenta de nuevo.', 'error');
             return;
           }
           google.script.run
@@ -8995,7 +8994,7 @@
                   return;
                 }
                 const msg = (r.mensaje || 'Usuario creado correctamente. Ya puedes iniciar sesión.');
-                try { [u,n,c,p1,p2].forEach(function(x){ try { if (x) x.value=''; } catch(_){} }); } catch(_) {}
+                try { [u,n,c,p1,p2,bootstrap].forEach(function(x){ try { if (x) x.value=''; } catch(_){} }); } catch(_) {}
                 _authSetStatus('✅ ' + String(msg) + ' Inicia sesión para continuar.', 'ok');
                 setTimeout(function(){ _authCambiarTab('login'); try { const ul = document.getElementById('auth-login-username'); if(ul) ul.value=username; ul && ul.focus(); } catch(_){} }, 900);
               } catch(e) { _authSetStatus((e && e.message) || 'Error al procesar el registro.', 'error'); }
@@ -9003,7 +9002,7 @@
             .withFailureHandler(function(err){
               _authSetStatus('❌ Error en registro: ' + (err && err.message ? err.message : err), 'error');
             })
-            .registerUser({ username: username, nombreCompleto: nombre, correo: correo, hashPwd: hashPwd });
+            .registerUser({ username: username, nombreCompleto: nombre, correo: correo, hashPwd: hashPwd, bootstrapKey: bootstrap ? bootstrap.value : '' });
         });
       } catch(err) { _authSetStatus('Error: ' + String(err && err.message || err), 'error'); }
     }
@@ -10107,7 +10106,7 @@
         if (wrap) wrap.style.display = 'none';
         if (badge) badge.textContent = 'Buscando...';
         if (!google || !google.script || !google.script.run) {
-          _buscarOPA_setStatus('❌ Sin conexión con Google Apps Script. Abre el Dashboard como Web App.', 'error');
+          _buscarOPA_setStatus('❌ No se pudo conectar con el servicio de búsqueda. Intenta de nuevo.', 'error');
           if (badge) badge.textContent = '0 resultados';
           return;
         }
@@ -10265,7 +10264,7 @@
               if (wrap) wrap.style.display = 'none';
             } catch(_) {}
           })
-          .searchOPAByNumber(q);
+          .searchOPAByNumber(q, _authSesionActual.token);
       } catch(err) { _buscarOPA_setStatus('Error: ' + String(err && err.message || err), 'error'); }
     }
 
