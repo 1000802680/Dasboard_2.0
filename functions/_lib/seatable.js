@@ -48,18 +48,25 @@ function getColumnMap(env) {
   return { ...DEFAULT_COLUMNS, ...overrides };
 }
 
-async function getBaseToken(env) {
+export function getDashboardColumnName(env, internalKey) {
+  const columnName = getColumnMap(env)[String(internalKey || "")];
+  if (!columnName) throw new Error(`El campo ${internalKey} no está configurado en SeaTable.`);
+  return columnName;
+}
+
+async function getBaseToken(env, apiToken = env.SEATABLE_API_TOKEN) {
   const now = Date.now();
-  if (globalThis.__seatableToken?.expiresAt > now + 60_000) return globalThis.__seatableToken.value;
+  const cached = globalThis.__seatableToken;
+  if (cached?.key === apiToken && cached.expiresAt > now + 60_000) return cached.value;
 
   const response = await fetch(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-access-token/`, {
-    headers: { Authorization: `Bearer ${env.SEATABLE_API_TOKEN}`, Accept: "application/json" },
+    headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" },
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.access_token) {
     throw new Error(`SeaTable no entregó un token de base (HTTP ${response.status}). Revisa URL y API token.`);
   }
-  globalThis.__seatableToken = { value: body.access_token, expiresAt: now + 2 * 24 * 60 * 60 * 1000 };
+  globalThis.__seatableToken = { key: apiToken, value: body.access_token, expiresAt: now + 2 * 24 * 60 * 60 * 1000 };
   return body.access_token;
 }
 
@@ -69,9 +76,10 @@ function assertConfig(env) {
   if (missing.length) throw new Error(`Falta configurar: ${missing.join(", ")}.`);
 }
 
-async function discoverTableNames(env, token) {
+export async function discoverTableNames(env, token = null) {
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
+  token = token || await getBaseToken(env);
   const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
   const metadataResponse = await fetch(metadataUrl, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
   const metadataBody = await metadataResponse.json().catch(() => ({}));
@@ -228,6 +236,30 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
   finally { if (globalThis.__dashboardRowsLoading?.promise === promise) globalThis.__dashboardRowsLoading = null; }
 }
 
+export async function updateDashboardRow(env, tableName, rowId, values) {
+  assertConfig(env);
+  if (!tableName || !rowId || !values || typeof values !== "object" || !Object.keys(values).length) {
+    throw new Error("Falta la tabla, el identificador de fila o el valor que se guardará.");
+  }
+  const authBaseMatchesDashboard = !env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_AUTH_BASE_UUID === env.SEATABLE_BASE_UUID;
+  const writeApiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : env.SEATABLE_API_TOKEN;
+  const token = await getBaseToken(env, writeApiToken);
+  const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
+  const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${baseId}/rows/`;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ table_name: tableName, updates: [{ row_id: rowId, row: values }] }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
+    throw new Error(`SeaTable no guardó los cambios en ${tableName} (HTTP ${response.status}). Verifica que SEATABLE_API_TOKEN tenga permiso de lectura y escritura.${detail ? ` ${detail}` : ""}`);
+  }
+  if (globalThis.__dashboardRowsCache?.key) globalThis.__dashboardRowsCache.expiresAt = 0;
+  return body;
+}
+
 export async function refreshForNewTables(env) {
   const cached = globalThis.__dashboardRowsCache;
   if (!cached || cached.expiresAt <= Date.now()) return loadDashboardRecords(env);
@@ -238,4 +270,5 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
+
 
