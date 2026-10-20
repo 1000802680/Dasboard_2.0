@@ -11,6 +11,7 @@
         "registerUser", "loginUser", "getCurrentUser", "logoutUser",
         "adminListarPermisos", "adminGuardarPermisos", "adminListarUsuarios",
         "adminListarHistorial", "adminObtenerHistorialYEstadisticas",
+        "obtenerMisActividades", "adminGuardarActividadesUsuario",
       ]);
       const endpoint = authFunctions.has(String(property)) ? "/api/auth" : "/api/legacy";
       return (...args) => fetch(endpoint, {
@@ -34,4 +35,5 @@
   window.google.script = window.google.script || {};
   window.google.script.run = makeRunner(null, null);
 })();
+
 
