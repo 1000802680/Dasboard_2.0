@@ -121,7 +121,13 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   if (!tableNames.length) throw new Error("No se encontraron tablas en la base SeaTable. Revisa permisos y configuración.");
 
   const pageSize = 1000;
-  for (const tableName of tableNames) {
+  // Las hojas son independientes; leerlas en serie hace que una base con muchas
+  // marcas tarde decenas de segundos. Limitamos la concurrencia para acelerar
+  // la carga sin disparar cientos de solicitudes a SeaTable.
+  const maxConcurrentTables = Math.min(4, tableNames.length);
+  let nextTableIndex = 0;
+  async function readTable(tableName) {
+    const tableRows = [];
     for (let start = 0; ; start += pageSize) {
       const url = new URL(`${server}/api-gateway/api/v2/dtables/${baseId}/rows/`);
       url.searchParams.set("table_name", tableName);
@@ -133,10 +139,17 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(`Error leyendo la tabla "${tableName}" de SeaTable (HTTP ${response.status}).`);
       const rows = Array.isArray(body) ? body : (body.rows || body.results || []);
-      for (const row of rows) onRow(row, tableName);
+      tableRows.push(...rows);
       if (rows.length < pageSize) break;
       if (start + rows.length >= 100_000) throw new Error("La lectura supera el tope de seguridad de 100.000 filas. Usa vistas o consulta por páginas/filtros.");
     }
+    return tableRows;
+  }
+  for (let start = 0; start < tableNames.length; start += maxConcurrentTables) {
+    const batch = tableNames.slice(start, start + maxConcurrentTables);
+    const batchRows = await Promise.all(batch.map(readTable));
+    // Procesar según el orden original de las pestañas mantiene resultados y ETag estables.
+    batchRows.forEach((rows, index) => rows.forEach((row) => onRow(row, batch[index])));
   }
   return tableNames;
 }
@@ -220,6 +233,22 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
   if (!forceRefresh && cached?.key === cacheKey && cached.expiresAt > now) return cached.records;
   if (!forceRefresh && globalThis.__dashboardRowsLoading?.key === cacheKey) return globalThis.__dashboardRowsLoading.promise;
 
+  // Cache API de Cloudflare comparte el resultado entre solicitudes/aislamientos
+  // cercanos. Así los usuarios concurrentes no vuelven a leer todas las hojas.
+  const sharedCache = !forceRefresh && getSharedDashboardCache(env);
+  if (sharedCache) {
+    try {
+      const shared = await sharedCache.match(dashboardCacheRequest(env));
+      if (shared) {
+        const snapshot = await shared.json();
+        if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 15_000 };
+          return snapshot.records;
+        }
+      }
+    } catch (_) {}
+  }
+
   const promise = (async () => {
     const columnMap = getColumnMap(env);
     const schemaByTable = new Map();
@@ -246,12 +275,115 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     // Refresca los registros junto con el sondeo del dashboard, para que los
     // cambios en filas existentes no queden ocultos detrás de una caché larga.
     // La acción manual "Actualizar datos" sigue forzando una lectura inmediata.
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 30_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 15_000 };
+    if (sharedCache) {
+      try {
+        await sharedCache.put(dashboardCacheRequest(env), new Response(JSON.stringify({ records, tableNames: detectedTableNames }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=15" },
+        }));
+      } catch (_) {}
+    }
     return records;
   })();
   globalThis.__dashboardRowsLoading = { key: cacheKey, promise };
   try { return await promise; }
   finally { if (globalThis.__dashboardRowsLoading?.promise === promise) globalThis.__dashboardRowsLoading = null; }
+}
+
+// Busca una OPA exacta directamente en SeaTable cuando no hay un snapshot
+// reciente. Evita descargar miles de filas solo para mostrar uno o pocos matches.
+export async function searchDashboardRecordsByOPA(env, query) {
+  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const now = Date.now();
+  const local = globalThis.__dashboardRowsCache;
+  if (local?.key === cacheKey && local.expiresAt > now) {
+    return local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+  }
+  // La API SQL consulta la tabla completa, no una vista concreta. Si el
+  // dashboard está configurado con una vista, respetamos ese alcance existente.
+  if (env.SEATABLE_VIEW_NAME) {
+    const records = await loadDashboardRecords(env);
+    return records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+  }
+
+  const sharedCache = getSharedDashboardCache(env);
+  if (sharedCache) {
+    try {
+      const response = await sharedCache.match(dashboardCacheRequest(env));
+      if (response) {
+        const snapshot = await response.json();
+        if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 15_000 };
+          return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+        }
+      }
+    } catch (_) {}
+  }
+
+  const token = await getBaseToken(env);
+  const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
+  const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
+  const metadataResponse = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+  const metadata = await metadataResponse.json().catch(() => ({}));
+  if (!metadataResponse.ok) throw new Error(`No se pudo leer la estructura de SeaTable (HTTP ${metadataResponse.status}).`);
+  const excluded = new Set(["USUARIOS", "HISTORIAL_AUDITORIA", "HISTORIAL DE AUTORIA"].map(normalizeHeader));
+  const tables = (metadata.metadata?.tables || metadata.tables || []).filter((table) => table.name && !excluded.has(normalizeHeader(table.name)));
+  const opaColumnName = normalizeHeader(getColumnMap(env).O);
+  const searchable = tables.map((table) => ({
+    name: table.name,
+    opaColumn: (table.columns || []).find((column) => normalizeHeader(column.name) === opaColumnName)?.name,
+  })).filter((table) => table.opaColumn);
+  const columnMap = getColumnMap(env);
+  const resultsByTable = new Map();
+  let next = 0;
+  async function searchTable(table) {
+    const quote = (identifier) => `\`${String(identifier).replace(/`/g, "``")}\``;
+    const response = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sql: `SELECT * FROM ${quote(table.name)} WHERE ${quote(table.opaColumn)} = ? LIMIT 10000`,
+        parameters: [query],
+        convert_keys: true,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`SeaTable no pudo buscar la OPA en "${table.name}" (HTTP ${response.status}).`);
+    const rows = Array.isArray(body) ? body : (body.results || body.rows || body.data || []);
+    const records = [];
+    for (const row of rows) {
+      // Garantiza coincidencia completa incluso si el motor convierte tipos.
+      const opaKey = Object.keys(row).find((key) => normalizeHeader(key) === normalizeHeader(table.opaColumn));
+      if (String(opaKey ? row[opaKey] : "").trim().toLocaleLowerCase() !== query) continue;
+      records.push(toInternalRecord(row, table.name, getSourceKeyMap(row, columnMap)));
+    }
+    resultsByTable.set(table.name, records);
+  }
+  const concurrency = Math.min(4, searchable.length);
+  async function worker() {
+    while (next < searchable.length) await searchTable(searchable[next++]);
+  }
+  try {
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  } catch (_) {
+    // Si la instalación de SeaTable no tiene habilitado SQL API, conservar
+    // compatibilidad usando el método de lectura existente.
+    const records = await loadDashboardRecords(env);
+    return records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+  }
+  return searchable.flatMap((table) => resultsByTable.get(table.name) || []).sort((a, b) => activityTime(b).localeCompare(activityTime(a)));
+}
+
+function getSharedDashboardCache(env) {
+  try { return typeof caches !== "undefined" && caches.default ? caches.default : null; }
+  catch (_) { return null; }
+}
+
+function dashboardCacheRequest(env) {
+  const key = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  return new Request(`https://dashboard-cache.invalid/v1/${encodeURIComponent(key)}`);
 }
 
 export async function updateDashboardRow(env, tableName, rowId, values) {
@@ -349,7 +481,6 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
-
 
 
 
