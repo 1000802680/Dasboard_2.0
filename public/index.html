@@ -5146,7 +5146,7 @@
         else if (!images.length) photos = '<span style="color:#94a3b8;font-size:11px;">Sin fotos</span>';
         else photos = images.map(function(image) {
           const url = _opaSafeImageUrl(image && image.url);
-          return url ? '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener noreferrer" title="' + escapeAttr(image.name || 'Foto de producto') + '"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(image.name || 'Foto de producto') + '" loading="lazy" style="width:58px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;margin:2px;"></a>' : '';
+          return url ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(image.name || 'Foto de producto') + '" title="Ver ' + escapeAttr(image.name || 'Foto de producto') + '" style="padding:0;border:0;background:transparent;cursor:zoom-in;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(image.name || 'Foto de producto') + '" loading="lazy" style="width:58px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;margin:2px;"></button>' : '';
         }).join('');
         const color = _hojaColEst_estadoColor(row.E || '');
         const estado = '<span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 9px;border-radius:999px;background:' + color.bg + ';color:' + color.fg + ';border:1px solid ' + color.bd + ';font-size:11px;font-weight:800;">' + escapeHTML(row.E || 'Sin estado') + '</span>' +
@@ -10728,15 +10728,51 @@
       } catch (_) { return ''; }
     }
 
+    function _verImagenOPA(value, name) {
+      const url = _opaSafeImageUrl(value);
+      if (!url) return;
+      const current = document.getElementById('opa-image-lightbox');
+      if (current) current.remove();
+      const overlay = document.createElement('div');
+      overlay.id = 'opa-image-lightbox';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', 'Vista previa de imagen');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(2,6,23,.88);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;';
+      const image = document.createElement('img');
+      image.src = url;
+      image.alt = String(name || 'Imagen del producto');
+      image.style.cssText = 'display:block;max-width:min(96vw,1600px);max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.5);cursor:default;';
+      image.addEventListener('click', function(event) { event.stopPropagation(); });
+      const caption = document.createElement('div');
+      caption.textContent = image.alt;
+      caption.style.cssText = 'position:absolute;left:20px;right:20px;bottom:12px;text-align:center;color:#fff;font:600 13px system-ui,sans-serif;text-shadow:0 1px 5px #000;';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = '×';
+      close.setAttribute('aria-label', 'Cerrar vista previa');
+      close.style.cssText = 'position:absolute;right:18px;top:14px;width:44px;height:44px;border:1px solid rgba(255,255,255,.55);border-radius:50%;background:rgba(15,23,42,.7);color:white;font-size:32px;line-height:1;cursor:pointer;';
+      function dismiss() {
+        overlay.remove();
+        document.removeEventListener('keydown', onKeyDown);
+      }
+      function onKeyDown(event) { if (event.key === 'Escape') dismiss(); }
+      close.addEventListener('click', dismiss);
+      overlay.addEventListener('click', dismiss);
+      overlay.append(image, caption, close);
+      document.body.appendChild(overlay);
+      document.addEventListener('keydown', onKeyDown);
+    }
+
     function _opaRenderGaleria(dataId, row, canUpload) {
       const images = Array.isArray(row && row.imagenes) ? row.imagenes : [];
       const cards = images.map(function(image) {
         const url = _opaSafeImageUrl(image && image.url);
         const name = String(image && image.name || 'Imagen del producto');
         if (!url) return '<div style="padding:10px 12px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;font-size:12px;">' + escapeHTML(name) + ' · No se pudo cargar la vista previa</div>';
-        return '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener noreferrer" title="Abrir ' + escapeAttr(name) + '" style="display:block;width:118px;text-decoration:none;color:#334155;">' +
+        return '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" title="Ver ' + escapeAttr(name) + '" style="display:block;width:118px;padding:0;border:0;background:transparent;text-align:left;color:#334155;cursor:zoom-in;">' +
           '<img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:118px;height:92px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;display:block;" onerror="this.style.display=\'none\';" />' +
-          '<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:700;margin-top:5px;">' + escapeHTML(name) + '</span></a>';
+          '<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:700;margin-top:5px;">' + escapeHTML(name) + '</span></button>';
       }).join('');
       const picker = canUpload ? '<label for="opa-files-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar imágenes</label>' +
         '<input id="opa-files-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />' : '';
@@ -11619,4 +11655,3 @@
 
 </body>
 </html>
-
