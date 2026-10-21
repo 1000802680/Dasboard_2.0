@@ -3168,9 +3168,6 @@
       <button id="btn-tab-busqueda" type="button" class="tab-btn" data-tab="busqueda" onclick="cambiarTab('busqueda')">
         🔎 Búsqueda de OPA
       </button>
-      <button id="btn-tab-actividades" type="button" class="tab-btn" data-tab="actividades" onclick="cambiarTab('actividades')" style="display:none;">
-        👥 Actividades de usuarios
-      </button>
       <button id="btn-tab-registros" type="button" class="tab-btn" data-tab="registros" onclick="cambiarTab('registros')">
         🗂️ Registros de base
       </button>
@@ -3896,6 +3893,8 @@
             <option value="CAMBIO_ESTADO">🔄 Cambio de estado</option>
             <option value="EDITAR_CAMPO">✏️ Editar campo (lápiz)</option>
             <option value="CAMBIO_PERMISOS">🔐 Cambio de permisos</option>
+            <option value="CREAR_REGISTRO_OPA">➕ Crear registro</option>
+            <option value="ADJUNTAR_IMAGENES">🖼️ Adjuntar imágenes</option>
             <option value="LOGIN_OK|LOGIN">✅ Inicios de sesión</option>
             <option value="LOGIN_FALLIDO">❌ Logins fallidos</option>
           </select>
@@ -3947,29 +3946,6 @@
     </div>
   </div>
 
-  <div id="tab-actividades" class="tab-content">
-    <section style="margin:16px 0 22px;">
-      <div style="margin-bottom:14px;">
-        <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">👥 Actividades de usuarios</h2>
-        <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Consulta las OPAs, proyectos y marcas asignadas a cada usuario.</p>
-      </div>
-      <div id="actividades-mensaje" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;font-weight:700;"></div>
-      <div id="actividades-admin-panel" class="panel" style="display:none;padding:18px;margin-bottom:14px;">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
-          <label style="font-size:12px;font-weight:800;color:#334155;">Usuario<select id="actividad-usuario" onchange="_actividadesRenderAdmin()" style="display:block;width:100%;margin-top:5px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"></select></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de asignación<select id="actividad-tipo" style="display:block;width:100%;margin-top:5px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"><option value="OPA">Número de OPA</option><option value="PROYECTO">Proyecto</option><option value="MARCA">Marca</option></select></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">OPA, proyecto o marca<input id="actividad-valor" maxlength="200" placeholder="Escribe el dato asignado" style="display:block;width:100%;margin-top:5px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <button type="button" class="btn-primary" onclick="_actividadesAgregar()" style="margin:0;">＋ Asignar actividad</button>
-        </div>
-        <div id="actividades-admin-lista" style="margin-top:16px;"></div>
-      </div>
-      <div id="actividades-mis-panel" class="panel" style="display:none;padding:18px;">
-        <h3 style="margin:0 0 12px;color:#0f172a;font-size:16px;">Mis actividades asignadas</h3>
-        <div id="actividades-mis-lista"></div>
-      </div>
-    </section>
-  </div>
-
   <div id="tab-registros" class="tab-content">
     <section style="margin:16px 0 22px;">
       <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
@@ -3984,9 +3960,9 @@
       </div>
       <div class="panel" style="padding:0;overflow:hidden;">
         <div style="overflow:auto;max-height:72vh;">
-          <table class="opa-table" style="width:100%;min-width:460px;border-collapse:collapse;">
+          <table class="opa-table" style="width:100%;min-width:1280px;border-collapse:collapse;">
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
-              <th>Número de OPA</th>
+              <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
             </tr></thead>
             <tbody id="registros-base-body"><tr><td style="text-align:center;padding:24px;color:#64748b;">Cargando registros…</td></tr></tbody>
           </table>
@@ -4270,7 +4246,7 @@
     let datosFiltrados = [];
     let estadoSeleccionado = '';
     let paginaRegistrosBase = 1;
-    const REGISTROS_POR_PAGINA = 100;
+    const REGISTROS_POR_PAGINA = 25;
 
     const ESTADOS_ORDEN = [
       'Concepto Enviado',
@@ -5123,17 +5099,95 @@
       const info = document.getElementById('registros-pagina-info');
       if (contador) contador.textContent = total.toLocaleString() + (total === 1 ? ' registro' : ' registros');
       if (info) info.textContent = total ? 'Mostrando ' + (desde + 1).toLocaleString() + '–' + Math.min(desde + REGISTROS_POR_PAGINA, total).toLocaleString() + ' de ' + total.toLocaleString() + ' · Página ' + paginaRegistrosBase + ' de ' + maxPagina : 'No hay registros para los filtros seleccionados.';
-      const fields = ['O'];
       if (!pagina.length) {
-        body.innerHTML = '<tr><td colspan="' + fields.length + '" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
         return;
       }
-      body.innerHTML = pagina.map(function(row) {
-        return '<tr>' + fields.map(function(key) {
-          const value = row[key] == null ? '' : String(row[key]);
-          return '<td>' + escapeHTML(value || '—') + '</td>';
-        }).join('') + '</tr>';
+      const puedeEditar = !!(_authSesionActual && _authSesionActual.token && (!_authSesionActual.permisos || _authSesionActual.permisos.cambiar_estado !== false) && !window.CLOUD_READ_ONLY);
+      const etapas = [
+        ['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],['F4','Pre-producción aprobada'],
+        ['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],
+        ['F8','Aprobada / cerrada'],['FM','Fecha envío muestras']
+      ];
+      const imagenesCache = window._registrosImagenesCache || (window._registrosImagenesCache = {});
+      const cacheBusqueda = window._busqOpaCache || (window._busqOpaCache = {});
+      const html = pagina.map(function(row, index) {
+        const dataId = 'base-' + paginaRegistrosBase + '-' + index;
+        const key = String(row.H || '') + '::' + String(row._id || '');
+        const fechas = {};
+        ['F','F1','F2','F3','F4','F5','F6','F7','F8','FM'].forEach(function(k) { fechas[k] = String(row[k] || ''); });
+        const registroBusqueda = {
+          hoja: String(row.H || ''), fila: '', rowId: String(row._id || ''), numeroOPA: String(row.O || ''),
+          estadoPlataforma: String(row.E || ''), proyecto: String(row.P || ''), tipoProducto: String(row.T || ''),
+          territorio: String(row.TR || ''), personaje: String(row.PJ || ''), subOpa: String(row.SO || ''),
+          fechaUltima: String(row.F8 || row.F7 || row.F6 || row.F5 || row.F4 || row.F3 || row.F2 || row.F1 || row.FM || row.F || ''),
+          fechas: fechas, todasLasFechas: row, imagenes: Array.isArray(imagenesCache[key]) ? imagenesCache[key] : [],
+          headers: { F1:'Concepto enviado',F2:'Concepto aprobado',F3:'Pre-producción enviada',F4:'Pre-producción aprobada',F5:'Fotos de producción enviadas',F6:'Fotos de producción aprobadas',F7:'Muestras finales enviadas',F8:'Aprobada / cerrada',FM:'Fecha envío muestras' }
+        };
+        cacheBusqueda[dataId] = registroBusqueda;
+        const lapiz = function(field, label, icon) {
+          return puedeEditar ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + field + '\',\'' + escapeAttr(label) + '\',\'' + escapeAttr(icon) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:22px;height:22px;cursor:pointer;font-size:11px;">✏️</button>' : '';
+        };
+        const dateCards = etapas.map(function(item) {
+          const field = item[0], label = item[1], value = fechas[field];
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:5px;min-width:142px;padding:7px 8px;border:1px solid #e2e8f0;border-radius:9px;background:' + (value ? '#eff6ff' : '#f8fafc') + ';">' +
+            '<div style="min-width:0;"><div style="font-size:10px;color:#64748b;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHTML(label) + '</div><span data-opa-date-field="' + escapeAttr(dataId + ':' + field) + '" style="font-size:11px;color:#0f172a;font-weight:800;">' + escapeHTML(value || '—') + '</span></div>' +
+            lapiz(field, label, '📅') + '</div>';
+        }).join('');
+        const images = registroBusqueda.imagenes;
+        let photos = '';
+        if (!_authSesionActual || !_authSesionActual.token) photos = '<span style="color:#64748b;font-size:11px;">Inicia sesión para ver las fotos</span>';
+        else if (!Object.prototype.hasOwnProperty.call(imagenesCache, key)) photos = '<span style="color:#64748b;font-size:11px;">Cargando fotos…</span>';
+        else if (imagenesCache[key] === null) photos = '<span style="color:#b91c1c;font-size:11px;">No se pudieron cargar las fotos</span>';
+        else if (!images.length) photos = '<span style="color:#94a3b8;font-size:11px;">Sin fotos</span>';
+        else photos = images.map(function(image) {
+          const url = _opaSafeImageUrl(image && image.url);
+          return url ? '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener noreferrer" title="' + escapeAttr(image.name || 'Foto de producto') + '"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(image.name || 'Foto de producto') + '" loading="lazy" style="width:58px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;margin:2px;"></a>' : '';
+        }).join('');
+        const color = _hojaColEst_estadoColor(row.E || '');
+        const estado = '<span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 9px;border-radius:999px;background:' + color.bg + ';color:' + color.fg + ';border:1px solid ' + color.bd + ';font-size:11px;font-weight:800;">' + escapeHTML(row.E || 'Sin estado') + '</span>' +
+          (puedeEditar ? '<button type="button" title="Cambiar estado" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;width:22px;height:22px;cursor:pointer;">✏️</button>' : '');
+        return '<tr>' +
+          '<td style="min-width:145px;padding:10px;border-bottom:1px solid #e2e8f0;font-weight:900;color:#1e40af;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(row.O || '—') + '</span>' + lapiz('O','Número OPA','#️⃣') + '</td>' +
+          '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(row.P || '—') + '</span>' + lapiz('P','Proyecto','📁') + '</td>' +
+          '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(row.T || '—') + '</span>' + lapiz('T','Tipo de producto','🏷️') + '</td>' +
+          '<td style="min-width:150px;max-width:220px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:flex;flex-wrap:wrap;align-items:center;">' + photos + '</div></td>' +
+          '<td style="min-width:210px;padding:10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + estado + '</td>' +
+          '<td style="min-width:650px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:5px;">' + dateCards + '</div></td>' +
+          '</tr>';
       }).join('');
+      body.innerHTML = html;
+      _registrosCargarFotos(pagina);
+    }
+
+    function _registrosClaveImagen(row) { return String(row.H || '') + '::' + String(row._id || ''); }
+
+    function _registrosCargarFotos(pagina) {
+      if (!_authSesionActual || !_authSesionActual.token || typeof google === 'undefined' || !google.script || !google.script.run) return;
+      const cache = window._registrosImagenesCache || (window._registrosImagenesCache = {});
+      const pending = window._registrosImagenesPendientes || (window._registrosImagenesPendientes = {});
+      const targets = [];
+      pagina.forEach(function(row) {
+        const key = _registrosClaveImagen(row);
+        if (!Object.prototype.hasOwnProperty.call(cache, key) && !pending[key] && row._id) {
+          pending[key] = true;
+          targets.push({ key: key, hoja: row.H, rowId: row._id });
+        }
+      });
+      if (!targets.length) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          targets.forEach(function(target) {
+            pending[target.key] = false;
+            cache[target.key] = result && result.ok && result.imagenesPorFila && Array.isArray(result.imagenesPorFila[target.key]) ? result.imagenesPorFila[target.key] : null;
+          });
+          actualizarTablaRegistrosBase();
+        })
+        .withFailureHandler(function() {
+          targets.forEach(function(target) { pending[target.key] = false; cache[target.key] = null; });
+          actualizarTablaRegistrosBase();
+        })
+        .getOPAImagesForRows(_authSesionActual.token, targets);
     }
 
 
@@ -7959,10 +8013,9 @@
         const tDias = document.getElementById('tab-analisis-dias');
         const tBusq = document.getElementById('tab-busqueda');
         const tHist = document.getElementById('tab-historial');
-        const tActividades = document.getElementById('tab-actividades');
         const tRegistros = document.getElementById('tab-registros');
         // Remover active de todos
-        [tDash, tDias, tBusq, tHist, tActividades, tRegistros].forEach(function(t) {
+        [tDash, tDias, tBusq, tHist, tRegistros].forEach(function(t) {
           try { if (t) t.classList.remove('active'); } catch(_) {}
         });
         if (tabKey === 'dashboard') {
@@ -7986,9 +8039,6 @@
             window.__historialYaCargadoUnaVez = true;
             setTimeout(function(){ try { _historialCargar(); } catch(_) {} }, 80);
           }
-        } else if (tabKey === 'actividades') {
-          if (tActividades) tActividades.classList.add('active');
-          try { _actividadesCargar(); } catch(_) {}
         } else if (tabKey === 'registros') {
           if (tRegistros) tRegistros.classList.add('active');
           // Aplicar en memoria los filtros vigentes; cambiar de pestaña no consulta SeaTable.
@@ -9575,7 +9625,6 @@
           { id: 'tab-dashboard', perm: 'ver_dashboard', btn: 'btn-tab-dashboard',  soloSesion: false, soloAdmin: false },
           { id: 'tab-analisis-dias', perm: 'ver_analisis', btn: 'btn-tab-analisis', soloSesion: false, soloAdmin: false },
           { id: 'tab-busqueda',      perm: 'ver_busqueda', btn: 'btn-tab-busqueda',  soloSesion: true,  soloAdmin: false },
-          { id: 'tab-actividades',   perm: null,           btn: 'btn-tab-actividades', soloSesion: true, soloAdmin: false },
           { id: 'tab-historial',     perm: 'panel_admin',  btn: 'btn-tab-historial', soloSesion: true,  soloAdmin: true  }
         ];
         let primeraVisibleBtn = null;
@@ -10726,6 +10775,11 @@
         const result = await response.json().catch(function() { return {}; });
         if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las fotos.');
         row.imagenes = Array.isArray(result.imagenes) ? result.imagenes : row.imagenes;
+        try {
+          const baseKey = String(row.hoja || '') + '::' + String(row.rowId || '');
+          if (window._registrosImagenesCache) delete window._registrosImagenesCache[baseKey];
+          if (document.getElementById('tab-registros') && document.getElementById('tab-registros').classList.contains('active')) actualizarTablaRegistrosBase();
+        } catch(_) {}
         const gallery = document.querySelector('[data-opa-gallery="' + dataId + '"]');
         if (gallery) gallery.innerHTML = _opaRenderGaleria(dataId, row, true);
         _buscarOPA_setStatus('✅ ' + String(result.mensaje || 'Imágenes guardadas en SeaTable.'), 'ok');
@@ -10963,6 +11017,7 @@
         }
         _invalidateMemo();
         actualizarDashboard();
+        try { actualizarTablaRegistrosBase(); } catch(_) {}
         actualizarSyncStatus('Cambio guardado en SeaTable · dashboard actualizado', false);
       } catch(error) {
         try { console.warn('No se pudo refrescar el dashboard local:', error && error.message || error); } catch(_) {}
@@ -11560,3 +11615,4 @@
 
 </body>
 </html>
+
