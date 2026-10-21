@@ -50,7 +50,7 @@ export async function onRequestPost({ request, env }) {
         if (query.length < 2) value = { ok: false, error: "Ingresa al menos 2 caracteres para buscar." };
         else {
           const registros = await loadDashboardRecords(env);
-          const resultados = registros.filter((r) => String(r.O || "").toLocaleLowerCase().includes(query));
+          const resultados = registros.filter((r) => String(r.O || "").trim().toLocaleLowerCase() === query);
           value = {
             ok: true,
             resultados: await Promise.all(resultados.map(async (r) => ({
@@ -69,6 +69,26 @@ export async function onRequestPost({ request, env }) {
             }))),
           };
         }
+        break;
+      }
+      case "getOPAImagesForRows": {
+        const [sessionToken, targets] = args;
+        const user = await getAuthenticatedUser(sessionToken, env);
+        if (!user) return Response.json({ ok: false, error: "Inicia sesión para ver las fotos de producto." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+        const requested = Array.isArray(targets) ? targets.slice(0, 30) : [];
+        const tableNames = await discoverTableNames(env);
+        const records = await loadDashboardRecords(env);
+        const imagenesPorFila = {};
+        for (const target of requested) {
+          const table = String(target?.hoja || "").trim();
+          const rowId = String(target?.rowId || "").trim();
+          const key = String(target?.key || "");
+          if (!key || !rowId || !tableNames.includes(table)) continue;
+          const row = records.find((item) => String(item.H || "") === table && String(item._id || "") === rowId);
+          if (!row) { imagenesPorFila[key] = []; continue; }
+          imagenesPorFila[key] = await Promise.all(normalizeImageAttachments(row.LF).map((item) => makeImagePreview(env, item)));
+        }
+        value = { ok: true, imagenesPorFila };
         break;
       }
       case "editarCampoOPA": {
@@ -293,3 +313,5 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
+
+
