@@ -5083,7 +5083,11 @@
     function actualizarTablaRegistrosBase() {
       const body = document.getElementById('registros-base-body');
       if (!body) return;
-      const rows = Array.isArray(datosFiltrados) ? datosFiltrados.slice() : [];
+      // Registros de base solo muestra filas que tienen número de OPA.
+      // La carga general también contiene filas vacías de algunas hojas.
+      const rows = Array.isArray(datosFiltrados) ? datosFiltrados.filter(function(row) {
+        return String(row && row.O || '').trim() !== '';
+      }) : [];
       rows.sort(function(a, b) {
         const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
         if (proyecto) return proyecto;
