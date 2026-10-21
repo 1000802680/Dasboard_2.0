@@ -1,4 +1,4 @@
-import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardFileDownloadLink, getDashboardRow, loadDashboardRecords, refreshForNewTables, updateDashboardRow } from "../_lib/seatable.js";
+import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardFileDownloadLink, getDashboardRow, loadDashboardRecords, refreshForNewTables, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const ESTADOS = [
@@ -49,8 +49,7 @@ export async function onRequestPost({ request, env }) {
         const query = String(args[0] || "").trim().toLocaleLowerCase();
         if (query.length < 2) value = { ok: false, error: "Ingresa al menos 2 caracteres para buscar." };
         else {
-          const registros = await loadDashboardRecords(env);
-          const resultados = registros.filter((r) => String(r.O || "").trim().toLocaleLowerCase() === query);
+          const resultados = await searchDashboardRecordsByOPA(env, query);
           value = {
             ok: true,
             resultados: await Promise.all(resultados.map(async (r) => ({
@@ -313,5 +312,4 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
-
 
