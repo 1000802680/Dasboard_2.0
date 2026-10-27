@@ -3,6 +3,7 @@
 <head>
     <!-- MATRIZ_VERSION_2026_10_06_V3 -->
   <base target="_top">
+  <script src="/gas-bridge.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2598,6 +2599,11 @@
         grid-template-columns: repeat(2,1fr);
       }
 
+      #card-usuario-esquina {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+      }
+
       .opa-summary {
         grid-template-columns: repeat(2,1fr);
       }
@@ -3061,7 +3067,7 @@
           </svg>
           Proyecto
         </div>
-        <select id="filtroProyecto" onchange="actualizarDashboard()">
+        <select id="filtroProyecto" onchange="actualizarListasYDashboard()">
           <option value="">Todos los proyectos</option>
         </select>
       </div>
@@ -3074,7 +3080,7 @@
           </svg>
           Tipo de Producto
         </div>
-        <select id="filtroProducto" onchange="actualizarDashboard()">
+        <select id="filtroProducto" onchange="actualizarListasYDashboard()">
           <option value="">Todos los productos</option>
         </select>
       </div>
@@ -3123,7 +3129,7 @@
 
     <div class="filters-actions">
 
-      <div class="sync-status" id="syncStatus" title="Datos sincronizados desde Google Sheets">
+      <div class="sync-status" id="syncStatus" title="Datos consultados desde SeaTable">
         <span class="pulse-dot"></span>
         <span class="sync-label"><b>En vivo</b></span>
         <span class="sync-time" id="syncTime">· Sincronizando...</span>
@@ -3161,6 +3167,9 @@
       </button>
       <button id="btn-tab-busqueda" type="button" class="tab-btn" data-tab="busqueda" onclick="cambiarTab('busqueda')">
         🔎 Búsqueda de OPA
+      </button>
+      <button id="btn-tab-registros" type="button" class="tab-btn" data-tab="registros" onclick="cambiarTab('registros')">
+        🗂️ Registros de base
       </button>
       <button id="btn-tab-historial" type="button" class="tab-btn" data-tab="historial" onclick="cambiarTab('historial')" style="display:none;">
         📋 Historial Auditoría
@@ -3528,7 +3537,7 @@
     </div>
 
     <div class="footer" id="footerSyncInfo">
-      Dashboard COL-FT-001 · Sincronización cada 5s · En vivo
+      Dashboard COL-FT-001 · Sincronización automática cada 60s · SeaTable
     </div>
 
   </div> <!-- cierra tab-dashboard (contenido original) -->
@@ -3758,7 +3767,7 @@
         <div>
           <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">🔎 Búsqueda de OPA</h2>
           <p style="margin:5px 0 0 0;color:#64748b;font-size:13px;font-weight:500;">
-            Ingresa el número de OPA (completo o parcial) → busca en <b>CUALQUIER HOJA</b> del libro y muestra su estado de plataforma actual, hoja, proyecto y más.
+            Ingresa el número de OPA y pulsa <b>Buscar</b> o Enter. Los resultados se conservan al cambiar de pestaña; solo se consulta de nuevo cuando solicitas una búsqueda.
           </p>
         </div>
         <div style="flex-shrink:0;">
@@ -3884,6 +3893,8 @@
             <option value="CAMBIO_ESTADO">🔄 Cambio de estado</option>
             <option value="EDITAR_CAMPO">✏️ Editar campo (lápiz)</option>
             <option value="CAMBIO_PERMISOS">🔐 Cambio de permisos</option>
+            <option value="CREAR_REGISTRO_OPA">➕ Crear registro</option>
+            <option value="ADJUNTAR_IMAGENES">🖼️ Adjuntar imágenes</option>
             <option value="LOGIN_OK|LOGIN">✅ Inicios de sesión</option>
             <option value="LOGIN_FALLIDO">❌ Logins fallidos</option>
           </select>
@@ -3932,6 +3943,85 @@
           </table>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="tab-registros" class="tab-content">
+    <section style="margin:16px 0 22px;">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+        <div>
+          <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">🗂️ Registros de la base</h2>
+          <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Vista ordenada de los datos cargados. Usa los filtros de arriba; esta pestaña no vuelve a consultar SeaTable.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span id="registros-contador" class="badge-total">0 registros</span>
+          <button type="button" class="btn-primary" onclick="abrirModalCrearOPA()" style="margin:0;">＋ Agregar datos</button>
+        </div>
+      </div>
+      <div class="panel" style="padding:0;overflow:hidden;">
+        <div style="overflow:auto;max-height:72vh;">
+          <table class="opa-table" style="width:100%;min-width:1280px;border-collapse:collapse;">
+            <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
+              <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
+            </tr></thead>
+            <tbody id="registros-base-body"><tr><td style="text-align:center;padding:24px;color:#64748b;">Cargando registros…</td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid #e2e8f0;flex-wrap:wrap;">
+          <span id="registros-pagina-info" style="font-size:12px;color:#64748b;font-weight:600;">—</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" type="button" onclick="cambiarPaginaRegistros(-1)">← Anterior</button>
+            <button class="btn-secondary" type="button" onclick="cambiarPaginaRegistros(1)">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="modal-crear-opa" style="position:fixed;inset:0;z-index:31000;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.62);backdrop-filter:blur(6px);padding:18px;">
+    <div style="width:min(880px,100%);max-height:94vh;display:flex;flex-direction:column;background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(15,23,42,.32);overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid #e2e8f0;">
+        <div><div style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">Registros de base</div><h3 style="margin:3px 0 0;font-size:19px;color:#0f172a;">Agregar un registro nuevo</h3></div>
+        <button type="button" onclick="cerrarModalCrearOPA()" aria-label="Cerrar" style="width:38px;height:38px;border:1px solid #cbd5e1;border-radius:50%;background:#fff;color:#334155;font-size:22px;cursor:pointer;">×</button>
+      </div>
+      <form id="crear-opa-form" onsubmit="event.preventDefault();guardarNuevoRegistroOPA();" style="overflow:auto;padding:18px 20px 20px;">
+        <p style="margin:0 0 14px;color:#64748b;font-size:13px;">Completa la información y elige la hoja donde se guardará. El número de OPA es obligatorio.</p>
+        <div id="crear-opa-status" style="display:none;margin-bottom:14px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+          <label style="font-size:12px;font-weight:800;color:#334155;">Hoja / marca *<select id="crear-opa-hoja" required style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Número de OPA *<input id="crear-opa-O" required maxlength="120" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Proyecto<input id="crear-opa-P" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de producto<input id="crear-opa-T" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo específico<input id="crear-opa-TE" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Marca<input id="crear-opa-M" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Territorio<input id="crear-opa-TR" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Personaje<input id="crear-opa-PJ" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Sub-OPA<input id="crear-opa-SO" maxlength="120" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Estado de plataforma<select id="crear-opa-E" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"><option value="">Sin estado</option><option>Concepto Enviado</option><option>Concepto Aprobado</option><option>Pre-Producción Enviada</option><option>Pre-Producción Aprobada</option><option>Fotos de Producción Enviada</option><option>Fotos de Producción Aprobada</option><option>Muestras Finales Enviadas</option><option>Aprobada / Cerrada</option><option>Cancelado</option></select></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fecha<input id="crear-opa-F" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Concepto enviado<input id="crear-opa-F1" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Concepto aprobado<input id="crear-opa-F2" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Pre-producción enviada<input id="crear-opa-F3" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Pre-producción aprobada<input id="crear-opa-F4" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fotos de producción enviadas<input id="crear-opa-F5" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fotos de producción aprobadas<input id="crear-opa-F6" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Muestras finales enviadas<input id="crear-opa-F7" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Aprobada / cerrada<input id="crear-opa-F8" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Fecha envío muestras<input id="crear-opa-FM" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Portafolio<input id="crear-opa-PO" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2B<input id="crear-opa-B2B" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2C<input id="crear-opa-B2C" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras recibidas<input id="crear-opa-MR" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras enviadas<input id="crear-opa-ME" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Enlace guía de envío<input id="crear-opa-GE" type="url" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Descripción ERP<input id="crear-opa-D" maxlength="1000" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Nombre del producto en OPA<input id="crear-opa-NP" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap;">
+          <button type="button" class="btn-secondary" onclick="cerrarModalCrearOPA()">Cancelar</button>
+          <button id="crear-opa-submit" type="submit" class="btn-primary" style="margin:0;">Guardar en la base</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -4086,7 +4176,7 @@
           Iniciar sesión
         </button>
         <div style="margin-top:14px;padding:10px 13px;border-radius:11px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;font-size:12px;font-weight:600;line-height:1.45;">
-          💡 El <b>primer usuario</b> que se registre en la hoja USUARIOS será automáticamente <b>ADMINISTRADOR</b>.
+          💡 La primera cuenta será administradora y requiere la clave inicial configurada en Cloudflare. Después podrás crear las cuentas del equipo.
         </div>
       </div>
 
@@ -4100,6 +4190,9 @@
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Correo electrónico</label>
         <input type="email" id="auth-reg-correo" placeholder="tu.correo@ejemplo.com (opcional)"
+          style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
+        <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Clave inicial de administrador (solo para crear la primera cuenta)</label>
+        <input type="password" id="auth-reg-bootstrap-key" autocomplete="off" placeholder="La clave configurada en Cloudflare"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Contraseña</label>
         <input type="password" id="auth-reg-pass1" placeholder="Mínimo 6 caracteres"
@@ -4152,6 +4245,8 @@
     let datos = [];
     let datosFiltrados = [];
     let estadoSeleccionado = '';
+    let paginaRegistrosBase = 1;
+    const REGISTROS_POR_PAGINA = 25;
 
     const ESTADOS_ORDEN = [
       'Concepto Enviado',
@@ -4180,11 +4275,76 @@
 
     const STORAGE_CACHE_KEY = 'DASH_COL_FT001_CACHE_V1';
     const STORAGE_CACHE_MAX = 24 * 60 * 60 * 1000; // Permite pintar copia local mientras se sincroniza con Sheets.
+    const DASHBOARD_CACHE_DB = 'dashboard-col-cache';
+    const DASHBOARD_CACHE_STORE = 'snapshots';
+    let _dashboardCacheDbPromise = null;
+    let _dashboardLastServerSuccessAt = 0;
+
+    function _abrirCacheDashboard() {
+      if (!window.indexedDB) return Promise.resolve(null);
+      if (_dashboardCacheDbPromise) return _dashboardCacheDbPromise;
+      _dashboardCacheDbPromise = new Promise(function(resolve) {
+        try {
+          const request = window.indexedDB.open(DASHBOARD_CACHE_DB, 1);
+          request.onupgradeneeded = function() {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(DASHBOARD_CACHE_STORE)) db.createObjectStore(DASHBOARD_CACHE_STORE, { keyPath: 'key' });
+          };
+          request.onsuccess = function() { resolve(request.result); };
+          request.onerror = function() { resolve(null); };
+          request.onblocked = function() { resolve(null); };
+        } catch (_) { resolve(null); }
+      });
+      return _dashboardCacheDbPromise;
+    }
+
+    function _leerCacheDashboard() {
+      function esUtilizable(snapshot) {
+        const timestamp = Number(snapshot && snapshot._ts || 0);
+        return Array.isArray(snapshot && snapshot.registros) && snapshot.registros.length > 0 && timestamp > 0 && Date.now() - timestamp < STORAGE_CACHE_MAX;
+      }
+      try {
+        const raw = localStorage.getItem(STORAGE_CACHE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (esUtilizable(parsed)) return Promise.resolve(parsed);
+        }
+      } catch (_) {}
+      return _abrirCacheDashboard().then(function(db) {
+        if (!db) return null;
+        return new Promise(function(resolve) {
+          try {
+            const request = db.transaction(DASHBOARD_CACHE_STORE, 'readonly').objectStore(DASHBOARD_CACHE_STORE).get(STORAGE_CACHE_KEY);
+            request.onsuccess = function() {
+              const snapshot = request.result && request.result.payload;
+              resolve(esUtilizable(snapshot) ? snapshot : null);
+            };
+            request.onerror = function() { resolve(null); };
+          } catch (_) { resolve(null); }
+        });
+      });
+    }
+
+    function _guardarCacheDashboard(snapshot) {
+      try { localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(snapshot)); } catch (_) {}
+      return _abrirCacheDashboard().then(function(db) {
+        if (!db) return false;
+        return new Promise(function(resolve) {
+          try {
+            const tx = db.transaction(DASHBOARD_CACHE_STORE, 'readwrite');
+            tx.objectStore(DASHBOARD_CACHE_STORE).put({ key: STORAGE_CACHE_KEY, payload: snapshot });
+            tx.oncomplete = function() { resolve(true); };
+            tx.onerror = function() { resolve(false); };
+            tx.onabort = function() { resolve(false); };
+          } catch (_) { resolve(false); }
+        });
+      }).catch(function() { return false; });
+    }
 
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 5000;   // 5 segundos (equilibrio rápido / carga baja)
+    const POLL_INTERVAL_MS      = 30000;  // Actualiza cambios de SeaTable en segundo plano cada 30 segundos
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
@@ -4620,7 +4780,7 @@
             const parsed = JSON.parse(cached);
             const ts = Number(parsed._ts || 0);
             const edad = Date.now() - ts;
-            if (parsed.registros && Array.isArray(parsed.registros) && edad >= 0 && edad < STORAGE_CACHE_MAX) {
+            if (parsed.registros && Array.isArray(parsed.registros) && parsed.registros.length > 0 && edad >= 0 && edad < STORAGE_CACHE_MAX) {
               datos = parsed.registros;
               try { llenarFiltroHoja(); } catch(_) {}
               try { actualizarListasYDashboard(); } catch(_) {}
@@ -4654,7 +4814,21 @@
         }
       } catch(e) {}
 
-      try { actualizarSyncStatus('Sincronizando con la hoja de cálculo...', false); } catch(_) {}
+      // IndexedDB puede guardar el dataset completo aunque localStorage ya haya
+      // llegado a su límite. Se lee en paralelo con el servidor y nunca pisa una
+      // respuesta más reciente que haya llegado mientras tanto.
+      const cacheReadServerMark = _dashboardLastServerSuccessAt;
+      _leerCacheDashboard().then(function(snapshot) {
+        if (!snapshot || !Array.isArray(snapshot.registros) || !snapshot.registros.length) return;
+        if (_dashboardLastServerSuccessAt > cacheReadServerMark) return;
+        datos = snapshot.registros;
+        try { _invalidateMemo(); llenarFiltroHoja(); actualizarListasYDashboard(); } catch (_) {}
+        try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch (_) {}
+        try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch (_) {}
+        try { actualizarSyncStatus('Copia local · ' + _timestampHumano(Number(snapshot._ts || 0)) + ' (sincronizando...)', false); } catch (_) {}
+      }).catch(function() {});
+
+      try { actualizarSyncStatus('Sincronizando con SeaTable...', false); } catch(_) {}
       try { _cargarFromServer(true); }
       catch (e) {
         try {
@@ -4714,7 +4888,7 @@
             }
           }
           if (mostrarErrores) {
-            try { mostrarError('La hoja de cálculo está tardando (50s). Se usará la copia local. Puedes forzar con "Recargar datos".'); } catch(_) {}
+            try { mostrarError('SeaTable está tardando (50s). Se usará la copia local. Puedes forzar con "Actualizar datos".'); } catch(_) {}
           }
           try { actualizarSyncStatus('Timeout de conexión · usa copia local', true); } catch(_) {}
         } catch(_) {}
@@ -4734,12 +4908,8 @@
             datos = respuesta.registros || [];
 
             const serverTs = Date.now();
-            try {
-              localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify({
-                _ts: serverTs,
-                registros: datos
-              }));
-            } catch(e) {}
+            _dashboardLastServerSuccessAt = serverTs;
+            _guardarCacheDashboard({ _ts: serverTs, registros: datos });
 
             llenarFiltroHoja();
             actualizarListasYDashboard();
@@ -4833,6 +5003,12 @@
     function mostrarLoading() {
 
       try {
+        // No presentar ceros como si fueran resultados mientras llega la primera
+        // carga. Los números se sustituyen por los valores reales al pintar datos.
+        ['totalProyectos', 'totalConceptos', 'totalPendientes', 'totalEnProceso', 'totalFinalizados', 'totalCancelados'].forEach(function(id) {
+          const value = document.getElementById(id);
+          if (value) value.textContent = '…';
+        });
         const te = document.getElementById('tablaEstados');
         if (te) te.innerHTML =
           '<tr><td colspan="3"><div class="loading"><div class="spinner"></div>Cargando información...</div></td></tr>';
@@ -4896,7 +5072,207 @@
 
       // Los filtros modifican el universo de OPAs; no reutilizar conteos memoizados.
       _invalidateMemo();
+      actualizarTablaRegistrosBase();
 
+    }
+
+    function cambiarPaginaRegistros(delta) {
+      paginaRegistrosBase = Math.max(1, paginaRegistrosBase + (Number(delta) || 0));
+      actualizarTablaRegistrosBase();
+    }
+
+    function abrirModalCrearOPA() {
+      if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
+      if (_authSesionActual.permisos && _authSesionActual.permisos.cambiar_estado === false) {
+        alert('Tu usuario no tiene permiso para agregar registros. Contacta al administrador.');
+        return;
+      }
+      const select = document.getElementById('crear-opa-hoja');
+      const modal = document.getElementById('modal-crear-opa');
+      if (!select || !modal) return;
+      const actual = limpiarTexto(document.getElementById('filtroHoja') && document.getElementById('filtroHoja').value);
+      const tablas = Array.from(new Set((datos || []).map(function(row) { return limpiarTexto(row.H); }).filter(Boolean))).sort(compararTexto);
+      select.innerHTML = '<option value="">Selecciona la hoja donde guardar…</option>' + tablas.map(function(tabla) {
+        return '<option value="' + escapeAttr(tabla) + '">' + escapeHTML(tabla) + '</option>';
+      }).join('');
+      if (actual && tablas.includes(actual)) select.value = actual;
+      const status = document.getElementById('crear-opa-status');
+      if (status) { status.style.display = 'none'; status.textContent = ''; }
+      modal.style.display = 'flex';
+      setTimeout(function() { const input = document.getElementById('crear-opa-O'); if (input) input.focus(); }, 30);
+    }
+
+    function cerrarModalCrearOPA() {
+      const modal = document.getElementById('modal-crear-opa');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function _crearOPAStatus(message, error) {
+      const status = document.getElementById('crear-opa-status');
+      if (!status) return;
+      status.style.display = 'block';
+      status.style.background = error ? '#fef2f2' : '#eff6ff';
+      status.style.color = error ? '#b91c1c' : '#1d4ed8';
+      status.style.border = error ? '1px solid #fecaca' : '1px solid #bfdbfe';
+      status.textContent = message;
+    }
+
+    function guardarNuevoRegistroOPA() {
+      if (!_authSesionActual || !_authSesionActual.token) { cerrarModalCrearOPA(); _authAbrirModal(); return; }
+      const button = document.getElementById('crear-opa-submit');
+      const keys = ['O','P','T','TE','M','TR','PJ','SO','E','F','F1','F2','F3','F4','F5','F6','F7','F8','FM','PO','B2B','B2C','D','NP','MR','ME','GE'];
+      const campos = {};
+      keys.forEach(function(key) {
+        const input = document.getElementById('crear-opa-' + key);
+        if (input && String(input.value || '').trim()) campos[key] = String(input.value).trim();
+      });
+      const hoja = String(document.getElementById('crear-opa-hoja').value || '').trim();
+      if (!hoja) { _crearOPAStatus('Selecciona la hoja / marca donde se guardará el registro.', true); return; }
+      if (!campos.O) { _crearOPAStatus('El número de OPA es obligatorio.', true); return; }
+      _crearOPAStatus('Guardando el registro en SeaTable…', false);
+      if (button) button.disabled = true;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || !result.ok) {
+            if (button) button.disabled = false;
+            _crearOPAStatus(result && result.error || 'No se pudo crear el registro.', true);
+            return;
+          }
+          _crearOPAStatus('Registro guardado. Actualizando el dashboard y la tabla…', false);
+          recargarDatos(function(ok) {
+            if (button) button.disabled = false;
+            if (!ok) { _crearOPAStatus('El registro quedó guardado en SeaTable, pero no se pudo actualizar la vista. Pulsa “Actualizar datos”.', true); return; }
+            try { limpiarFiltros(); } catch(_) {}
+            const filterOPA = document.getElementById('filtroOPA');
+            if (filterOPA && Array.from(filterOPA.options).some(function(option) { return option.value === String(campos.O); })) {
+              filterOPA.value = String(campos.O);
+              actualizarDashboard();
+            }
+            cerrarModalCrearOPA();
+            cambiarTab('registros');
+            const form = document.getElementById('crear-opa-form');
+            if (form) form.reset();
+          });
+        })
+        .withFailureHandler(function(error) {
+          if (button) button.disabled = false;
+          _crearOPAStatus(error && error.message || 'Error al guardar el registro.', true);
+        })
+        .crearRegistroOPA({ token: _authSesionActual.token, hoja: hoja, campos: campos });
+    }
+
+    function actualizarTablaRegistrosBase() {
+      const body = document.getElementById('registros-base-body');
+      if (!body) return;
+      // Registros de base solo muestra filas que tienen número de OPA.
+      // La carga general también contiene filas vacías de algunas hojas.
+      const rows = Array.isArray(datosFiltrados) ? datosFiltrados.filter(function(row) {
+        return String(row && row.O || '').trim() !== '';
+      }) : [];
+      rows.sort(function(a, b) {
+        const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
+        if (proyecto) return proyecto;
+        const hoja = compararTexto(limpiarTexto(a.H), limpiarTexto(b.H));
+        return hoja || compararOPA(limpiarTexto(a.O), limpiarTexto(b.O));
+      });
+      const total = rows.length;
+      const maxPagina = Math.max(1, Math.ceil(total / REGISTROS_POR_PAGINA));
+      paginaRegistrosBase = Math.min(paginaRegistrosBase, maxPagina);
+      const desde = (paginaRegistrosBase - 1) * REGISTROS_POR_PAGINA;
+      const pagina = rows.slice(desde, desde + REGISTROS_POR_PAGINA);
+      const contador = document.getElementById('registros-contador');
+      const info = document.getElementById('registros-pagina-info');
+      if (contador) contador.textContent = total.toLocaleString() + (total === 1 ? ' registro' : ' registros');
+      if (info) info.textContent = total ? 'Mostrando ' + (desde + 1).toLocaleString() + '–' + Math.min(desde + REGISTROS_POR_PAGINA, total).toLocaleString() + ' de ' + total.toLocaleString() + ' · Página ' + paginaRegistrosBase + ' de ' + maxPagina : 'No hay registros para los filtros seleccionados.';
+      if (!pagina.length) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
+        return;
+      }
+      const puedeEditar = !!(_authSesionActual && _authSesionActual.token && (!_authSesionActual.permisos || _authSesionActual.permisos.cambiar_estado !== false) && !window.CLOUD_READ_ONLY);
+      const etapas = [
+        ['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],['F4','Pre-producción aprobada'],
+        ['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],
+        ['F8','Aprobada / cerrada'],['FM','Fecha envío muestras']
+      ];
+      const imagenesCache = window._registrosImagenesCache || (window._registrosImagenesCache = {});
+      const cacheBusqueda = window._busqOpaCache || (window._busqOpaCache = {});
+      const html = pagina.map(function(row, index) {
+        const dataId = 'base-' + paginaRegistrosBase + '-' + index;
+        const key = String(row.H || '') + '::' + String(row._id || '');
+        const fechas = {};
+        ['F','F1','F2','F3','F4','F5','F6','F7','F8','FM'].forEach(function(k) { fechas[k] = String(row[k] || ''); });
+        const registroBusqueda = {
+          hoja: String(row.H || ''), fila: '', rowId: String(row._id || ''), numeroOPA: String(row.O || ''),
+          estadoPlataforma: String(row.E || ''), proyecto: String(row.P || ''), tipoProducto: String(row.T || ''),
+          territorio: String(row.TR || ''), personaje: String(row.PJ || ''), subOpa: String(row.SO || ''),
+          fechaUltima: String(row.F8 || row.F7 || row.F6 || row.F5 || row.F4 || row.F3 || row.F2 || row.F1 || row.FM || row.F || ''),
+          fechas: fechas, todasLasFechas: row, imagenes: Array.isArray(imagenesCache[key]) ? imagenesCache[key] : [],
+          headers: { F1:'Concepto enviado',F2:'Concepto aprobado',F3:'Pre-producción enviada',F4:'Pre-producción aprobada',F5:'Fotos de producción enviadas',F6:'Fotos de producción aprobadas',F7:'Muestras finales enviadas',F8:'Aprobada / cerrada',FM:'Fecha envío muestras' }
+        };
+        cacheBusqueda[dataId] = registroBusqueda;
+        const lapiz = function(field, label, icon) {
+          return puedeEditar ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + field + '\',\'' + escapeAttr(label) + '\',\'' + escapeAttr(icon) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:22px;height:22px;cursor:pointer;font-size:11px;">✏️</button>' : '';
+        };
+        const dateCards = etapas.map(function(item) {
+          const field = item[0], label = item[1], value = fechas[field];
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:5px;min-width:142px;padding:7px 8px;border:1px solid #e2e8f0;border-radius:9px;background:' + (value ? '#eff6ff' : '#f8fafc') + ';">' +
+            '<div style="min-width:0;"><div style="font-size:10px;color:#64748b;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHTML(label) + '</div><span data-opa-date-field="' + escapeAttr(dataId + ':' + field) + '" style="font-size:11px;color:#0f172a;font-weight:800;">' + escapeHTML(value || '—') + '</span></div>' +
+            lapiz(field, label, '📅') + '</div>';
+        }).join('');
+        const images = registroBusqueda.imagenes;
+        let photos = '';
+        if (!_authSesionActual || !_authSesionActual.token) photos = '<span style="color:#64748b;font-size:11px;">Inicia sesión para ver las fotos</span>';
+        else if (!Object.prototype.hasOwnProperty.call(imagenesCache, key)) photos = '<span style="color:#64748b;font-size:11px;">Cargando fotos…</span>';
+        else if (imagenesCache[key] === null) photos = '<span style="color:#b91c1c;font-size:11px;">No se pudieron cargar las fotos</span>';
+        else if (!images.length) photos = '<span style="color:#94a3b8;font-size:11px;">Sin fotos</span>';
+        else photos = images.map(function(image) {
+          const url = _opaSafeImageUrl(image && image.url);
+          return url ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(image.name || 'Foto de producto') + '" title="Ver ' + escapeAttr(image.name || 'Foto de producto') + '" style="padding:0;border:0;background:transparent;cursor:zoom-in;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(image.name || 'Foto de producto') + '" loading="lazy" style="width:58px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;margin:2px;"></button>' : '';
+        }).join('');
+        const color = _hojaColEst_estadoColor(row.E || '');
+        const estado = '<span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 9px;border-radius:999px;background:' + color.bg + ';color:' + color.fg + ';border:1px solid ' + color.bd + ';font-size:11px;font-weight:800;">' + escapeHTML(row.E || 'Sin estado') + '</span>' +
+          (puedeEditar ? '<button type="button" title="Cambiar estado" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;width:22px;height:22px;cursor:pointer;">✏️</button>' : '');
+        return '<tr>' +
+          '<td style="min-width:145px;padding:10px;border-bottom:1px solid #e2e8f0;font-weight:900;color:#1e40af;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(row.O || '—') + '</span>' + lapiz('O','Número OPA','#️⃣') + '</td>' +
+          '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(row.P || '—') + '</span>' + lapiz('P','Proyecto','📁') + '</td>' +
+          '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(row.T || '—') + '</span>' + lapiz('T','Tipo de producto','🏷️') + '</td>' +
+          '<td style="min-width:150px;max-width:220px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:flex;flex-wrap:wrap;align-items:center;">' + photos + '</div></td>' +
+          '<td style="min-width:210px;padding:10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + estado + '</td>' +
+          '<td style="min-width:650px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:5px;">' + dateCards + '</div></td>' +
+          '</tr>';
+      }).join('');
+      body.innerHTML = html;
+      _registrosCargarFotos(pagina);
+    }
+
+    function _registrosClaveImagen(row) { return String(row.H || '') + '::' + String(row._id || ''); }
+
+    function _registrosCargarFotos(pagina) {
+      if (!_authSesionActual || !_authSesionActual.token || typeof google === 'undefined' || !google.script || !google.script.run) return;
+      const cache = window._registrosImagenesCache || (window._registrosImagenesCache = {});
+      const pending = window._registrosImagenesPendientes || (window._registrosImagenesPendientes = {});
+      const targets = [];
+      pagina.forEach(function(row) {
+        const key = _registrosClaveImagen(row);
+        if (!Object.prototype.hasOwnProperty.call(cache, key) && !pending[key] && row._id) {
+          pending[key] = true;
+          targets.push({ key: key, hoja: row.H, rowId: row._id });
+        }
+      });
+      if (!targets.length) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          targets.forEach(function(target) {
+            pending[target.key] = false;
+            cache[target.key] = result && result.ok && result.imagenesPorFila && Array.isArray(result.imagenesPorFila[target.key]) ? result.imagenesPorFila[target.key] : null;
+          });
+          actualizarTablaRegistrosBase();
+        })
+        .withFailureHandler(function() {
+          targets.forEach(function(target) { pending[target.key] = false; cache[target.key] = null; });
+          actualizarTablaRegistrosBase();
+        })
+        .getOPAImagesForRows(_authSesionActual.token, targets);
     }
 
 
@@ -4917,13 +5293,23 @@
         'Todos los proyectos'
       );
 
+      const proyecto = limpiarTexto(document.getElementById('filtroProyecto').value);
+      const filtradosProyecto = filtradosHoja.filter(function(x) {
+        return proyecto === '' || limpiarTexto(x.P) === proyecto;
+      });
+
       llenarSelect(
         'filtroProducto',
-        filtradosHoja.map(x => limpiarTexto(x.T)),
+        filtradosProyecto.map(x => limpiarTexto(x.T)),
         'Todos los productos'
       );
 
-      llenarFiltroOPA(filtradosHoja);
+      const producto = limpiarTexto(document.getElementById('filtroProducto').value);
+      const filtradosProducto = filtradosProyecto.filter(function(x) {
+        return producto === '' || limpiarTexto(x.T) === producto;
+      });
+
+      llenarFiltroOPA(filtradosProducto);
 
       actualizarDashboard();
 
@@ -7439,12 +7825,11 @@
     }
 
 
-    function recargarDatos() {
+    function recargarDatos(alFinalizar) {
 
-      try { localStorage.removeItem(STORAGE_CACHE_KEY); } catch(e) {}
       _invalidateMemo();
-      try { mostrarLoading(); } catch(_) {}
-      try { actualizarSyncStatus('Actualizando desde la hoja...', false); } catch(_) {}
+      if (!Array.isArray(datos) || !datos.length) { try { mostrarLoading(); } catch(_) {} }
+      try { actualizarSyncStatus('Actualizando desde SeaTable...', false); } catch(_) {}
 
       google.script.run
         .withSuccessHandler(function(respuesta) {
@@ -7458,14 +7843,13 @@
             datos = respuesta.registros;
             _invalidateMemo();
             const serverTs = Date.now();
-            try {
-              localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify({ _ts: serverTs, registros: datos }));
-            } catch(_) {}
+            _dashboardLastServerSuccessAt = serverTs;
+            _guardarCacheDashboard({ _ts: serverTs, registros: datos });
 
             llenarFiltroHoja();
             actualizarListasYDashboard();
             try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch(_) {}
-            actualizarSyncStatus('Actualizado desde la hoja · ' + _timestampHumano(serverTs), false);
+            actualizarSyncStatus('Actualizado desde SeaTable · ' + _timestampHumano(serverTs), false);
 
             if (respuesta.analisis && respuesta.analisis.porEstado) {
               _analisisCache = respuesta.analisis;
@@ -7480,21 +7864,31 @@
               _ultimoEtag = String(respuesta.etag);
               try { localStorage.setItem(ETAG_STORAGE_KEY, _ultimoEtag); } catch(_) {}
             }
+            if (typeof alFinalizar === 'function') alFinalizar(true, respuesta);
           } catch(error) {
             try { actualizarSyncStatus('No se pudo mostrar la actualización', true); } catch(_) {}
             mostrarError(error.message || String(error));
+            if (typeof alFinalizar === 'function') alFinalizar(false, error);
           }
         })
         .withFailureHandler(function(error) {
 
-          try { localStorage.removeItem(STORAGE_CACHE_KEY); } catch(e) {}
           try { actualizarSyncStatus('Error al refrescar (intenta de nuevo)', true); } catch(_) {}
+
+          _leerCacheDashboard().then(function(snapshot) {
+            if (!snapshot || !Array.isArray(snapshot.registros) || !snapshot.registros.length) return;
+            datos = snapshot.registros;
+            try { _invalidateMemo(); llenarFiltroHoja(); actualizarListasYDashboard(); } catch (_) {}
+            try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch (_) {}
+            try { actualizarSyncStatus('Sin conexión · mostrando la última copia local ' + _timestampHumano(Number(snapshot._ts || 0)), true); } catch (_) {}
+          }).catch(function() {});
 
           mostrarError(
             error && error.message
               ? error.message
               : 'No se pudo actualizar la información. Intenta nuevamente.'
           );
+          if (typeof alFinalizar === 'function') alFinalizar(false, error);
 
         })
         .actualizarDashboardDatos();
@@ -7709,8 +8103,9 @@
         const tDias = document.getElementById('tab-analisis-dias');
         const tBusq = document.getElementById('tab-busqueda');
         const tHist = document.getElementById('tab-historial');
+        const tRegistros = document.getElementById('tab-registros');
         // Remover active de todos
-        [tDash, tDias, tBusq, tHist].forEach(function(t) {
+        [tDash, tDias, tBusq, tHist, tRegistros].forEach(function(t) {
           try { if (t) t.classList.remove('active'); } catch(_) {}
         });
         if (tabKey === 'dashboard') {
@@ -7724,16 +8119,9 @@
         } else if (tabKey === 'busqueda') {
           if (tBusq) tBusq.classList.add('active');
           try { _forzarInputBusquedaEditable(); } catch(_) {}
-          setTimeout(function(){
-            try {
-              const inp = document.getElementById('inp-busca-opa');
-              if (inp && inp.value && inp.value.trim().length >= 2) {
-                _buscarOPA();
-              } else {
-                if (inp) try { inp.focus(); } catch(_) {}
-              }
-            } catch(_) {}
-          }, 20);
+          // Mantiene los resultados ya cargados; solo consulta al pulsar Buscar o Enter.
+          const inp = document.getElementById('inp-busca-opa');
+          if (inp && !inp.value) try { inp.focus(); } catch(_) {}
         } else if (tabKey === 'historial') {
           if (tHist) tHist.classList.add('active');
           // Cargar historial solo si no hay datos cargados (evitar spam)
@@ -7741,6 +8129,10 @@
             window.__historialYaCargadoUnaVez = true;
             setTimeout(function(){ try { _historialCargar(); } catch(_) {} }, 80);
           }
+        } else if (tabKey === 'registros') {
+          if (tRegistros) tRegistros.classList.add('active');
+          // Aplicar en memoria los filtros vigentes; cambiar de pestaña no consulta SeaTable.
+          try { procesarDatos(); actualizarTablaRegistrosBase(); } catch(_) {}
         }
       } catch(err) {
         try { console.error('cambiarTab error:', err && err.message ? err.message : err); } catch(_) {}
@@ -8922,7 +9314,7 @@
         _authSetStatus('⌛ Iniciando sesión...', 'info');
         _authCalcularHashCliente(passwd).then(function(hashPwd){
           if (!google || !google.script || !google.script.run) {
-            _authSetStatus('Sin conexión con Google Apps Script. Abre el Dashboard como Web App.', 'error');
+            _authSetStatus('No se pudo conectar con el servicio de inicio de sesión. Intenta de nuevo.', 'error');
             return;
           }
           google.script.run
@@ -8957,6 +9349,7 @@
         const c = document.getElementById('auth-reg-correo');
         const p1 = document.getElementById('auth-reg-pass1');
         const p2 = document.getElementById('auth-reg-pass2');
+        const bootstrap = document.getElementById('auth-reg-bootstrap-key');
         const username = String(u ? u.value : '').trim();
         const nombre   = String(n ? n.value : '').trim();
         const correo   = String(c ? c.value : '').trim();
@@ -8968,7 +9361,7 @@
         _authSetStatus('⌛ Creando usuario...', 'info');
         _authCalcularHashCliente(pass1).then(function(hashPwd){
           if (!google || !google.script || !google.script.run) {
-            _authSetStatus('Sin conexión con Google Apps Script. Abre el Dashboard como Web App.', 'error');
+            _authSetStatus('No se pudo conectar con el servicio de registro. Intenta de nuevo.', 'error');
             return;
           }
           google.script.run
@@ -8979,7 +9372,7 @@
                   return;
                 }
                 const msg = (r.mensaje || 'Usuario creado correctamente. Ya puedes iniciar sesión.');
-                try { [u,n,c,p1,p2].forEach(function(x){ try { if (x) x.value=''; } catch(_){} }); } catch(_) {}
+                try { [u,n,c,p1,p2,bootstrap].forEach(function(x){ try { if (x) x.value=''; } catch(_){} }); } catch(_) {}
                 _authSetStatus('✅ ' + String(msg) + ' Inicia sesión para continuar.', 'ok');
                 setTimeout(function(){ _authCambiarTab('login'); try { const ul = document.getElementById('auth-login-username'); if(ul) ul.value=username; ul && ul.focus(); } catch(_){} }, 900);
               } catch(e) { _authSetStatus((e && e.message) || 'Error al procesar el registro.', 'error'); }
@@ -8987,7 +9380,7 @@
             .withFailureHandler(function(err){
               _authSetStatus('❌ Error en registro: ' + (err && err.message ? err.message : err), 'error');
             })
-            .registerUser({ username: username, nombreCompleto: nombre, correo: correo, hashPwd: hashPwd });
+            .registerUser({ username: username, nombreCompleto: nombre, correo: correo, hashPwd: hashPwd, bootstrapKey: bootstrap ? bootstrap.value : '' });
         });
       } catch(err) { _authSetStatus('Error: ' + String(err && err.message || err), 'error'); }
     }
@@ -9018,6 +9411,125 @@
           if (rol) { rol.style.display = 'block'; rol.innerHTML = '🔒 Invitado'; }
         }
       } catch(_) {}
+    }
+
+    var _actividadesUsuarios = [];
+
+    function _actividadesCargar() {
+      const mensaje = document.getElementById('actividades-mensaje');
+      const panelAdmin = document.getElementById('actividades-admin-panel');
+      const panelMis = document.getElementById('actividades-mis-panel');
+      if (!_authSesionActual || !_authSesionActual.token) {
+        if (mensaje) { mensaje.style.display = 'block'; mensaje.textContent = 'Inicia sesión para consultar las actividades asignadas.'; }
+        if (panelAdmin) panelAdmin.style.display = 'none';
+        if (panelMis) panelMis.style.display = 'none';
+        return;
+      }
+      const permisos = _authSesionActual.permisos || {};
+      const esAdmin = String(_authSesionActual.rol || '') === 'ADMINISTRADOR' || permisos.panel_admin === true;
+      if (mensaje) mensaje.style.display = 'none';
+      if (panelAdmin) panelAdmin.style.display = esAdmin ? 'block' : 'none';
+      if (panelMis) panelMis.style.display = esAdmin ? 'none' : 'block';
+      if (esAdmin) {
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (!r || !r.ok) { _actividadesMensaje(r && r.error || 'No se pudieron cargar los usuarios.', true); return; }
+            _actividadesUsuarios = Array.isArray(r.listado) ? r.listado : [];
+            const select = document.getElementById('actividad-usuario');
+            const anterior = select ? select.value : '';
+            if (select) {
+              select.innerHTML = _actividadesUsuarios.map(function(u) {
+                const nombre = String(u.nombreCompleto || u.username || '');
+                return '<option value="' + escapeAttr(String(u.username || '')) + '">' + escapeHTML(nombre + ' (@' + String(u.username || '') + ')') + '</option>';
+              }).join('');
+              if (_actividadesUsuarios.some(function(u) { return u.username === anterior; })) select.value = anterior;
+            }
+            _actividadesRenderAdmin();
+          })
+          .withFailureHandler(function(error) { _actividadesMensaje(error && error.message || 'Error al cargar usuarios.', true); })
+          .adminListarUsuarios(_authSesionActual.token);
+      } else {
+        google.script.run
+          .withSuccessHandler(function(r) {
+            const wrap = document.getElementById('actividades-mis-lista');
+            if (!wrap) return;
+            if (!r || !r.ok) { wrap.innerHTML = '<div style="color:#b91c1c;font-weight:700;">' + escapeHTML(r && r.error || 'No se pudieron cargar tus actividades.') + '</div>'; return; }
+            wrap.innerHTML = _actividadesListaHTML(r.asignaciones || [], false);
+          })
+          .withFailureHandler(function(error) { const wrap = document.getElementById('actividades-mis-lista'); if (wrap) wrap.textContent = error && error.message || 'Error al cargar tus actividades.'; })
+          .obtenerMisActividades(_authSesionActual.token);
+      }
+    }
+
+    function _actividadesMensaje(texto, error) {
+      const el = document.getElementById('actividades-mensaje');
+      if (!el) return;
+      el.style.display = 'block';
+      el.style.background = error ? '#fef2f2' : '#f0fdf4';
+      el.style.color = error ? '#b91c1c' : '#15803d';
+      el.style.border = error ? '1px solid #fecaca' : '1px solid #bbf7d0';
+      el.textContent = texto;
+    }
+
+    function _actividadesListaHTML(asignaciones, permitirEliminar) {
+      const items = Array.isArray(asignaciones) ? asignaciones : [];
+      if (!items.length) return '<div style="padding:14px;border:1px dashed #cbd5e1;border-radius:12px;color:#64748b;">Todavía no hay actividades asignadas.</div>';
+      return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">' + items.map(function(item, index) {
+        const tipo = String(item.tipo || '').toUpperCase();
+        const etiqueta = tipo === 'OPA' ? 'Número de OPA' : (tipo === 'PROYECTO' ? 'Proyecto' : 'Marca');
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbeafe;border-radius:12px;background:#eff6ff;">' +
+          '<div><div style="font-size:10px;font-weight:900;color:#1d4ed8;text-transform:uppercase;">' + etiqueta + '</div><div style="margin-top:3px;font-weight:800;color:#0f172a;">' + escapeHTML(String(item.valor || '')) + '</div></div>' +
+          (permitirEliminar ? '<button type="button" onclick="_actividadesEliminar(' + index + ')" title="Quitar asignación" style="border:1px solid #fecaca;border-radius:8px;background:#fff1f2;color:#b91c1c;font-weight:900;padding:6px 9px;cursor:pointer;">Quitar</button>' : '') +
+          '</div>';
+      }).join('') + '</div>';
+    }
+
+    function _actividadesUsuarioSeleccionado() {
+      const select = document.getElementById('actividad-usuario');
+      const username = String(select && select.value || '');
+      return _actividadesUsuarios.find(function(u) { return String(u.username || '') === username; }) || null;
+    }
+
+    function _actividadesRenderAdmin() {
+      const wrap = document.getElementById('actividades-admin-lista');
+      if (!wrap) return;
+      const user = _actividadesUsuarioSeleccionado();
+      wrap.innerHTML = user ? _actividadesListaHTML(user.permisos && user.permisos.asignaciones || [], true) : '<div style="color:#64748b;">No hay usuarios disponibles.</div>';
+    }
+
+    function _actividadesGuardar(user, asignaciones) {
+      _actividadesMensaje('Guardando las actividades en la base de usuarios…', false);
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (!r || !r.ok) { _actividadesMensaje(r && r.error || 'No se pudieron guardar las actividades.', true); return; }
+          if (!user.permisos) user.permisos = {};
+          user.permisos.asignaciones = r.asignaciones || asignaciones;
+          _actividadesRenderAdmin();
+          _actividadesMensaje('Actividades guardadas para @' + user.username + '.', false);
+        })
+        .withFailureHandler(function(error) { _actividadesMensaje(error && error.message || 'Error al guardar las actividades.', true); })
+        .adminGuardarActividadesUsuario(_authSesionActual.token, user.username, asignaciones);
+    }
+
+    function _actividadesAgregar() {
+      const user = _actividadesUsuarioSeleccionado();
+      const tipo = String(document.getElementById('actividad-tipo') && document.getElementById('actividad-tipo').value || '').toUpperCase();
+      const input = document.getElementById('actividad-valor');
+      const valor = String(input && input.value || '').trim();
+      if (!user || !valor) { _actividadesMensaje('Selecciona un usuario e ingresa el valor que vas a asignar.', true); return; }
+      const current = (user.permisos && Array.isArray(user.permisos.asignaciones)) ? user.permisos.asignaciones.slice() : [];
+      if (current.some(function(item) { return item.tipo === tipo && String(item.valor).toLocaleLowerCase() === valor.toLocaleLowerCase(); })) { _actividadesMensaje('Esa actividad ya está asignada a este usuario.', true); return; }
+      current.push({ tipo: tipo, valor: valor });
+      _actividadesGuardar(user, current);
+      if (input) input.value = '';
+    }
+
+    function _actividadesEliminar(index) {
+      const user = _actividadesUsuarioSeleccionado();
+      if (!user) return;
+      const current = (user.permisos && Array.isArray(user.permisos.asignaciones)) ? user.permisos.asignaciones.slice() : [];
+      current.splice(Number(index), 1);
+      _actividadesGuardar(user, current);
     }
 
     var _adminTabActual = 'users';
@@ -9217,7 +9729,7 @@
           } else if (t.soloAdmin) {
             // Regla estricta: Historial SOLO ADMIN
             permitidoBtn = !!esAdmin;
-          } else if (p) {
+          } else if (p && t.perm) {
             permitidoBtn = (p[t.perm] !== false);
           }
           if (tb) tb.style.display = permitidoBtn ? '' : 'none';
@@ -9283,6 +9795,14 @@
             }
           } catch(_) {}
         }
+        if (!haySesion && typeof cambiarTab === 'function' && primeraVisibleBtn) {
+          try {
+            const act = document.querySelector('.app-tabs .tab-btn.active');
+            if (act && act.getAttribute && act.getAttribute('data-tab') === 'actividades') {
+              cambiarTab(primeraVisibleBtn.replace('tab-',''));
+            }
+          } catch(_) {}
+        }
       } catch(_) {}
     }
 
@@ -9326,12 +9846,38 @@
     function _authInitAlArranque() {
       try {
         _authActualizarHeader();
-        try {
-          _authBorrarTokenSesion();
+        const token = _authLeerTokenSesion();
+        if (!token) {
           _authSesionActual = null;
           _authActualizarHeader();
-        } catch(_) {}
-        try { _aplicarPermisosUI(); } catch(_) {}
+          try { _aplicarPermisosUI(); } catch(_) {}
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (r && r.ok && r.logueado) {
+              _authSesionActual = {
+                logueado: true,
+                username: r.username,
+                rol: r.rol,
+                nombreCompleto: r.nombreCompleto,
+                token: token,
+                permisos: (r.permisos && typeof r.permisos === 'object') ? r.permisos : null
+              };
+            } else {
+              _authBorrarTokenSesion();
+              _authSesionActual = null;
+            }
+            _authActualizarHeader();
+            try { _aplicarPermisosUI(); } catch(_) {}
+          })
+          .withFailureHandler(function() {
+            // Conserva el token si el servidor no responde; se validará de nuevo al recargar.
+            _authSesionActual = null;
+            _authActualizarHeader();
+            try { _aplicarPermisosUI(); } catch(_) {}
+          })
+          .getCurrentUser(token);
       } catch(_) {}
     }
 
@@ -9792,11 +10338,12 @@
         if (!ev) return;
         const val = String(ev && ev.target && ev.target.value || '').trim();
         try { clearTimeout(window.__buscOPATimer); } catch(_) {}
-        if (val.length >= 2) {
-          window.__buscOPATimer = setTimeout(function(){ try { _buscarOPA(); } catch(_) {} }, 350);
-        } else {
-          _limpiarBuscaOPA(false);
-        }
+        const wrap = document.getElementById('busca-resultados-wrap');
+        const badge = document.getElementById('badge-busca-total');
+        if (wrap) wrap.style.display = 'none';
+        if (badge) badge.textContent = val.length >= 2 ? 'Pendiente de búsqueda' : '0 resultados';
+        if (val.length >= 2) _buscarOPA_setStatus('Número cambiado. Pulsa Buscar o Enter para consultar la OPA.', 'info');
+        else if (!val.length) _buscarOPA_setStatus(null);
       } catch(_) {}
     }
 
@@ -10091,7 +10638,7 @@
         if (wrap) wrap.style.display = 'none';
         if (badge) badge.textContent = 'Buscando...';
         if (!google || !google.script || !google.script.run) {
-          _buscarOPA_setStatus('❌ Sin conexión con Google Apps Script. Abre el Dashboard como Web App.', 'error');
+          _buscarOPA_setStatus('❌ No se pudo conectar con el servicio de búsqueda. Intenta de nuevo.', 'error');
           if (badge) badge.textContent = '0 resultados';
           return;
         }
@@ -10112,7 +10659,7 @@
                 if (wrap) wrap.style.display = 'none';
                 return;
               }
-              _buscarOPA_setStatus('✅ Encontrados ' + (resultados.length) + ' movimientos / registros para tu búsqueda. Inicia sesión para editar.', _authSesionActual && _authSesionActual.logueado ? 'ok' : 'info');
+              _buscarOPA_setStatus('✅ Encontrados ' + (resultados.length) + ' registros para consulta.', 'ok');
               const tbody = document.getElementById('busca-resultados-body');
               if (tbody) {
                 let html = '';
@@ -10120,6 +10667,7 @@
                 const permisos = haySesion && _authSesionActual.permisos ? _authSesionActual.permisos : null;
                 const puedeCambiar = haySesion && (permisos ? permisos.cambiar_estado !== false : true);
                 const funcionLapiz = function(dataId, campoClave, label, icon) {
+                  if (window.CLOUD_READ_ONLY) return '';
                   if (!haySesion) return '';
                   if (!puedeCambiar) return '';
                   return '<span title="Editar ' + label + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(campoClave) + '\',\'' + escapeAttr(label) + '\',\'' + escapeAttr(icon) + '\')" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:9999px;margin-left:6px;cursor:pointer;color:#1e40af;background:#dbeafe;border:1px solid #bfdbfe;font-size:11.5px;font-weight:900;user-select:none;transition:transform .1s ease,background .1s ease;" onmouseover="this.style.transform=\'scale(1.12)\';this.style.background=\'#bfdbfe\';" onmouseout="this.style.transform=\'scale(1)\';this.style.background=\'#dbeafe\';">✏️</span>';
@@ -10136,7 +10684,11 @@
                   let onclickBtn;
                   let btnLabel;
                   let btnStyle;
-                  if (!haySesion) {
+                  if (window.CLOUD_READ_ONLY) {
+                    onclickBtn = ' disabled ';
+                    btnLabel = 'Solo lectura';
+                    btnStyle = 'background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;cursor:not-allowed;';
+                  } else if (!haySesion) {
                     onclickBtn = " onclick=\"_authAbrirModal();\" ";
                     btnLabel = '🔒 Inicia sesión';
                     btnStyle = "background:#f8fafc;color:#475569;border:1px solid #cbd5e1;";
@@ -10185,7 +10737,7 @@
                     const fgNom = hayFecha ? '#0f172a' : '#64748b';
                     const fgFecha = hayFecha ? '#172554' : '#cbd5e1';
                     const wd = e.clave === 'FM' ? 'auto' : '12.5%';
-                    const lapizEtapa = !haySesion || !puedeCambiar ? '' :
+                    const lapizEtapa = window.CLOUD_READ_ONLY || !haySesion || !puedeCambiar ? '' :
                       '<span title="Editar fecha · ' + escapeAttr(nomCol) + '" onclick="event.stopPropagation();_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(e.clave) + '\',\'' + escapeAttr(nomCol + ' (fecha)') + '\',\'📅\')" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9999px;margin-left:4px;cursor:pointer;color:#1e40af;background:#fff;border:1px solid #bfdbfe;font-size:9.5px;font-weight:900;user-select:none;transition:transform .1s ease,background .1s ease;flex-shrink:0;" onmouseover="this.style.transform=\'scale(1.15)\';this.style.background=\'#dbeafe\';" onmouseout="this.style.transform=\'scale(1)\';this.style.background=\'#fff\';">✏️</span>';
                     tarjetas +=
                       '<div style="flex:' + (e.clave === 'FM' ? '0 0 auto' : '1 1 0') + ';min-width:' + (e.clave === 'FM' ? '130px' : '118px') + ';display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:11px;background:' + bg + ';border:1.2px solid ' + bd + ';box-shadow:0 2px 6px rgba(15,23,42,.04);">' +
@@ -10196,7 +10748,7 @@
                           '</div>' +
                           lapizEtapa +
                         '</div>' +
-                        '<div style="font-size:12.5px;color:' + fgFecha + ';font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;margin-top:2px;">' + (hayFecha ? escapeHTML(colFecha) : '<span style="color:#cbd5e1;font-weight:700;">—</span>') + '</div>' +
+                        '<div data-opa-date-field="' + escapeAttr(dataId + ':' + e.clave) + '" style="font-size:12.5px;color:' + fgFecha + ';font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;margin-top:2px;">' + (hayFecha ? escapeHTML(colFecha) : '<span style="color:#cbd5e1;font-weight:700;">—</span>') + '</div>' +
                       '</div>';
                   }
                   const filaExpandir =
@@ -10207,19 +10759,20 @@
                           '<div style="height:1px;background:#e2e8f0;flex:1;"></div>' +
                         '</div>' +
                         '<div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;">' + tarjetas + '</div>' +
+                        '<div data-opa-gallery="' + escapeAttr(dataId) + '" style="margin-top:16px;">' + _opaRenderGaleria(dataId, rw, haySesion && puedeCambiar) + '</div>' +
                       '</td>' +
                     '</tr>';
                   html += '<tr>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-flex;padding:3px 9px;border-radius:9999px;background:#0f172a;color:#f8fafc;font-weight:800;font-size:11.5px;">' + escapeHTML(String(rw.hoja || '')) + '</span></td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-weight:600;">' + escapeHTML(String(rw.fila || '')) + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;">' + escapeHTML(String(rw.numeroOPA || '')) + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-flex;padding:4px 10px;border-radius:9999px;background:' + estadoColor.bg + ';color:' + estadoColor.fg + ';border:1px solid ' + estadoColor.bd + ';font-weight:800;font-size:12px;">' + escapeHTML(estadoCol || 'Sin estado') + '</span></td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:600;">' + escapeHTML(String(rw.proyecto || '')) + funcionLapiz(dataId, 'P', 'Proyecto', '📁') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;">' + escapeHTML(String(rw.tipoProducto || '')) + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">' + escapeHTML(String(rw.territorio || '')) + funcionLapiz(dataId, 'TR', 'Territorio', '🌎') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;">' + escapeHTML(String(rw.personaje || '')) + funcionLapiz(dataId, 'PJ', 'Personaje', '🧍') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">' + escapeHTML(String(rw.subOpa || '')) + funcionLapiz(dataId, 'SO', 'Sub-OPA', '➗') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#172554;font-weight:700;white-space:nowrap;">' + escapeHTML(ultimaFecha || '—') + funcionLapiz(dataId, 'F', 'Última Fecha Etapa', '📅') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(String(rw.numeroOPA || '')) + '</span>' + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 10px;border-radius:9999px;background:' + estadoColor.bg + ';color:' + estadoColor.fg + ';border:1px solid ' + estadoColor.bd + ';font-weight:800;font-size:12px;">' + escapeHTML(estadoCol || 'Sin estado') + '</span></td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:600;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(String(rw.proyecto || '')) + '</span>' + funcionLapiz(dataId, 'P', 'Proyecto', '📁') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(String(rw.tipoProducto || '')) + '</span>' + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':TR') + '">' + escapeHTML(String(rw.territorio || '')) + '</span>' + funcionLapiz(dataId, 'TR', 'Territorio', '🌎') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':PJ') + '">' + escapeHTML(String(rw.personaje || '')) + '</span>' + funcionLapiz(dataId, 'PJ', 'Personaje', '🧍') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':SO') + '">' + escapeHTML(String(rw.subOpa || '')) + '</span>' + funcionLapiz(dataId, 'SO', 'Sub-OPA', '➗') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#172554;font-weight:700;white-space:nowrap;"><span data-opa-last-date="' + escapeAttr(dataId) + '">' + escapeHTML(ultimaFecha || '—') + '</span>' + funcionLapiz(dataId, 'F', 'Última Fecha Etapa', '📅') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">' +
                       '<button type="button" data-id="' + escapeAttr(dataId) + '" ' + onclickBtn +
                       ' style="padding:7px 12px;border-radius:9999px;font-weight:700;font-size:11.5px;cursor:pointer;' + btnStyle + 'white-space:nowrap;">' +
@@ -10244,7 +10797,7 @@
               if (wrap) wrap.style.display = 'none';
             } catch(_) {}
           })
-          .searchOPAByNumber(q);
+          .searchOPAByNumber(q, _authSesionActual.token);
       } catch(err) { _buscarOPA_setStatus('Error: ' + String(err && err.message || err), 'error'); }
     }
 
@@ -10252,6 +10805,123 @@
       try {
         return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       } catch(_) { return ''; }
+    }
+
+    function _opaSafeImageUrl(value) {
+      try {
+        const url = new URL(String(value || ''), window.location.href);
+        return (url.protocol === 'https:' || url.protocol === 'http:') ? url.href : '';
+      } catch (_) { return ''; }
+    }
+
+    function _verImagenOPA(value, name) {
+      const url = _opaSafeImageUrl(value);
+      if (!url) return;
+      const current = document.getElementById('opa-image-lightbox');
+      if (current) current.remove();
+      const overlay = document.createElement('div');
+      overlay.id = 'opa-image-lightbox';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', 'Vista previa de imagen');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(2,6,23,.88);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;';
+      const image = document.createElement('img');
+      image.src = url;
+      image.alt = String(name || 'Imagen del producto');
+      image.style.cssText = 'display:block;max-width:min(96vw,1600px);max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.5);cursor:default;';
+      image.addEventListener('click', function(event) { event.stopPropagation(); });
+      const caption = document.createElement('div');
+      caption.textContent = image.alt;
+      caption.style.cssText = 'position:absolute;left:20px;right:20px;bottom:12px;text-align:center;color:#fff;font:600 13px system-ui,sans-serif;text-shadow:0 1px 5px #000;';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = '×';
+      close.setAttribute('aria-label', 'Cerrar vista previa');
+      close.style.cssText = 'position:absolute;right:18px;top:14px;width:44px;height:44px;border:1px solid rgba(255,255,255,.55);border-radius:50%;background:rgba(15,23,42,.7);color:white;font-size:32px;line-height:1;cursor:pointer;';
+      function dismiss() {
+        overlay.remove();
+        document.removeEventListener('keydown', onKeyDown);
+      }
+      function onKeyDown(event) { if (event.key === 'Escape') dismiss(); }
+      close.addEventListener('click', dismiss);
+      overlay.addEventListener('click', dismiss);
+      overlay.append(image, caption, close);
+      document.body.appendChild(overlay);
+      document.addEventListener('keydown', onKeyDown);
+    }
+
+    function _opaRenderGaleria(dataId, row, canUpload) {
+      const images = Array.isArray(row && row.imagenes) ? row.imagenes : [];
+      const cards = images.map(function(image) {
+        const url = _opaSafeImageUrl(image && image.url);
+        const name = String(image && image.name || 'Imagen del producto');
+        if (!url) return '<div style="padding:10px 12px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;font-size:12px;">' + escapeHTML(name) + ' · No se pudo cargar la vista previa</div>';
+        return '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" title="Ver ' + escapeAttr(name) + '" style="display:block;width:118px;padding:0;border:0;background:transparent;text-align:left;color:#334155;cursor:zoom-in;">' +
+          '<img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:118px;height:92px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;display:block;" onerror="this.style.display=\'none\';" />' +
+          '<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:700;margin-top:5px;">' + escapeHTML(name) + '</span></button>';
+      }).join('');
+      const picker = canUpload ? '<label for="opa-files-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar imágenes</label>' +
+        '<input id="opa-files-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />' : '';
+      return '<div style="padding:12px 14px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
+          '<div><div style="font-size:12px;font-weight:900;color:#0f172a;">🖼️ Fotos del producto</div><div style="font-size:11px;color:#64748b;margin-top:2px;">' + images.length + ' adjunta' + (images.length === 1 ? '' : 's') + ' · se guardan en LINK O FOTO PRODUCTO</div></div>' + picker +
+        '</div>' +
+        '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' + (cards || '<span style="font-size:12px;color:#94a3b8;padding:8px 2px;">Todavía no hay fotos para esta OPA.</span>') + '</div>' +
+        '<div data-opa-upload-status="' + escapeAttr(dataId) + '" style="display:none;margin-top:10px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;"></div>' +
+      '</div>';
+    }
+
+    async function _subirImagenesOPA(dataId, input) {
+      const row = window._busqOpaCache && window._busqOpaCache[dataId];
+      const files = Array.from(input && input.files || []);
+      if (!row || !files.length) return;
+      if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
+      const status = document.querySelector('[data-opa-upload-status="' + dataId + '"]');
+      const setStatus = function(message, error) {
+        if (!status) return;
+        status.style.display = 'block';
+        status.style.background = error ? '#fef2f2' : '#eff6ff';
+        status.style.color = error ? '#b91c1c' : '#1d4ed8';
+        status.style.border = error ? '1px solid #fecaca' : '1px solid #bfdbfe';
+        status.textContent = message;
+      };
+      if (files.length > 6) { setStatus('Selecciona hasta 6 imágenes por carga.', true); input.value = ''; return; }
+      if (files.some(function(file) { return file.size > 8 * 1024 * 1024; })) { setStatus('Cada imagen puede pesar máximo 8 MB.', true); input.value = ''; return; }
+      const form = new FormData();
+      form.append('token', _authSesionActual.token);
+      form.append('table', row.hoja || '');
+      form.append('rowId', row.rowId || '');
+      form.append('numeroOPA', row.numeroOPA || '');
+      files.forEach(function(file) { form.append('files', file, file.name); });
+      setStatus('Subiendo ' + files.length + ' imagen' + (files.length === 1 ? '' : 'es') + ' a SeaTable…', false);
+      const button = document.querySelector('label[for="opa-files-' + dataId + '"]');
+      if (button) { button.style.opacity = '.55'; button.style.pointerEvents = 'none'; }
+      try {
+        const response = await fetch('/api/upload-opa-image', { method: 'POST', body: form });
+        const result = await response.json().catch(function() { return {}; });
+        if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las fotos.');
+        row.imagenes = Array.isArray(result.imagenes) ? result.imagenes : row.imagenes;
+        try {
+          const baseKey = String(row.hoja || '') + '::' + String(row.rowId || '');
+          if (window._registrosImagenesCache) delete window._registrosImagenesCache[baseKey];
+          if (document.getElementById('tab-registros') && document.getElementById('tab-registros').classList.contains('active')) actualizarTablaRegistrosBase();
+        } catch(_) {}
+        const gallery = document.querySelector('[data-opa-gallery="' + dataId + '"]');
+        if (gallery) gallery.innerHTML = _opaRenderGaleria(dataId, row, true);
+        _buscarOPA_setStatus('✅ ' + String(result.mensaje || 'Imágenes guardadas en SeaTable.'), 'ok');
+        const currentStatus = document.querySelector('[data-opa-upload-status="' + dataId + '"]');
+        if (currentStatus) {
+          currentStatus.style.display = 'block';
+          currentStatus.style.background = '#f0fdf4'; currentStatus.style.color = '#15803d'; currentStatus.style.border = '1px solid #bbf7d0';
+          currentStatus.textContent = String(result.mensaje || 'Imágenes guardadas en SeaTable.');
+        }
+      } catch (error) {
+        setStatus(error && error.message || 'Error al subir las imágenes.', true);
+      } finally {
+        if (input) input.value = '';
+        const currentButton = document.querySelector('label[for="opa-files-' + dataId + '"]');
+        if (currentButton) { currentButton.style.opacity = '1'; currentButton.style.pointerEvents = 'auto'; }
+      }
     }
 
     function _limpiarBuscaOPA(enfocar) {
@@ -10291,6 +10961,7 @@
           dataId: String(dataId || ''),
           hoja: String(row.hoja || ''),
           fila: Number(row.fila) || 0,
+          rowId: String(row.rowId || ''),
           numeroOPA: String(row.numeroOPA || ''),
           estadoActual: String(row.estadoPlataforma || ''),
           proyecto: String(row.proyecto || ''),
@@ -10377,7 +11048,7 @@
         const nuevoEstado = String(sel && sel.value ? sel.value : '').trim();
         const fechaElegida = String(inpF && inpF.value ? inpF.value : '').trim();
         if (!nuevoEstado) { _ceSetStatus('⚠️ Selecciona un nuevo estado.', 'error'); return; }
-        _ceSetStatus('⌛ Guardando cambios en la hoja Excel...', 'info');
+        _ceSetStatus('⌛ Guardando estado y fecha en SeaTable...', 'info');
         if (btn) btn.disabled = true;
         google.script.run
           .withSuccessHandler(function(r){
@@ -10387,9 +11058,12 @@
                 _ceSetStatus('❌ ' + String(r && r.error || 'No se pudo cambiar el estado.'), 'error');
                 return;
               }
-              _ceSetStatus('✅ Estado actualizado correctamente. Hoja: ' + escapeHTML(String(r.hoja || '')) + ' · Fila #' + escapeHTML(String(r.fila || '')) + (r.fechaEscrita ? ' · Fecha guardada: ' + escapeHTML(String(r.fechaEscrita)) : ''), 'ok');
-              // cerrar y refrescar
-              setTimeout(function(){ try { _ceCerrar(); } catch(_) {} try { _buscarOPA(); } catch(_) {} try { recargarDatos(); } catch(_) {} }, 1200);
+              _ceSetStatus('✅ Estado y datos de la etapa actualizados en SeaTable. El dashboard también se actualizó.' + (r.fechaEscrita ? ' · Fecha: ' + escapeHTML(String(r.fechaEscrita)) : ''), 'ok');
+              _opaAplicarEdicionLocal(_ceActual.dataId, 'E', String(r.estado || nuevoEstado));
+              if (r.fechaCampo && r.fechaEscrita) _opaAplicarEdicionLocal(_ceActual.dataId, r.fechaCampo, String(r.fechaEscrita));
+              _opaRefrescarDashboardLocal(_ceActual.dataId);
+              // Actualiza la ficha visible; no vuelve a consultar ni reinicia la búsqueda.
+              setTimeout(function(){ try { _ceCerrar(); } catch(_) {} }, 800);
             } catch(e) { if(btn) btn.disabled=false; _ceSetStatus('❌ Error procesando: ' + String(e && e.message || e), 'error'); }
           })
           .withFailureHandler(function(err){
@@ -10400,6 +11074,7 @@
             token: _authSesionActual.token,
             hoja: _ceActual.hoja,
             fila: _ceActual.fila,
+            rowId: _ceActual.rowId,
             numeroOPA: _ceActual.numeroOPA,
             nuevoEstado: nuevoEstado,
             fechaElegida: fechaElegida
@@ -10414,6 +11089,66 @@
        ✏️ MODAL EDITAR CAMPO INDIVIDUAL (cliente) — lápiz celdas
     ============================================================ */
     var _ecActual = null; // { dataId, hoja, fila, numeroOPA, campoClave, label, icon, valorActual }
+
+    function _opaAplicarEdicionLocal(dataId, campoClave, valor) {
+      try {
+        const row = window._busqOpaCache && window._busqOpaCache[dataId];
+        if (!row) return;
+        const value = String(valor == null ? '' : valor);
+        const props = { O:'numeroOPA', P:'proyecto', T:'tipoProducto', TR:'territorio', PJ:'personaje', SO:'subOpa', E:'estadoPlataforma' };
+        if (props[campoClave]) row[props[campoClave]] = value;
+        if (/^F[1-8]$/.test(campoClave) && value) {
+          const etapas = ['Concepto Enviado','Concepto Aprobado','Pre-Producción Enviada','Pre-Producción Aprobada','Fotos de Producción Enviada','Fotos de Producción Aprobada','Muestras Finales Enviadas','Aprobada / Cerrada'];
+          const nuevoIndice = Number(campoClave.slice(1)) - 1;
+          const indiceActual = etapas.findIndex(function(item) { return item.toLowerCase() === String(row.estadoPlataforma || '').toLowerCase(); });
+          // Refleja el avance local solo cuando la fecha corresponde a una etapa posterior.
+          if (!row.estadoPlataforma || (indiceActual >= 0 && nuevoIndice > indiceActual)) {
+            row.estadoPlataforma = etapas[nuevoIndice] || row.estadoPlataforma;
+            const estado = document.querySelector('[data-opa-field="' + dataId + ':E"]');
+            if (estado) estado.textContent = row.estadoPlataforma;
+          }
+        }
+        if (!row.todasLasFechas) row.todasLasFechas = {};
+        if (!row.fechas) row.fechas = {};
+        if (campoClave === 'F' || campoClave === 'FM' || /^F[1-8]$/.test(campoClave)) {
+          row.fechas[campoClave] = value;
+          row.todasLasFechas[campoClave] = value;
+          const fecha = document.querySelector('[data-opa-date-field="' + dataId + ':' + campoClave + '"]');
+          if (fecha) fecha.textContent = value || '—';
+          const fechas = Object.keys(row.fechas).map(function(k){ return String(row.fechas[k] || '').trim(); }).filter(Boolean).sort();
+          row.fechaUltima = fechas.length ? fechas[fechas.length - 1] : '';
+          const ultima = document.querySelector('[data-opa-last-date="' + dataId + '"]');
+          if (ultima) ultima.textContent = row.fechaUltima || '—';
+        }
+        const field = document.querySelector('[data-opa-field="' + dataId + ':' + campoClave + '"]');
+        if (field) field.textContent = value || '—';
+      } catch(_) {}
+    }
+
+    function _opaRefrescarDashboardLocal(dataId) {
+      try {
+        const row = window._busqOpaCache && window._busqOpaCache[dataId];
+        if (!row || !Array.isArray(datos)) return;
+        const mainRow = datos.find(function(item) { return String(item._id || '') === String(row.rowId || '') && String(item.H || '') === String(row.hoja || ''); });
+        if (mainRow) {
+          mainRow.E = String(row.estadoPlataforma || '');
+          mainRow.O = String(row.numeroOPA || '');
+          mainRow.P = String(row.proyecto || '');
+          mainRow.T = String(row.tipoProducto || '');
+          mainRow.TR = String(row.territorio || '');
+          mainRow.PJ = String(row.personaje || '');
+          mainRow.SO = String(row.subOpa || '');
+          Object.keys(row.fechas || {}).forEach(function(key) { mainRow[key] = row.fechas[key] || ''; });
+          _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
+        }
+        _invalidateMemo();
+        actualizarDashboard();
+        try { actualizarTablaRegistrosBase(); } catch(_) {}
+        actualizarSyncStatus('Cambio guardado en SeaTable · dashboard actualizado', false);
+      } catch(error) {
+        try { console.warn('No se pudo refrescar el dashboard local:', error && error.message || error); } catch(_) {}
+      }
+    }
 
     function _ecAbrir(dataId, campoClave, label, icon) {
       try {
@@ -10445,6 +11180,7 @@
           dataId: dataId,
           hoja: String(row.hoja || ''),
           fila: Number(row.fila) || 0,
+          rowId: String(row.rowId || ''),
           numeroOPA: String(row.numeroOPA || ''),
           campoClave: campoClave,
           label: label,
@@ -10470,7 +11206,12 @@
         }
         if (lbl) lbl.textContent = 'Nuevo valor para ' + label + ' :';
         if (ic) ic.textContent = icon;
-        if (inp) { inp.value = _ecActual.valorActual; try { inp.focus(); if(inp.select) inp.select(); } catch(_) {} }
+        if (inp) {
+          const esFecha = campoClave === 'F' || campoClave === 'FM' || /^F[1-8]$/.test(campoClave);
+          inp.type = esFecha ? 'date' : 'text';
+          inp.value = esFecha && /^\d{4}-\d{2}-\d{2}$/.test(_ecActual.valorActual) ? _ecActual.valorActual : _ecActual.valorActual;
+          try { inp.focus(); if(inp.select && !esFecha) inp.select(); } catch(_) {}
+        }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
         if (m) m.style.display = 'flex';
       } catch(err) {
@@ -10502,7 +11243,7 @@
         const inp = document.getElementById('ec-input-valor');
         const btn = document.getElementById('ec-btn-guardar');
         const nuevoValor = String(inp && inp.value !== undefined ? inp.value : '').trim();
-        _ecSetStatus('⌛ Guardando ' + _ecActual.label + ' en la hoja Excel...', 'info');
+        _ecSetStatus('⌛ Guardando ' + _ecActual.label + ' en SeaTable...', 'info');
         if (btn) btn.disabled = true;
         google.script.run
           .withSuccessHandler(function(r){
@@ -10510,7 +11251,10 @@
               if (btn) btn.disabled = false;
               if (!r || !r.ok) { _ecSetStatus('❌ ' + String(r && r.error || 'No se pudo guardar el campo.'), 'error'); return; }
               _ecSetStatus('✅ Campo guardado correctamente · ' + escapeHTML(String(r.campo || _ecActual.campoClave)) + ' → ' + escapeHTML(String(r.valorNuevo || '—')), 'ok');
-              setTimeout(function(){ try { _ecCerrar(); } catch(_) {} try { _buscarOPA(); } catch(_) {} try { recargarDatos(); } catch(_) {} }, 1100);
+              _opaAplicarEdicionLocal(_ecActual.dataId, _ecActual.campoClave, String(r.valorNuevo == null ? nuevoValor : r.valorNuevo));
+              if (r.estado) _opaAplicarEdicionLocal(_ecActual.dataId, 'E', String(r.estado));
+              _opaRefrescarDashboardLocal(_ecActual.dataId);
+              setTimeout(function(){ try { _ecCerrar(); } catch(_) {} }, 800);
             } catch(e) { if (btn) btn.disabled=false; _ecSetStatus('❌ Error: ' + String(e && e.message || e), 'error'); }
           })
           .withFailureHandler(function(err){
@@ -10520,9 +11264,10 @@
           .editarCampoOPA(
             _authSesionActual.token,
             _ecActual.hoja,
-            _ecActual.fila,
+            _ecActual.rowId,
             _ecActual.campoClave,
-            nuevoValor
+            nuevoValor,
+            _ecActual.numeroOPA
           );
       } catch(err) {
         try { _ecSetStatus('Error: ' + String(err && err.message || err), 'error'); } catch(_) {}
@@ -10531,9 +11276,9 @@
 
 
     /* ============================================================
-       🏃 POLLING CADA 5 SEGUNDOS (checksum ligero → ETag diff)
+       🏃 POLLING CADA 30 SEGUNDOS (checksum ligero → ETag diff)
        Flujo óptimo:
-         Paso 1 (5s): obtenerChecksumDashboard() → ~2ms, sin leer datos.
+         Paso 1 (30s): obtenerChecksumDashboard() → revisa SeaTable y actualiza la caché vencida.
            Si ETag NO cambió → TODO LISTO, no hacemos nada más.
            Si ETag cambió     → Paso 2.
          Paso 2: recargar datos completos + análisis + re-render.
@@ -10615,7 +11360,6 @@
           try { actualizarSyncStatus('Cambios detectados · recargando...', false); } catch(_){}
           _ultimoEtag = nuevoEtag;
           try { localStorage.setItem(ETAG_STORAGE_KEY, nuevoEtag); } catch(_){}
-          try { localStorage.removeItem(STORAGE_CACHE_KEY); } catch(_){}
           _invalidateMemo();
 
           setTimeout(function(){
@@ -10961,7 +11705,7 @@
             const badge = document.getElementById('syncStatus');
             if (badge) {
               badge.classList.add('sync-offline');
-              badge.innerHTML = '<span class="sync-dot"></span> Cargando desde la hoja · puede tardar unos segundos más';
+              badge.innerHTML = '<span class="sync-dot"></span> Cargando desde SeaTable · puede tardar unos segundos más';
             }
           } catch(_) {}
         }, 20000);
