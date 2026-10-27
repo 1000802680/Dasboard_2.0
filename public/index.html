@@ -3019,6 +3019,74 @@
       pointer-events: auto !important;
       cursor: text !important;
     }
+
+    /* Mini IA flotante en la esquina inferior derecha */
+    .dashboard-ai-widget {
+      position: fixed !important;
+      z-index: 1200;
+      right: 22px;
+      bottom: 20px;
+      width: min(430px, calc(100vw - 36px));
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 1px solid #cbdaf4;
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 18px 55px rgba(15, 23, 42, .22);
+      overflow: hidden;
+    }
+    .dashboard-ai-launcher {
+      display: none;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      padding: 13px 18px;
+      border: 0;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #1e40af, #4f46e5);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 10px 30px rgba(30, 64, 175, .24);
+    }
+    .dashboard-ai-widget:not(.is-open) { width: min(250px, calc(100vw - 36px)); border: 0; background: transparent; box-shadow: none; overflow: visible; }
+    .dashboard-ai-widget:not(.is-open) .dashboard-ai-launcher { display: flex; }
+    .dashboard-ai-widget:not(.is-open) .dashboard-ai-panel { display: none; }
+    .dashboard-ai-panel { display: flex; flex-direction: column; }
+    .dashboard-ai-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 15px;
+      background: linear-gradient(135deg, #f8fbff, #edf4ff);
+      border-bottom: 1px solid #dbe7f7;
+    }
+    .dashboard-ai-minimize {
+      flex: 0 0 auto;
+      width: 32px;
+      height: 32px;
+      border: 1px solid #cbd5e1;
+      border-radius: 50%;
+      background: #fff;
+      color: #334155;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .dashboard-ai-conversation { padding: 12px 14px 4px !important; max-height: min(42vh, 340px) !important; min-height: 116px; }
+    .dashboard-ai-form { padding: 10px 13px 13px; border-top: 1px solid #edf2f7; background: #fff; }
+    .dashboard-ai-suggestions { padding: 0 13px 13px !important; margin-top: 0 !important; }
+    .dashboard-ai-suggestions button { padding: 6px 9px !important; font-size: 10px !important; }
+    @media (max-width: 560px) {
+      .dashboard-ai-widget { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
+      .dashboard-ai-widget:not(.is-open) { width: auto; }
+      .dashboard-ai-conversation { max-height: 38vh !important; }
+      .dashboard-ai-header p { display: none; }
+    }
   </style>
 </head>
 
@@ -3290,27 +3358,33 @@
 
     </div>
 
-    <section id="dashboard-consulta" aria-labelledby="dashboard-consulta-title" style="margin:0 0 20px;padding:18px 20px;border:1px solid #cbdaf4;border-radius:18px;background:linear-gradient(135deg,#ffffff 0%,#f4f8ff 100%);box-shadow:0 8px 24px rgba(30,64,175,.07);">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:11px;">
-          <div style="display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:#e0ecff;color:#1d4ed8;font-size:21px;">✦</div>
-          <div><h2 id="dashboard-consulta-title" style="margin:0;color:#14213d;font-size:17px;font-weight:900;">Mini IA del Dashboard</h2>
-            <p style="margin:3px 0 0;color:#64748b;font-size:12px;">Pregunta con tus palabras. Responde con los datos cargados y los filtros activos, y entiende preguntas de seguimiento.</p></div>
+    <section id="dashboard-consulta" class="dashboard-ai-widget is-open" aria-labelledby="dashboard-consulta-title">
+      <button id="dashboard-ia-launcher" class="dashboard-ai-launcher" type="button" onclick="toggleDashboardIA(true)" aria-expanded="false">✦ Preguntar a la mini IA</button>
+      <div id="dashboard-ia-panel" class="dashboard-ai-panel">
+        <div class="dashboard-ai-header">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <div style="display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:12px;background:#dbeafe;color:#1d4ed8;font-size:20px;">✦</div>
+            <div style="min-width:0;"><h2 id="dashboard-consulta-title" style="margin:0;color:#14213d;font-size:15px;font-weight:900;">Mini IA del Dashboard</h2>
+              <p style="margin:3px 0 0;color:#64748b;font-size:11px;">Consulta los datos y filtros activos</p></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span id="dashboard-consulta-corte" style="padding:5px 8px;border-radius:999px;background:#ecfdf5;border:1px solid #bbf7d0;color:#047857;font-size:10px;font-weight:800;white-space:nowrap;">IA · Cloudflare</span>
+            <button class="dashboard-ai-minimize" type="button" onclick="toggleDashboardIA(false)" aria-label="Minimizar mini IA" title="Minimizar">−</button>
+          </div>
         </div>
-        <span id="dashboard-consulta-corte" style="padding:6px 10px;border-radius:999px;background:#ecfdf5;border:1px solid #bbf7d0;color:#047857;font-size:11px;font-weight:800;">Mini IA · Cloudflare</span>
-      </div>
-      <div id="dashboard-consulta-respuesta" aria-live="polite" style="display:flex;flex-direction:column;gap:9px;max-height:380px;overflow:auto;margin-bottom:10px;padding:2px 1px;">
-        <div style="align-self:flex-start;max-width:92%;padding:11px 13px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#334155;font-size:12px;line-height:1.5;">Hola. Puedo analizar las OPAs, sus etapas, estados y cantidades de muestras. Por ejemplo: <b>“¿Qué proyecto tiene más OPAs canceladas?”</b> o <b>“Lista las OPAs de BTS2026 creadas ayer”</b>.</div>
-      </div>
-      <form onsubmit="event.preventDefault();consultarDatosDashboard();" style="display:flex;gap:9px;align-items:stretch;">
-        <input id="dashboard-consulta-input" type="text" autocomplete="off" placeholder="Ej.: ¿Cuántas OPAs se crearon hoy?" aria-label="Pregunta sobre los datos del Dashboard" style="flex:1;min-width:0;padding:12px 14px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f172a;font-size:14px;font-weight:600;outline:none;">
-        <button id="dashboard-consulta-submit" type="submit" class="btn-primary" style="margin:0;white-space:nowrap;">Preguntar</button>
-      </form>
-      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;">
-        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs se crearon hoy?')" style="padding:7px 10px;font-size:11px;">OPAs creadas hoy</button>
-        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs se crearon ayer?')" style="padding:7px 10px;font-size:11px;">OPAs creadas ayer</button>
-        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs están canceladas?')" style="padding:7px 10px;font-size:11px;">OPAs canceladas</button>
-        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs están en proceso?')" style="padding:7px 10px;font-size:11px;">OPAs en proceso</button>
+        <div id="dashboard-consulta-respuesta" class="dashboard-ai-conversation" aria-live="polite" style="display:flex;flex-direction:column;gap:9px;overflow:auto;margin:0;">
+          <div style="align-self:flex-start;max-width:92%;padding:10px 12px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#334155;font-size:12px;line-height:1.5;">Hola. Puedo analizar OPAs, estados, proyectos, etapas y muestras. ¿Qué deseas consultar?</div>
+        </div>
+        <form class="dashboard-ai-form" onsubmit="event.preventDefault();consultarDatosDashboard();" style="display:flex;gap:8px;align-items:stretch;">
+          <input id="dashboard-consulta-input" type="text" autocomplete="off" placeholder="Escribe tu pregunta…" aria-label="Pregunta sobre los datos del Dashboard" style="flex:1;min-width:0;padding:11px 12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f172a;font-size:13px;font-weight:600;outline:none;">
+          <button id="dashboard-consulta-submit" type="submit" class="btn-primary" style="margin:0;padding:0 14px;white-space:nowrap;">Enviar</button>
+        </form>
+        <div class="dashboard-ai-suggestions" style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs se crearon hoy?')">Creadas hoy</button>
+          <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs se crearon ayer?')">Ayer</button>
+          <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs están canceladas?')">Canceladas</button>
+          <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs están en proceso?')">En proceso</button>
+        </div>
       </div>
     </section>
 
@@ -5176,7 +5250,18 @@
       return Number.isNaN(date.getTime()) ? '' : _dashboardFechaISOEnZona(date);
     }
 
+    function toggleDashboardIA(open) {
+      const widget = document.getElementById('dashboard-consulta');
+      const launcher = document.getElementById('dashboard-ia-launcher');
+      if (!widget) return;
+      const shouldOpen = Boolean(open);
+      widget.classList.toggle('is-open', shouldOpen);
+      if (launcher) launcher.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+      if (shouldOpen) setTimeout(function(){ const input=document.getElementById('dashboard-consulta-input'); if(input)input.focus(); }, 80);
+    }
+
     function _dashboardPreguntaEjemplo(question) {
+      toggleDashboardIA(true);
       const input = document.getElementById('dashboard-consulta-input');
       if (input) input.value = question;
       consultarDatosDashboard();
