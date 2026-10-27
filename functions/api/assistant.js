@@ -58,12 +58,15 @@ export async function onRequestPost({ request, env }) {
         ...history.map((previousQuestion) => ({ role: "user", content: `Pregunta anterior (solo contexto): ${previousQuestion}` })),
         { role: "user", content: question },
       ],
-      max_tokens: 260,
+      max_tokens: 400,
       temperature: 0.1,
     });
 
-    const rawText = String(modelResult?.response || modelResult?.result?.response || modelResult?.choices?.[0]?.message?.content || "");
-    const plan = validatePlan(parsePlan(rawText));
+    const rawOutput = modelResult?.response || modelResult?.result?.response || modelResult?.choices?.[0]?.message?.content || modelResult?.output_text || "";
+    const parsedOutput = rawOutput && typeof rawOutput === "object" && typeof rawOutput.mode === "string"
+      ? rawOutput
+      : parsePlan(typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput));
+    const plan = validatePlan(parsedOutput);
     return Response.json({ ok: true, plan, model: MODEL }, { headers: noStore() });
   } catch (error) {
     console.error("Error de mini IA:", error?.message || error);
