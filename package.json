@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev public",
-    "deploy": "wrangler pages deploy public"
+    "deploy": "wrangler pages deploy public --project-name=dasboard-2-0"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
