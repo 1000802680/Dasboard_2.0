@@ -4275,6 +4275,71 @@
 
     const STORAGE_CACHE_KEY = 'DASH_COL_FT001_CACHE_V1';
     const STORAGE_CACHE_MAX = 24 * 60 * 60 * 1000; // Permite pintar copia local mientras se sincroniza con Sheets.
+    const DASHBOARD_CACHE_DB = 'dashboard-col-cache';
+    const DASHBOARD_CACHE_STORE = 'snapshots';
+    let _dashboardCacheDbPromise = null;
+    let _dashboardLastServerSuccessAt = 0;
+
+    function _abrirCacheDashboard() {
+      if (!window.indexedDB) return Promise.resolve(null);
+      if (_dashboardCacheDbPromise) return _dashboardCacheDbPromise;
+      _dashboardCacheDbPromise = new Promise(function(resolve) {
+        try {
+          const request = window.indexedDB.open(DASHBOARD_CACHE_DB, 1);
+          request.onupgradeneeded = function() {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(DASHBOARD_CACHE_STORE)) db.createObjectStore(DASHBOARD_CACHE_STORE, { keyPath: 'key' });
+          };
+          request.onsuccess = function() { resolve(request.result); };
+          request.onerror = function() { resolve(null); };
+          request.onblocked = function() { resolve(null); };
+        } catch (_) { resolve(null); }
+      });
+      return _dashboardCacheDbPromise;
+    }
+
+    function _leerCacheDashboard() {
+      function esUtilizable(snapshot) {
+        const timestamp = Number(snapshot && snapshot._ts || 0);
+        return Array.isArray(snapshot && snapshot.registros) && snapshot.registros.length > 0 && timestamp > 0 && Date.now() - timestamp < STORAGE_CACHE_MAX;
+      }
+      try {
+        const raw = localStorage.getItem(STORAGE_CACHE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (esUtilizable(parsed)) return Promise.resolve(parsed);
+        }
+      } catch (_) {}
+      return _abrirCacheDashboard().then(function(db) {
+        if (!db) return null;
+        return new Promise(function(resolve) {
+          try {
+            const request = db.transaction(DASHBOARD_CACHE_STORE, 'readonly').objectStore(DASHBOARD_CACHE_STORE).get(STORAGE_CACHE_KEY);
+            request.onsuccess = function() {
+              const snapshot = request.result && request.result.payload;
+              resolve(esUtilizable(snapshot) ? snapshot : null);
+            };
+            request.onerror = function() { resolve(null); };
+          } catch (_) { resolve(null); }
+        });
+      });
+    }
+
+    function _guardarCacheDashboard(snapshot) {
+      try { localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(snapshot)); } catch (_) {}
+      return _abrirCacheDashboard().then(function(db) {
+        if (!db) return false;
+        return new Promise(function(resolve) {
+          try {
+            const tx = db.transaction(DASHBOARD_CACHE_STORE, 'readwrite');
+            tx.objectStore(DASHBOARD_CACHE_STORE).put({ key: STORAGE_CACHE_KEY, payload: snapshot });
+            tx.oncomplete = function() { resolve(true); };
+            tx.onerror = function() { resolve(false); };
+            tx.onabort = function() { resolve(false); };
+          } catch (_) { resolve(false); }
+        });
+      }).catch(function() { return false; });
+    }
 
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
@@ -4715,7 +4780,7 @@
             const parsed = JSON.parse(cached);
             const ts = Number(parsed._ts || 0);
             const edad = Date.now() - ts;
-            if (parsed.registros && Array.isArray(parsed.registros) && edad >= 0 && edad < STORAGE_CACHE_MAX) {
+            if (parsed.registros && Array.isArray(parsed.registros) && parsed.registros.length > 0 && edad >= 0 && edad < STORAGE_CACHE_MAX) {
               datos = parsed.registros;
               try { llenarFiltroHoja(); } catch(_) {}
               try { actualizarListasYDashboard(); } catch(_) {}
@@ -4748,6 +4813,20 @@
           }
         }
       } catch(e) {}
+
+      // IndexedDB puede guardar el dataset completo aunque localStorage ya haya
+      // llegado a su límite. Se lee en paralelo con el servidor y nunca pisa una
+      // respuesta más reciente que haya llegado mientras tanto.
+      const cacheReadServerMark = _dashboardLastServerSuccessAt;
+      _leerCacheDashboard().then(function(snapshot) {
+        if (!snapshot || !Array.isArray(snapshot.registros) || !snapshot.registros.length) return;
+        if (_dashboardLastServerSuccessAt > cacheReadServerMark) return;
+        datos = snapshot.registros;
+        try { _invalidateMemo(); llenarFiltroHoja(); actualizarListasYDashboard(); } catch (_) {}
+        try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch (_) {}
+        try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch (_) {}
+        try { actualizarSyncStatus('Copia local · ' + _timestampHumano(Number(snapshot._ts || 0)) + ' (sincronizando...)', false); } catch (_) {}
+      }).catch(function() {});
 
       try { actualizarSyncStatus('Sincronizando con SeaTable...', false); } catch(_) {}
       try { _cargarFromServer(true); }
@@ -4829,12 +4908,8 @@
             datos = respuesta.registros || [];
 
             const serverTs = Date.now();
-            try {
-              localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify({
-                _ts: serverTs,
-                registros: datos
-              }));
-            } catch(e) {}
+            _dashboardLastServerSuccessAt = serverTs;
+            _guardarCacheDashboard({ _ts: serverTs, registros: datos });
 
             llenarFiltroHoja();
             actualizarListasYDashboard();
@@ -4928,6 +5003,12 @@
     function mostrarLoading() {
 
       try {
+        // No presentar ceros como si fueran resultados mientras llega la primera
+        // carga. Los números se sustituyen por los valores reales al pintar datos.
+        ['totalProyectos', 'totalConceptos', 'totalPendientes', 'totalEnProceso', 'totalFinalizados', 'totalCancelados'].forEach(function(id) {
+          const value = document.getElementById(id);
+          if (value) value.textContent = '…';
+        });
         const te = document.getElementById('tablaEstados');
         if (te) te.innerHTML =
           '<tr><td colspan="3"><div class="loading"><div class="spinner"></div>Cargando información...</div></td></tr>';
@@ -7746,9 +7827,8 @@
 
     function recargarDatos(alFinalizar) {
 
-      try { localStorage.removeItem(STORAGE_CACHE_KEY); } catch(e) {}
       _invalidateMemo();
-      try { mostrarLoading(); } catch(_) {}
+      if (!Array.isArray(datos) || !datos.length) { try { mostrarLoading(); } catch(_) {} }
       try { actualizarSyncStatus('Actualizando desde SeaTable...', false); } catch(_) {}
 
       google.script.run
@@ -7763,9 +7843,8 @@
             datos = respuesta.registros;
             _invalidateMemo();
             const serverTs = Date.now();
-            try {
-              localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify({ _ts: serverTs, registros: datos }));
-            } catch(_) {}
+            _dashboardLastServerSuccessAt = serverTs;
+            _guardarCacheDashboard({ _ts: serverTs, registros: datos });
 
             llenarFiltroHoja();
             actualizarListasYDashboard();
@@ -7794,8 +7873,15 @@
         })
         .withFailureHandler(function(error) {
 
-          try { localStorage.removeItem(STORAGE_CACHE_KEY); } catch(e) {}
           try { actualizarSyncStatus('Error al refrescar (intenta de nuevo)', true); } catch(_) {}
+
+          _leerCacheDashboard().then(function(snapshot) {
+            if (!snapshot || !Array.isArray(snapshot.registros) || !snapshot.registros.length) return;
+            datos = snapshot.registros;
+            try { _invalidateMemo(); llenarFiltroHoja(); actualizarListasYDashboard(); } catch (_) {}
+            try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch (_) {}
+            try { actualizarSyncStatus('Sin conexión · mostrando la última copia local ' + _timestampHumano(Number(snapshot._ts || 0)), true); } catch (_) {}
+          }).catch(function() {});
 
           mostrarError(
             error && error.message
@@ -11053,7 +11139,7 @@
           mainRow.PJ = String(row.personaje || '');
           mainRow.SO = String(row.subOpa || '');
           Object.keys(row.fechas || {}).forEach(function(key) { mainRow[key] = row.fechas[key] || ''; });
-          try { localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify({ _ts: Date.now(), registros: datos })); } catch(_) {}
+          _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
         }
         _invalidateMemo();
         actualizarDashboard();
@@ -11274,7 +11360,6 @@
           try { actualizarSyncStatus('Cambios detectados · recargando...', false); } catch(_){}
           _ultimoEtag = nuevoEtag;
           try { localStorage.setItem(ETAG_STORAGE_KEY, nuevoEtag); } catch(_){}
-          try { localStorage.removeItem(STORAGE_CACHE_KEY); } catch(_){}
           _invalidateMemo();
 
           setTimeout(function(){
