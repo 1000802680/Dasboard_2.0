@@ -106,12 +106,12 @@ export async function onRequestPost({ request, env }) {
         if (stageIndex >= 0 && newValue) {
           const statusColumn = getDashboardColumnName(env, "E");
           const currentRow = await getDashboardRow(env, String(table), String(rowId || ""));
-          const currentState = String(currentRow[statusColumn] || currentRow.E || "").trim();
+          const currentState = String(getRowValueForField(currentRow, statusColumn) || currentRow.E || "").trim();
           const statusStage = ESTADOS.findIndex((estado) => estado.toLocaleLowerCase() === currentState.toLocaleLowerCase());
           let furthestStage = statusStage >= 0 && statusStage < 8 ? statusStage : -1;
           for (let index = 0; index < 8; index++) {
             const dateKey = `F${index + 1}`;
-            const dateValue = key === dateKey ? newValue : (currentRow[getDashboardColumnName(env, dateKey)] || currentRow[dateKey]);
+            const dateValue = key === dateKey ? newValue : (getRowValueForField(currentRow, getDashboardColumnName(env, dateKey)) || currentRow[dateKey]);
             if (dateValue) furthestStage = Math.max(furthestStage, index);
           }
           // Las fechas anteriores completan el historial sin hacer retroceder el estado.
@@ -202,6 +202,16 @@ async function assertEditableTable(env, tableName) {
 
 function isDateField(key) {
   return key === "F" || key === "FM" || /^F[1-8]$/.test(key);
+}
+
+function getRowValueForField(row, configuredName) {
+  const target = normalizeHeader(configuredName);
+  const actualKey = Object.keys(row || {}).find((key) => normalizeHeader(key) === target);
+  return actualKey ? row[actualKey] : undefined;
+}
+
+function normalizeHeader(value) {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 function normalizeInputDate(value) {
@@ -312,4 +322,5 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
+
 
