@@ -1615,6 +1615,30 @@
     .estado-chip-card.estado-cancelado   { background: linear-gradient(180deg, rgba(220,38,38,.05), var(--white)); }
     .estado-chip-card.estado-sin-asignar { background: linear-gradient(180deg, rgba(100,116,139,.05), var(--white)); }
 
+    /* Registros de base: lectura rápida, foco por fila y tarjetas de fechas */
+    #registros-base-table thead th {
+      padding: 13px 12px;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .045em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #dbe4ef;
+      background: linear-gradient(180deg,#f8fafc,#f1f5f9);
+    }
+    #registros-base-table { border-collapse: separate !important; border-spacing: 0; }
+    #registros-base-table thead th:first-child { position: sticky; left: 0; z-index: 7; }
+    #registros-base-body .registro-base-row td:first-child { position: sticky; left: 0; z-index: 2; background: inherit; box-shadow: 1px 0 #e2e8f0; }
+    #registros-base-body .registro-base-row { cursor: pointer; transition: background .16s ease, box-shadow .16s ease; }
+    #registros-base-body .registro-base-row:nth-child(even) { background: #f8fafc; }
+    #registros-base-body .registro-base-row:hover { background: #eff6ff; }
+    #registros-base-body .registro-base-row.registro-base-seleccionado { background: #eaf2ff; box-shadow: inset 4px 0 #2563eb; }
+    #registros-base-body .registro-base-row td { padding: 10px 12px !important; border-bottom: 1px solid #e5eaf1 !important; }
+    #registros-base-body .registro-fecha-card { min-height: 48px; box-sizing: border-box; transition: transform .15s ease, box-shadow .15s ease; }
+    #registros-base-body .registro-fecha-card:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(30,64,175,.10); }
+    #registros-base-body .registro-foto-thumb img { transition: transform .16s ease, box-shadow .16s ease; }
+    #registros-base-body .registro-foto-thumb:hover img { transform: scale(1.06); box-shadow: 0 4px 12px rgba(15,23,42,.18); }
+
     .estado-chip-head {
       display: grid;
       grid-template-columns: auto auto 1fr auto;
@@ -3922,6 +3946,27 @@
 
       <!-- RESUMEN POR USUARIO -->
       <div class="panel" style="padding:18px 20px;margin-bottom:16px;">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+          <div><h3 style="margin:0;font-size:16px;color:#0f172a;font-weight:900;">📈 Productividad diaria por usuario</h3>
+            <div style="margin-top:4px;font-size:12px;color:#64748b;">Registros creados, ediciones, estados e imágenes. Los inicios de sesión no cuentan como producción.</div></div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn-secondary" onclick="_historialElegirDia(-1)">Ayer</button>
+            <button type="button" class="btn-secondary" onclick="_historialElegirDia(0)">Hoy</button>
+            <input id="hist-productividad-fecha" type="date" onchange="_historialRenderProductividad()" aria-label="Día de productividad" style="padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-weight:700;" />
+          </div>
+        </div>
+        <div id="hist-productividad-resumen" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px;margin-bottom:12px;"></div>
+        <div style="overflow:auto;border:1px solid #e2e8f0;border-radius:12px;">
+          <table class="opa-table" style="width:100%;min-width:760px;border-collapse:collapse;">
+            <thead style="background:#f8fafc;"><tr><th>Usuario</th><th>Registros creados</th><th>Ediciones</th><th>Cambios de estado</th><th>Imágenes</th><th>OPAs únicas</th><th>Acciones productivas</th></tr></thead>
+            <tbody id="hist-productividad-body"><tr><td colspan="7" style="text-align:center;padding:18px;color:#64748b;">Selecciona un día.</td></tr></tbody>
+          </table>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#64748b;">Cálculo basado en las últimas 3.000 acciones disponibles en la auditoría.</div>
+      </div>
+
+      <!-- RESUMEN POR USUARIO -->
+      <div class="panel" style="padding:18px 20px;margin-bottom:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
           <h3 style="margin:0;font-size:15px;color:#0f172a;font-weight:900;">👥 Resumen por Usuario Registrado</h3>
           <div style="font-size:12px;color:#64748b;font-weight:600;">Cada tarjeta = 1 usuario · ordenado por actividad</div>
@@ -3964,7 +4009,7 @@
       <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
         <div>
           <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">🗂️ Registros de la base</h2>
-          <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Vista ordenada de los datos cargados. Usa los filtros de arriba; esta pestaña no vuelve a consultar SeaTable.</p>
+          <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Vista ordenada para consulta y edición. Usa los filtros de arriba; haz clic en una fila para resaltarla.</p>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <span id="registros-contador" class="badge-total">0 registros</span>
@@ -3973,7 +4018,7 @@
       </div>
       <div class="panel" style="padding:0;overflow:hidden;">
         <div style="overflow:auto;max-height:72vh;">
-          <table class="opa-table" style="width:100%;min-width:1280px;border-collapse:collapse;">
+          <table id="registros-base-table" class="opa-table" style="width:100%;min-width:1280px;">
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
               <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
             </tr></thead>
@@ -4054,7 +4099,7 @@
                 style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:9999px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;font-weight:800;font-size:16px;cursor:pointer;">✕</button>
       </div>
       <div style="padding:18px 20px 20px 20px;overflow-y:auto;">
-        <div id="ce-info" style="padding:10px 12px;border-radius:12px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:12.5px;font-weight:600;margin-bottom:16px;">
+        <div id="ce-info" style="padding:12px 14px;border-radius:12px;background:#f1f5f9;border:1px solid #dbe3ee;color:#334155;font-size:12.5px;font-weight:600;margin-bottom:16px;">
           —
         </div>
         <div id="ce-status" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:12px;font-weight:600;font-size:12.5px;"></div>
@@ -4062,8 +4107,10 @@
         <div style="margin-bottom:14px;">
           <label for="ce-select-estado" style="display:block;font-size:12px;color:#334155;font-weight:800;margin-bottom:6px;">Nuevo estado de plataforma</label>
           <select id="ce-select-estado"
-            style="width:100%;padding:11px 12px;border-radius:12px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:14px;outline:none;box-sizing:border-box;">
+            onchange="_ceActualizarEstadoSeleccionado()"
+            style="width:100%;padding:11px 12px;border-radius:12px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:700;font-size:14px;outline:none;box-sizing:border-box;">
           </select>
+          <div id="ce-estado-ayuda" style="display:flex;align-items:center;gap:9px;margin-top:8px;padding:9px 11px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:700;"><span style="width:9px;height:9px;border-radius:50%;background:#94a3b8;"></span><span>Elige un estado para ver su posición en el flujo.</span></div>
         </div>
 
         <div style="margin-bottom:18px;">
@@ -5226,10 +5273,11 @@
         const lapiz = function(field, label, icon) {
           return puedeEditar ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + field + '\',\'' + escapeAttr(label) + '\',\'' + escapeAttr(icon) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:22px;height:22px;cursor:pointer;font-size:11px;">✏️</button>' : '';
         };
-        const dateCards = etapas.map(function(item) {
-          const field = item[0], label = item[1], value = fechas[field];
-          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:5px;min-width:142px;padding:7px 8px;border:1px solid #e2e8f0;border-radius:9px;background:' + (value ? '#eff6ff' : '#f8fafc') + ';">' +
-            '<div style="min-width:0;"><div style="font-size:10px;color:#64748b;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHTML(label) + '</div><span data-opa-date-field="' + escapeAttr(dataId + ':' + field) + '" style="font-size:11px;color:#0f172a;font-weight:800;">' + escapeHTML(value || '—') + '</span></div>' +
+        const fechasColores = [ ['#2563eb','#eff6ff'],['#0d9488','#f0fdfa'],['#d97706','#fffbeb'],['#7c3aed','#f5f3ff'],['#db2777','#fdf2f8'],['#0891b2','#ecfeff'],['#ca8a04','#fefce8'],['#15803d','#f0fdf4'],['#64748b','#f8fafc'] ];
+        const dateCards = etapas.map(function(item, stageIndex) {
+          const field = item[0], label = item[1], value = fechas[field], tone = fechasColores[stageIndex] || fechasColores[8];
+          return '<div class="registro-fecha-card" title="Etapa ' + String(stageIndex + 1).padStart(2,'0') + ': ' + escapeAttr(label) + (value ? ' · ' + escapeAttr(value) : ' · Sin fecha') + '" style="display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;padding:7px 8px;border:1px solid ' + (value ? tone[0] + '55' : '#dbe3ee') + ';border-left:3px solid ' + tone[0] + ';border-radius:10px;background:' + (value ? tone[1] : '#f8fafc') + ';">' +
+            '<div style="min-width:0;flex:1;"><div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#475569;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="flex:0 0 auto;padding:1px 5px;border-radius:5px;background:' + tone[0] + ';color:#fff;font-size:9px;">' + String(stageIndex + 1).padStart(2,'0') + '</span><span style="overflow:hidden;text-overflow:ellipsis;">' + escapeHTML(label) + '</span></div><span data-opa-date-field="' + escapeAttr(dataId + ':' + field) + '" style="display:block;margin-top:3px;font-size:11.5px;color:' + (value ? '#0f172a' : '#94a3b8') + ';font-weight:850;font-variant-numeric:tabular-nums;">' + escapeHTML(value || 'Pendiente') + '</span></div>' +
             lapiz(field, label, '📅') + '</div>';
         }).join('');
         const images = registroBusqueda.imagenes;
@@ -5240,22 +5288,34 @@
         else if (!images.length) photos = '<span style="color:#94a3b8;font-size:11px;">Sin fotos</span>';
         else photos = images.map(function(image) {
           const url = _opaSafeImageUrl(image && image.url);
-          return url ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(image.name || 'Foto de producto') + '" title="Ver ' + escapeAttr(image.name || 'Foto de producto') + '" style="padding:0;border:0;background:transparent;cursor:zoom-in;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(image.name || 'Foto de producto') + '" loading="lazy" style="width:58px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;margin:2px;"></button>' : '';
+          return url ? '<button type="button" class="registro-foto-thumb" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(image.name || 'Foto de producto') + '" title="Ver ' + escapeAttr(image.name || 'Foto de producto') + '" style="padding:0;border:0;background:transparent;cursor:zoom-in;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(image.name || 'Foto de producto') + '" loading="lazy" style="width:58px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;margin:2px;"></button>' : '';
         }).join('');
         const color = _hojaColEst_estadoColor(row.E || '');
         const estado = '<span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 9px;border-radius:999px;background:' + color.bg + ';color:' + color.fg + ';border:1px solid ' + color.bd + ';font-size:11px;font-weight:800;">' + escapeHTML(row.E || 'Sin estado') + '</span>' +
           (puedeEditar ? '<button type="button" title="Cambiar estado" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;width:22px;height:22px;cursor:pointer;">✏️</button>' : '');
-        return '<tr>' +
+        return '<tr class="registro-base-row" aria-selected="false" onclick="_seleccionarFilaRegistroBase(this,event)" title="Haz clic para resaltar esta fila">' +
           '<td style="min-width:145px;padding:10px;border-bottom:1px solid #e2e8f0;font-weight:900;color:#1e40af;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(row.O || '—') + '</span>' + lapiz('O','Número OPA','#️⃣') + '</td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(row.P || '—') + '</span>' + lapiz('P','Proyecto','📁') + '</td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(row.T || '—') + '</span>' + lapiz('T','Tipo de producto','🏷️') + '</td>' +
           '<td style="min-width:150px;max-width:220px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:flex;flex-wrap:wrap;align-items:center;">' + photos + '</div></td>' +
           '<td style="min-width:210px;padding:10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + estado + '</td>' +
-          '<td style="min-width:650px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:5px;">' + dateCards + '</div></td>' +
+          '<td style="min-width:650px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:grid;grid-template-columns:repeat(3,minmax(145px,1fr));gap:6px;">' + dateCards + '</div></td>' +
           '</tr>';
       }).join('');
       body.innerHTML = html;
       _registrosCargarFotos(pagina);
+    }
+
+    function _seleccionarFilaRegistroBase(row, event) {
+      try {
+        if (!row || event && event.target && event.target.closest('button,a,input,select,textarea,label')) return;
+        document.querySelectorAll('#registros-base-body .registro-base-seleccionado').forEach(function(item) {
+          item.classList.remove('registro-base-seleccionado');
+          item.setAttribute('aria-selected', 'false');
+        });
+        row.classList.add('registro-base-seleccionado');
+        row.setAttribute('aria-selected', 'true');
+      } catch(_) {}
     }
 
     function _registrosClaveImagen(row) { return String(row.H || '') + '::' + String(row._id || ''); }
@@ -10037,6 +10097,9 @@
                 totalesGlobales: r.totalesGlobales || {}
               };
 
+              const fechaProd = document.getElementById('hist-productividad-fecha');
+              if (fechaProd && !fechaProd.value) fechaProd.value = _historialFechaBogota(new Date());
+
               const tg = window.__historialCache.totalesGlobales;
               try { const el = document.getElementById('hist-global-usuarios'); if (el) el.textContent = String(tg.totalUsuariosRegistrados ?? 0); } catch(_) {}
               try { const el = document.getElementById('hist-global-acciones'); if (el) el.textContent = String(tg.totalAccionesSistema ?? 0); } catch(_) {}
@@ -10065,6 +10128,7 @@
               }
 
               _historialRenderResumenUsuarios();
+              _historialRenderProductividad();
               _historialAplicarFiltros();
 
             } catch (e) {
@@ -10083,6 +10147,51 @@
           if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
         } catch(_) {}
       }
+    }
+
+
+    function _historialFechaBogota(fecha) {
+      try { return new Intl.DateTimeFormat('en-CA', { timeZone:'America/Bogota', year:'numeric', month:'2-digit', day:'2-digit' }).format(fecha); }
+      catch(_) { return new Date(fecha).toISOString().slice(0,10); }
+    }
+
+    function _historialElegirDia(offset) {
+      const d = new Date(); d.setDate(d.getDate() + (Number(offset) || 0));
+      const input = document.getElementById('hist-productividad-fecha');
+      if (input) { input.value = _historialFechaBogota(d); _historialRenderProductividad(); }
+    }
+
+    function _historialRenderProductividad() {
+      const body = document.getElementById('hist-productividad-body');
+      const cards = document.getElementById('hist-productividad-resumen');
+      const input = document.getElementById('hist-productividad-fecha');
+      if (!body || !cards) return;
+      const day = String(input && input.value || _historialFechaBogota(new Date()));
+      const porUsuario = {};
+      const events = (window.__historialCache && Array.isArray(window.__historialCache.listado) ? window.__historialCache.listado : []).filter(function(item) {
+        if (!item || !item.tsISO) return false;
+        const dt = new Date(item.tsISO);
+        return !isNaN(dt.getTime()) && _historialFechaBogota(dt) === day;
+      });
+      events.forEach(function(item) {
+        const type = String(item.tipoAccion || '').toUpperCase();
+        const category = type.indexOf('CREAR_REGISTRO_OPA') >= 0 || type === 'CREAR_REGISTRO' ? 'creados' :
+          type.indexOf('EDITAR_CAMPO') >= 0 ? 'ediciones' :
+          type.indexOf('CAMBIO_ESTADO') >= 0 ? 'estados' :
+          type.indexOf('ADJUNTAR_IMAGENES') >= 0 ? 'imagenes' : '';
+        if (!category) return;
+        const username = String(item.username || 'Sin usuario');
+        const stat = porUsuario[username] || (porUsuario[username] = { username, creados:0, ediciones:0, estados:0, imagenes:0, opas:{}, total:0 });
+        stat[category]++;
+        stat.total++;
+        if (item.opaAfectada) stat.opas[String(item.opaAfectada)] = true;
+      });
+      const rows = Object.keys(porUsuario).map(function(key){ return porUsuario[key]; }).sort(function(a,b){ return b.total-a.total || a.username.localeCompare(b.username); });
+      const sums = rows.reduce(function(s,r){ s.creados+=r.creados; s.ediciones+=r.ediciones; s.estados+=r.estados; s.imagenes+=r.imagenes; s.total+=r.total; return s; }, {creados:0,ediciones:0,estados:0,imagenes:0,total:0});
+      const kpis = [ ['Personas activas', rows.length, '#eff6ff','#1d4ed8'], ['Registros creados', sums.creados, '#ecfdf5','#047857'], ['Ediciones', sums.ediciones, '#f0fdfa','#0f766e'], ['Cambios de estado', sums.estados, '#fffbeb','#b45309'], ['Imágenes', sums.imagenes, '#f5f3ff','#6d28d9'] ];
+      cards.innerHTML = kpis.map(function(k){ return '<div style="padding:11px 13px;border:1px solid #e2e8f0;border-radius:12px;background:'+k[2]+';"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:800;color:'+k[3]+';">'+escapeHTML(k[0])+'</div><div style="margin-top:3px;font-size:24px;line-height:1.1;font-weight:900;color:#0f172a;">'+k[1]+'</div></div>'; }).join('');
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b;">No hay acciones productivas registradas para '+escapeHTML(day)+'.</td></tr>'; return; }
+      body.innerHTML = rows.map(function(r){ return '<tr><td style="font-weight:800;">'+escapeHTML(r.username)+'</td><td>'+r.creados+'</td><td>'+r.ediciones+'</td><td>'+r.estados+'</td><td>'+r.imagenes+'</td><td>'+Object.keys(r.opas).length+'</td><td style="font-weight:900;color:#1d4ed8;">'+r.total+'</td></tr>'; }).join('');
     }
 
 
@@ -10779,6 +10888,7 @@
                         '</div>' +
                         '<div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;">' + tarjetas + '</div>' +
                         '<div data-opa-gallery="' + escapeAttr(dataId) + '" style="margin-top:16px;">' + _opaRenderGaleria(dataId, rw, haySesion && puedeCambiar) + '</div>' +
+                        '<div data-opa-product-fields="' + escapeAttr(dataId) + '" style="margin-top:14px;">' + _opaRenderCamposProducto(dataId, rw, haySesion && puedeCambiar) + '</div>' +
                       '</td>' +
                     '</tr>';
                   html += '<tr>' +
@@ -10850,28 +10960,23 @@
         ['Cantidad de muestras enviadas','ME',r=>r.todasLasFechas?.ME], ['Enlace guía de envío','GE',r=>r.todasLasFechas?.GE]
       ];
       const dates = [['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],['F4','Pre-producción aprobada'],['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],['F8','Aprobada / cerrada'],['FM','Fecha de envío de muestras']];
-      const canEdit = !window.CLOUD_READ_ONLY && !!(_authSesionActual && _authSesionActual.token) && (!_authSesionActual.permisos || _authSesionActual.permisos.cambiar_estado !== false);
       content.innerHTML = _opaResultadosActuales.map(function(row) {
         const dataId = String(row._dataId || '');
-        const all = row.todasLasFechas || {};
-        const edit = function(key,label) {
-          return canEdit ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(key) + '\',\'' + escapeAttr(label) + '\',\'✏️\')" style="border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:25px;height:25px;cursor:pointer;">✏️</button>' : '';
-        };
         const info = fields.map(function(def) {
           const raw = def[2](row);
           const value = raw == null || raw === '' ? 'Sin registrar' : Array.isArray(raw) ? raw.map(x=>x && (x.name||x.url) || x).join(', ') : String(raw);
-          return '<div style="padding:10px 12px;border:1px solid #dbe3ef;border-radius:11px;background:#fff;min-width:0;"><div style="display:flex;align-items:center;justify-content:space-between;gap:6px;color:#64748b;font-size:10px;font-weight:800;text-transform:uppercase;">' + escapeHTML(def[0]) + edit(def[1],def[0]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[1]) + '" style="margin-top:5px;color:#0f172a;font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + escapeHTML(value) + '</div></div>';
+          return '<div style="padding:12px 14px;border:1px solid #dbe3ef;border-radius:12px;background:#fff;min-width:0;"><div style="color:#64748b;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">' + escapeHTML(def[0]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[1]) + '" style="margin-top:6px;color:#0f172a;font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + escapeHTML(value) + '</div></div>';
         }).join('');
         const dateCards = dates.map(function(def) {
           const value = row.fechas?.[def[0]] || '';
-          return '<div style="padding:9px 11px;border:1px solid ' + (value?'#bfdbfe':'#dbe3ef') + ';border-radius:10px;background:' + (value?'#eff6ff':'#fff') + ';"><div style="display:flex;align-items:center;justify-content:space-between;gap:5px;color:#64748b;font-size:10px;font-weight:800;">' + escapeHTML(def[1]) + edit(def[0],def[1]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[0]) + '" style="margin-top:4px;color:#1e3a8a;font-size:12px;font-weight:800;">' + escapeHTML(String(value || 'Pendiente')) + '</div></div>';
+          return '<div style="padding:10px 12px;border:1px solid ' + (value?'#bfdbfe':'#dbe3ef') + ';border-radius:10px;background:' + (value?'#eff6ff':'#fff') + ';"><div style="color:#64748b;font-size:10px;font-weight:800;">' + escapeHTML(def[1]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[0]) + '" style="margin-top:5px;color:' + (value?'#1e3a8a':'#94a3b8') + ';font-size:12px;font-weight:800;">' + escapeHTML(String(value || 'Pendiente')) + '</div></div>';
         }).join('');
         const photos = (row.imagenes || []).map(function(img) {
           const url = _opaSafeImageUrl(img && img.url);
           const name = String(img && img.name || 'Foto del producto');
           return url ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" style="padding:0;border:0;background:none;cursor:zoom-in;text-align:left;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:120px;height:100px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;"><span style="display:block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;">' + escapeHTML(name) + '</span></button>' : '';
         }).join('');
-        return '<article style="margin-bottom:14px;overflow:hidden;border:1px solid #dbe3ef;border-radius:16px;background:#fff;"><header style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px;background:linear-gradient(120deg,#f8fafc,#eff6ff);"><strong style="color:#1e40af;font-size:18px;">OPA ' + escapeHTML(String(row.numeroOPA || '—')) + ' · ' + escapeHTML(String(row.hoja || '')) + '</strong><div style="display:flex;align-items:center;gap:8px;"><span data-preview-field="' + escapeAttr(dataId + ':E') + '" style="padding:6px 11px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800;">' + escapeHTML(String(row.estadoPlataforma || 'Sin estado')) + '</span>' + (canEdit ? '<button type="button" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="padding:6px 10px;border:1px solid #bfdbfe;border-radius:99px;background:#fff;color:#1d4ed8;font-size:11px;font-weight:800;cursor:pointer;">✏️ Cambiar estado</button>' : '') + '</div></header><div style="padding:14px;display:grid;gap:14px;"><section><h4 style="margin:0 0 8px;font-size:12px;">INFORMACIÓN DEL PRODUCTO</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">' + info + '</div></section><section><h4 style="margin:0 0 8px;font-size:12px;">FECHAS DE ETAPAS</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:7px;">' + dateCards + '</div></section><section><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h4 style="margin:0;font-size:12px;">FOTOS DEL PRODUCTO · LINK O FOTO PRODUCTO</h4>' + (canEdit ? '<button type="button" onclick="_opaAbrirSelectorFotos(\'' + escapeAttr(dataId) + '\')" style="padding:7px 10px;border:1px solid #bfdbfe;border-radius:9px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:800;cursor:pointer;">📎 Adjuntar fotos</button>' : '') + '</div><div style="display:flex;gap:10px;flex-wrap:wrap;">' + (photos || '<span style="color:#94a3b8;font-size:12px;">No hay fotos adjuntas.</span>') + '</div></section></div></article>';
+        return '<article style="margin-bottom:14px;overflow:hidden;border:1px solid #dbe3ef;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.08);"><header style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;background:linear-gradient(120deg,#f8fafc,#eff6ff);border-bottom:1px solid #e2e8f0;"><div><div style="color:#64748b;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Ficha de producto</div><strong style="display:block;margin-top:3px;color:#1e40af;font-size:20px;">OPA ' + escapeHTML(String(row.numeroOPA || '—')) + ' · ' + escapeHTML(String(row.hoja || '')) + '</strong></div><span data-preview-field="' + escapeAttr(dataId + ':E') + '" style="padding:7px 12px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800;">' + escapeHTML(String(row.estadoPlataforma || 'Sin estado')) + '</span></header><div style="padding:18px;display:grid;gap:18px;"><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">INFORMACIÓN DEL PRODUCTO</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">' + info + '</div></section><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">FECHAS DE ETAPAS</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">' + dateCards + '</div></section><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">FOTOS DEL PRODUCTO · LINK O FOTO PRODUCTO</h4><div style="display:flex;gap:10px;flex-wrap:wrap;">' + (photos || '<span style="color:#94a3b8;font-size:12px;">No hay fotos adjuntas.</span>') + '</div></section></div></article>';
       }).join('');
       modal.style.display = 'flex';
       document.addEventListener('keydown', _opaVistaPreviaKeyDown);
@@ -10951,6 +11056,26 @@
         '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' + (cards || '<span style="font-size:12px;color:#94a3b8;padding:8px 2px;">Todavía no hay fotos para esta OPA.</span>') + '</div>' +
         '<div data-opa-upload-status="' + escapeAttr(dataId) + '" style="display:none;margin-top:10px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;"></div>' +
       '</div>';
+    }
+
+    function _opaRenderCamposProducto(dataId, row, canEdit) {
+      const fields = [
+        ['O','Número de OPA',row.numeroOPA], ['P','Proyecto',row.proyecto], ['T','Tipo de producto',row.tipoProducto],
+        ['TE','Tipo de producto específico'], ['M','Marca'], ['TR','Territorio',row.territorio], ['PO','Portafolio'],
+        ['B2B','Item / SKU B2B'], ['B2C','Item / SKU B2C'], ['NP','Nombre de producto en OPA'],
+        ['D','Descripción del producto ERP'], ['PJ','Personaje',row.personaje], ['SO','Sub-OPA',row.subOpa],
+        ['MR','Cantidad de muestras recibidas'], ['ME','Cantidad de muestras enviadas'], ['GE','Enlace guía de envío']
+      ];
+      const source = row && row.todasLasFechas || {};
+      const editable = canEdit && !window.CLOUD_READ_ONLY;
+      const cards = fields.map(function(field) {
+        const key = field[0];
+        const value = field.length > 2 && field[2] != null && field[2] !== '' ? field[2] : source[key];
+        const display = value == null || value === '' ? 'Sin registrar' : Array.isArray(value) ? value.map(function(item){return item && (item.name || item.url) || item;}).join(', ') : String(value);
+        const pencil = editable ? '<button type="button" aria-label="Editar ' + escapeAttr(field[1]) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(key) + '\',\'' + escapeAttr(field[1]) + '\',\'✏️\')" style="width:28px;height:28px;flex:0 0 28px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;cursor:pointer;">✏️</button>' : '';
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:11px 13px;border:1px solid #dbe3ef;border-radius:12px;background:#fff;box-shadow:0 2px 5px rgba(15,23,42,.03);"><div style="min-width:0;"><div style="margin-bottom:5px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;">' + escapeHTML(field[1]) + '</div><div data-opa-field="' + escapeAttr(dataId + ':' + key) + '" style="color:#0f172a;font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + escapeHTML(display) + '</div></div>' + pencil + '</div>';
+      }).join('');
+      return '<section style="padding:14px;border:1px solid #dbe3ef;border-radius:14px;background:#f8fafc;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:11px;"><div><h4 style="margin:0;color:#0f172a;font-size:13px;font-weight:900;">Detalles del producto</h4><div style="margin-top:3px;color:#64748b;font-size:11px;">' + (editable ? 'Edita cada campo con el lápiz; los cambios se guardan en la columna correspondiente de SeaTable.' : 'Información del producto registrada para esta OPA.') + '</div></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;">' + cards + '</div></section>';
     }
 
     async function _subirImagenesOPA(dataId, input) {
@@ -11062,23 +11187,24 @@
         if (info) {
           info.innerHTML =
             '<div style="display:flex;flex-wrap:wrap;gap:8px 14px;">' +
-            '<div><span style="color:#93c5fd;font-weight:700;">OPA:</span> <b style="color:#fff;">' + escapeHTML(_ceActual.numeroOPA || '—') + '</b></div>' +
-            '<div><span style="color:#93c5fd;font-weight:700;">Hoja:</span> <b style="color:#fff;">' + escapeHTML(_ceActual.hoja || '—') + '</b></div>' +
-            '<div><span style="color:#93c5fd;font-weight:700;">Fila:</span> <b style="color:#fff;">#' + escapeHTML(String(_ceActual.fila || '—')) + '</b></div>' +
-            ( _ceActual.proyecto ? '<div style="width:100%;"><span style="color:#93c5fd;font-weight:700;">Proyecto:</span> <b style="color:#fff;">' + escapeHTML(_ceActual.proyecto) + '</b>' +
-              (_ceActual.tipoProducto ? ' · <span style="color:#93c5fd;font-weight:700;">Tipo Prod:</span> <b style="color:#fff;">' + escapeHTML(_ceActual.tipoProducto) + '</b>' : '') +
-              (_ceActual.territorio ? ' · <span style="color:#93c5fd;font-weight:700;">Territorio:</span> <b style="color:#fff;">' + escapeHTML(_ceActual.territorio) + '</b>' : '') + '</div>' : '') +
-            '<div style="width:100%;"><span style="color:#93c5fd;font-weight:700;">Estado actual:</span> <b style="color:#fff;">' + escapeHTML(_ceActual.estadoActual || 'Sin estado') + '</b></div>' +
+            '<div><span style="color:#1d4ed8;font-weight:800;">OPA:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.numeroOPA || '—') + '</b></div>' +
+            '<div><span style="color:#1d4ed8;font-weight:800;">Hoja:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.hoja || '—') + '</b></div>' +
+            '<div><span style="color:#1d4ed8;font-weight:800;">Fila:</span> <b style="color:#0f172a;">#' + escapeHTML(String(_ceActual.fila || '—')) + '</b></div>' +
+            ( _ceActual.proyecto ? '<div style="width:100%;"><span style="color:#1d4ed8;font-weight:800;">Proyecto:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.proyecto) + '</b>' +
+              (_ceActual.tipoProducto ? ' · <span style="color:#1d4ed8;font-weight:800;">Tipo Prod:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.tipoProducto) + '</b>' : '') +
+              (_ceActual.territorio ? ' · <span style="color:#1d4ed8;font-weight:800;">Territorio:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.territorio) + '</b>' : '') + '</div>' : '') +
+            '<div style="width:100%;"><span style="color:#1d4ed8;font-weight:800;">Estado actual:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.estadoActual || 'Sin estado') + '</b></div>' +
             '</div>';
         }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
         // Llenar selector estados
         if (sel) {
           const opts = [];
-          opts.push({ val: _ceActual.estadoActual, label: '(Mantener: ' + (_ceActual.estadoActual || 'Sin estado') + ')' });
+          opts.push({ val: _ceActual.estadoActual, label: '—  Mantener estado actual · ' + (_ceActual.estadoActual || 'Sin estado') });
           for (let i=0;i<_estadosOpcionesDefault.length;i++) {
             if (String(_estadosOpcionesDefault[i] || '').toLowerCase() !== String(_ceActual.estadoActual || '').toLowerCase()) {
-              opts.push({ val: _estadosOpcionesDefault[i], label: _estadosOpcionesDefault[i] });
+              const numero = String(i + 1).padStart(2, '0');
+              opts.push({ val: _estadosOpcionesDefault[i], label: numero + '  ·  ' + _estadosOpcionesDefault[i] });
             }
           }
           let html = '';
@@ -11086,6 +11212,7 @@
             html += '<option value="' + escapeAttr(opts[i].val) + '" ' + (i===0 ? 'selected' : '') + '>' + escapeHTML(opts[i].label) + '</option>';
           }
           sel.innerHTML = html;
+          _ceActualizarEstadoSeleccionado();
         }
         if (inpF) {
           try {
@@ -11100,6 +11227,21 @@
       } catch(err) {
         try { _buscarOPA_setStatus('❌ Error al abrir modal cambiar estado: ' + String(err && err.message || err), 'error'); } catch(_) {}
       }
+    }
+
+    function _ceActualizarEstadoSeleccionado() {
+      const select = document.getElementById('ce-select-estado');
+      const ayuda = document.getElementById('ce-estado-ayuda');
+      if (!select || !ayuda) return;
+      const value = String(select.value || '');
+      const index = _estadosOpcionesDefault.indexOf(value);
+      const colors = ['#2563eb','#0d9488','#d97706','#ca8a04','#7c3aed','#0f766e','#0891b2','#15803d','#dc2626'];
+      const color = index >= 0 ? colors[index] : '#64748b';
+      const caption = index >= 0 ? ('Etapa ' + String(index + 1).padStart(2,'0') + ' de ' + _estadosOpcionesDefault.length + ' · ' + value) : ('Se conservará el estado actual · ' + (value || 'Sin estado'));
+      ayuda.style.borderColor = color + '44';
+      ayuda.style.background = color + '0d';
+      ayuda.style.color = color;
+      ayuda.innerHTML = '<span style="width:9px;height:9px;border-radius:50%;background:' + color + ';flex:0 0 9px;"></span><span>' + escapeHTML(caption) + '</span>';
     }
 
     function _ceCerrar() {
@@ -11207,8 +11349,7 @@
           const ultima = document.querySelector('[data-opa-last-date="' + dataId + '"]');
           if (ultima) ultima.textContent = row.fechaUltima || '—';
         }
-        const field = document.querySelector('[data-opa-field="' + dataId + ':' + campoClave + '"]');
-        if (field) field.textContent = value || '—';
+        document.querySelectorAll('[data-opa-field="' + dataId + ':' + campoClave + '"]').forEach(function(field) { field.textContent = value || '—'; });
         document.querySelectorAll('[data-preview-field="' + dataId + ':' + campoClave + '"]').forEach(function(previewField) { previewField.textContent = value || 'Sin registrar'; });
       } catch(_) {}
     }
@@ -11831,4 +11972,3 @@
 
 </body>
 </html>
-
