@@ -48,4 +48,3 @@ En Cloudflare configura `AUTH_SESSION_SECRET` como secreto aleatorio largo y `AU
 
 El dashboard consulta SeaTable cada 30 segundos para reflejar cambios en filas existentes y pestañas nuevas. El botón “Actualizar datos” fuerza una lectura inmediata. Las rutas de Functions cuentan contra el cupo diario gratuito de Workers; sirve solo las rutas API a través de Functions y mantiene los archivos estáticos fuera de sus invocaciones cuando se genere `_routes.json`.
 
-
