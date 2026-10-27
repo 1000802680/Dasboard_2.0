@@ -213,6 +213,10 @@ function toInternalRecord(row, tableName, sourceKeyMap) {
     else result[internal] = String(value).trim();
   }
   result._id = row._id || "";
+  // Conservar los metadatos de creación y modificación de SeaTable. El panel
+  // de consultas usa _ctime para contar registros realmente creados por fecha;
+  // _mtime se mantiene para ordenar cambios posteriores.
+  result._ctime = row._ctime || row._created_at || "";
   result._mtime = row._mtime || row._ctime || "";
   if (EMPTY_OPA.has(String(result.O || "").trim().toUpperCase())) result.O = "";
   return result;
@@ -580,6 +584,7 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
+
 
 
 
