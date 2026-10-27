@@ -3790,6 +3790,9 @@
         <button class="btn-primary" onclick="_buscarOPA()" style="flex-shrink:0;margin:0 4px 0 0;pointer-events:auto;cursor:pointer;">
           Buscar
         </button>
+        <button id="btn-vista-previa-opa" type="button" class="btn-secondary" onclick="_opaAbrirVistaPrevia()" disabled style="flex-shrink:0;margin:0 4px 0 0;pointer-events:auto;cursor:not-allowed;opacity:.55;">
+          👁️ Vista previa
+        </button>
         <button class="btn-secondary" onclick="_limpiarBuscaOPA()" style="flex-shrink:0;margin:0;pointer-events:auto;cursor:pointer;">
           Limpiar
         </button>
@@ -3824,6 +3827,16 @@
           </table>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="opa-preview-modal" role="dialog" aria-modal="true" aria-labelledby="opa-preview-title" onclick="if(event.target===this)_opaCerrarVistaPrevia()" style="position:fixed;inset:0;z-index:31000;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.62);backdrop-filter:blur(6px);padding:18px;">
+    <div style="width:min(980px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border-radius:20px;background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.35);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid #e2e8f0;background:linear-gradient(135deg,#f8fafc,#eff6ff);">
+        <div><div style="font-size:11px;color:#64748b;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Consulta de OPA</div><h3 id="opa-preview-title" style="margin:3px 0 0;color:#0f172a;font-size:19px;font-weight:900;">Vista previa</h3></div>
+        <button type="button" onclick="_opaCerrarVistaPrevia()" aria-label="Cerrar vista previa" style="width:40px;height:40px;border:1px solid #cbd5e1;border-radius:50%;background:#fff;color:#334155;font-size:22px;cursor:pointer;">×</button>
+      </div>
+      <div id="opa-preview-content" style="padding:18px;overflow:auto;background:#f8fafc;"></div>
     </div>
   </div>
 
@@ -10315,6 +10328,7 @@
     ============================================================ */
 
     var _ultimaBusqueda = 0;
+    var _opaResultadosActuales = [];
     var _ceActual = null; // fila seleccionada en modal cambiar-estado
     var _estadosOpcionesDefault = [
       'Concepto Enviado',          // 1 → F1
@@ -10632,6 +10646,8 @@
           return;
         }
         const idBusqueda = ++_ultimaBusqueda;
+        _opaResultadosActuales = [];
+        _opaSetVistaPreviaDisponible(false);
         _buscarOPA_setStatus('⌛ Buscando "' + escapeHTML(q) + '" en todas las hojas...', 'info');
         const wrap = document.getElementById('busca-resultados-wrap');
         const badge = document.getElementById('badge-busca-total');
@@ -10653,6 +10669,8 @@
                 return;
               }
               const resultados = r.resultados || [];
+              _opaResultadosActuales = resultados;
+              _opaSetVistaPreviaDisponible(resultados.length > 0);
               if (badge) badge.textContent = (resultados.length.toLocaleString ? resultados.length.toLocaleString('es') : String(resultados.length)) + ' resultados';
               if (!resultados.length) {
                 _buscarOPA_setStatus('🟡 No se encontró ninguna OPA con ese número/texto en las hojas de datos.', 'error');
@@ -10681,6 +10699,7 @@
                   const estadoCol = String(rw.estadoPlataforma || '').trim();
                   const estadoColor = _hojaColEst_estadoColor(estadoCol);
                   const dataId = 'r' + String(Number(i) + 1);
+                  rw._dataId = dataId;
                   let onclickBtn;
                   let btnLabel;
                   let btnStyle;
@@ -10807,6 +10826,69 @@
       } catch(_) { return ''; }
     }
 
+    function _opaSetVistaPreviaDisponible(disponible) {
+      const button = document.getElementById('btn-vista-previa-opa');
+      if (!button) return;
+      button.disabled = !disponible;
+      button.style.opacity = disponible ? '1' : '.55';
+      button.style.cursor = disponible ? 'pointer' : 'not-allowed';
+    }
+
+    function _opaAbrirVistaPrevia() {
+      if (!_opaResultadosActuales.length) return;
+      const modal = document.getElementById('opa-preview-modal');
+      const content = document.getElementById('opa-preview-content');
+      const title = document.getElementById('opa-preview-title');
+      if (!modal || !content) return;
+      if (title) title.textContent = 'Vista previa · ' + _opaResultadosActuales.length + ' registro(s)';
+      const fields = [
+        ['Número de OPA','O',r=>r.numeroOPA], ['Proyecto','P',r=>r.proyecto], ['Tipo de producto','T',r=>r.tipoProducto],
+        ['Tipo de producto específico','TE',r=>r.todasLasFechas?.TE], ['Marca','M',r=>r.todasLasFechas?.M], ['Territorio','TR',r=>r.territorio],
+        ['Portafolio','PO',r=>r.todasLasFechas?.PO], ['Item / SKU B2B','B2B',r=>r.todasLasFechas?.B2B], ['Item / SKU B2C','B2C',r=>r.todasLasFechas?.B2C],
+        ['Nombre de producto en OPA','NP',r=>r.todasLasFechas?.NP], ['Descripción del producto ERP','D',r=>r.todasLasFechas?.D],
+        ['Personaje','PJ',r=>r.personaje], ['Sub-OPA','SO',r=>r.subOpa], ['Cantidad de muestras recibidas','MR',r=>r.todasLasFechas?.MR],
+        ['Cantidad de muestras enviadas','ME',r=>r.todasLasFechas?.ME], ['Enlace guía de envío','GE',r=>r.todasLasFechas?.GE]
+      ];
+      const dates = [['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],['F4','Pre-producción aprobada'],['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],['F8','Aprobada / cerrada'],['FM','Fecha de envío de muestras']];
+      const canEdit = !window.CLOUD_READ_ONLY && !!(_authSesionActual && _authSesionActual.token) && (!_authSesionActual.permisos || _authSesionActual.permisos.cambiar_estado !== false);
+      content.innerHTML = _opaResultadosActuales.map(function(row) {
+        const dataId = String(row._dataId || '');
+        const all = row.todasLasFechas || {};
+        const edit = function(key,label) {
+          return canEdit ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(key) + '\',\'' + escapeAttr(label) + '\',\'✏️\')" style="border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:25px;height:25px;cursor:pointer;">✏️</button>' : '';
+        };
+        const info = fields.map(function(def) {
+          const raw = def[2](row);
+          const value = raw == null || raw === '' ? 'Sin registrar' : Array.isArray(raw) ? raw.map(x=>x && (x.name||x.url) || x).join(', ') : String(raw);
+          return '<div style="padding:10px 12px;border:1px solid #dbe3ef;border-radius:11px;background:#fff;min-width:0;"><div style="display:flex;align-items:center;justify-content:space-between;gap:6px;color:#64748b;font-size:10px;font-weight:800;text-transform:uppercase;">' + escapeHTML(def[0]) + edit(def[1],def[0]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[1]) + '" style="margin-top:5px;color:#0f172a;font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + escapeHTML(value) + '</div></div>';
+        }).join('');
+        const dateCards = dates.map(function(def) {
+          const value = row.fechas?.[def[0]] || '';
+          return '<div style="padding:9px 11px;border:1px solid ' + (value?'#bfdbfe':'#dbe3ef') + ';border-radius:10px;background:' + (value?'#eff6ff':'#fff') + ';"><div style="display:flex;align-items:center;justify-content:space-between;gap:5px;color:#64748b;font-size:10px;font-weight:800;">' + escapeHTML(def[1]) + edit(def[0],def[1]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[0]) + '" style="margin-top:4px;color:#1e3a8a;font-size:12px;font-weight:800;">' + escapeHTML(String(value || 'Pendiente')) + '</div></div>';
+        }).join('');
+        const photos = (row.imagenes || []).map(function(img) {
+          const url = _opaSafeImageUrl(img && img.url);
+          const name = String(img && img.name || 'Foto del producto');
+          return url ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" style="padding:0;border:0;background:none;cursor:zoom-in;text-align:left;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:120px;height:100px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;"><span style="display:block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;">' + escapeHTML(name) + '</span></button>' : '';
+        }).join('');
+        return '<article style="margin-bottom:14px;overflow:hidden;border:1px solid #dbe3ef;border-radius:16px;background:#fff;"><header style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px;background:linear-gradient(120deg,#f8fafc,#eff6ff);"><strong style="color:#1e40af;font-size:18px;">OPA ' + escapeHTML(String(row.numeroOPA || '—')) + ' · ' + escapeHTML(String(row.hoja || '')) + '</strong><div style="display:flex;align-items:center;gap:8px;"><span data-preview-field="' + escapeAttr(dataId + ':E') + '" style="padding:6px 11px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800;">' + escapeHTML(String(row.estadoPlataforma || 'Sin estado')) + '</span>' + (canEdit ? '<button type="button" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="padding:6px 10px;border:1px solid #bfdbfe;border-radius:99px;background:#fff;color:#1d4ed8;font-size:11px;font-weight:800;cursor:pointer;">✏️ Cambiar estado</button>' : '') + '</div></header><div style="padding:14px;display:grid;gap:14px;"><section><h4 style="margin:0 0 8px;font-size:12px;">INFORMACIÓN DEL PRODUCTO</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">' + info + '</div></section><section><h4 style="margin:0 0 8px;font-size:12px;">FECHAS DE ETAPAS</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:7px;">' + dateCards + '</div></section><section><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h4 style="margin:0;font-size:12px;">FOTOS DEL PRODUCTO · LINK O FOTO PRODUCTO</h4>' + (canEdit ? '<button type="button" onclick="_opaAbrirSelectorFotos(\'' + escapeAttr(dataId) + '\')" style="padding:7px 10px;border:1px solid #bfdbfe;border-radius:9px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:800;cursor:pointer;">📎 Adjuntar fotos</button>' : '') + '</div><div style="display:flex;gap:10px;flex-wrap:wrap;">' + (photos || '<span style="color:#94a3b8;font-size:12px;">No hay fotos adjuntas.</span>') + '</div></section></div></article>';
+      }).join('');
+      modal.style.display = 'flex';
+      document.addEventListener('keydown', _opaVistaPreviaKeyDown);
+    }
+
+    function _opaVistaPreviaKeyDown(event) { if (event.key === 'Escape') _opaCerrarVistaPrevia(); }
+    function _opaAbrirSelectorFotos(dataId) {
+      const picker = document.getElementById('opa-files-' + String(dataId || ''));
+      if (picker) picker.click();
+      else _buscarOPA_setStatus('No se encontró el cargador de fotos de esta OPA. Vuelve a realizar la búsqueda.', 'error');
+    }
+    function _opaCerrarVistaPrevia() {
+      const modal = document.getElementById('opa-preview-modal');
+      if (modal) modal.style.display = 'none';
+      document.removeEventListener('keydown', _opaVistaPreviaKeyDown);
+    }
+
     function _opaSafeImageUrl(value) {
       try {
         const url = new URL(String(value || ''), window.location.href);
@@ -10931,6 +11013,8 @@
         const wrap = document.getElementById('busca-resultados-wrap');
         const tbody = document.getElementById('busca-resultados-body');
         if (inp) inp.value = '';
+        _opaResultadosActuales = [];
+        _opaSetVistaPreviaDisponible(false);
         if (badge) badge.textContent = '0 resultados';
         if (wrap) wrap.style.display = 'none';
         if (tbody) tbody.innerHTML = '';
@@ -11095,8 +11179,11 @@
         const row = window._busqOpaCache && window._busqOpaCache[dataId];
         if (!row) return;
         const value = String(valor == null ? '' : valor);
-        const props = { O:'numeroOPA', P:'proyecto', T:'tipoProducto', TR:'territorio', PJ:'personaje', SO:'subOpa', E:'estadoPlataforma' };
+        const props = { O:'numeroOPA', P:'proyecto', T:'tipoProducto', TE:'tipoProductoEspecifico', M:'marca', TR:'territorio', PO:'portafolio', B2B:'skuB2B', B2C:'skuB2C', D:'descripcionProducto', NP:'nombreProductoOPA', PJ:'personaje', SO:'subOpa', MR:'muestrasRecibidas', ME:'muestrasEnviadas', GE:'enlaceGuia', E:'estadoPlataforma' };
         if (props[campoClave]) row[props[campoClave]] = value;
+        if (!row.todasLasFechas) row.todasLasFechas = {};
+        row.todasLasFechas[campoClave] = value;
+        if (!props[campoClave] && !/^F(?:[1-8])?$/.test(campoClave) && campoClave !== 'FM') row[campoClave] = value;
         if (/^F[1-8]$/.test(campoClave) && value) {
           const etapas = ['Concepto Enviado','Concepto Aprobado','Pre-Producción Enviada','Pre-Producción Aprobada','Fotos de Producción Enviada','Fotos de Producción Aprobada','Muestras Finales Enviadas','Aprobada / Cerrada'];
           const nuevoIndice = Number(campoClave.slice(1)) - 1;
@@ -11122,6 +11209,7 @@
         }
         const field = document.querySelector('[data-opa-field="' + dataId + ':' + campoClave + '"]');
         if (field) field.textContent = value || '—';
+        document.querySelectorAll('[data-preview-field="' + dataId + ':' + campoClave + '"]').forEach(function(previewField) { previewField.textContent = value || 'Sin registrar'; });
       } catch(_) {}
     }
 
@@ -11138,6 +11226,9 @@
           mainRow.TR = String(row.territorio || '');
           mainRow.PJ = String(row.personaje || '');
           mainRow.SO = String(row.subOpa || '');
+          ['TE','M','PO','B2B','B2C','D','NP','MR','ME','GE'].forEach(function(key) {
+            if (Object.prototype.hasOwnProperty.call(row.todasLasFechas || {}, key)) mainRow[key] = row.todasLasFechas[key];
+          });
           Object.keys(row.fechas || {}).forEach(function(key) { mainRow[key] = row.fechas[key] || ''; });
           _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
         }
@@ -11175,7 +11266,7 @@
         else if (campoClave === 'SO') valorActual = String(row.subOpa || '');
         else if (campoClave === 'F') valorActual = ultimaFecha;
         else if (/^F[1-8]$/.test(campoClave) || campoClave === 'FM') valorActual = String(fechas[campoClave] || '');
-        else valorActual = String(row[campoClave] || '');
+        else valorActual = String(row[campoClave] != null ? row[campoClave] : (row.todasLasFechas && row.todasLasFechas[campoClave]) || '');
         _ecActual = {
           dataId: dataId,
           hoja: String(row.hoja || ''),
@@ -11740,3 +11831,4 @@
 
 </body>
 </html>
+
