@@ -121,12 +121,11 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   if (!tableNames.length) throw new Error("No se encontraron tablas en la base SeaTable. Revisa permisos y configuración.");
 
   const pageSize = 1000;
-  // Las hojas son independientes; leerlas en serie hace que una base con muchas
-  // marcas tarde decenas de segundos. Limitamos la concurrencia para acelerar
-  // la carga sin disparar cientos de solicitudes a SeaTable.
+  // Las hojas son independientes; limitamos la concurrencia para acelerar la
+  // carga sin disparar cientos de solicitudes a SeaTable.
   const maxConcurrentTables = Math.min(4, tableNames.length);
   let nextTableIndex = 0;
-  async function readTable(tableName) {
+  async function readTableWithRowsAPI(tableName) {
     const tableRows = [];
     for (let start = 0; ; start += pageSize) {
       const url = new URL(`${server}/api-gateway/api/v2/dtables/${baseId}/rows/`);
@@ -144,6 +143,35 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
       if (start + rows.length >= 100_000) throw new Error("La lectura supera el tope de seguridad de 100.000 filas. Usa vistas o consulta por páginas/filtros.");
     }
     return tableRows;
+  }
+  async function readTableWithSql(tableName) {
+    const tableRows = [];
+    const quotedTable = `\`${String(tableName).replace(/`/g, "``")}\``;
+    const sqlPageSize = 10_000;
+    for (let offset = 0; ; offset += sqlPageSize) {
+      const response = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ sql: `SELECT * FROM ${quotedTable} LIMIT ${sqlPageSize} OFFSET ${offset}`, convert_keys: true }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`No se pudo leer la hoja "${tableName}" con SQL (HTTP ${response.status}).`);
+      const rows = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
+      if (!Array.isArray(rows)) throw new Error(`SeaTable devolvió un formato inesperado para la hoja "${tableName}".`);
+      tableRows.push(...rows);
+      if (rows.length < sqlPageSize) break;
+      if (offset + rows.length >= 100_000) throw new Error("La lectura supera el tope de seguridad de 100.000 filas. Usa vistas o consulta por páginas/filtros.");
+    }
+    return tableRows;
+  }
+  async function readTable(tableName) {
+    // SQL recupera hasta 10.000 filas por llamada frente al límite de 1.000
+    // del endpoint de filas. Si SQL no está disponible, conserva compatibilidad.
+    if (!env.SEATABLE_VIEW_NAME) {
+      try { return await readTableWithSql(tableName); }
+      catch (_) { return readTableWithRowsAPI(tableName); }
+    }
+    return readTableWithRowsAPI(tableName);
   }
   for (let start = 0; start < tableNames.length; start += maxConcurrentTables) {
     const batch = tableNames.slice(start, start + maxConcurrentTables);
@@ -351,7 +379,8 @@ export async function searchDashboardRecordsByOPA(env, query) {
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`SeaTable no pudo buscar la OPA en "${table.name}" (HTTP ${response.status}).`);
-    const rows = Array.isArray(body) ? body : (body.results || body.rows || body.data || []);
+    const rows = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
+    if (!Array.isArray(rows)) throw new Error(`SeaTable devolvió un formato inesperado al buscar en "${table.name}".`);
     const records = [];
     for (const row of rows) {
       // Garantiza coincidencia completa incluso si el motor convierte tipos.
@@ -394,12 +423,13 @@ export async function updateDashboardRow(env, tableName, rowId, values) {
   const authBaseMatchesDashboard = !env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_AUTH_BASE_UUID === env.SEATABLE_BASE_UUID;
   const writeApiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : env.SEATABLE_API_TOKEN;
   const token = await getBaseToken(env, writeApiToken);
+  const canonicalValues = await resolveTableColumnNames(env, tableName, values);
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
   const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${baseId}/rows/`;
   const response = await fetch(url, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ table_name: tableName, updates: [{ row_id: rowId, row: values }] }),
+    body: JSON.stringify({ table_name: tableName, updates: [{ row_id: rowId, row: canonicalValues }] }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -418,11 +448,12 @@ export async function createDashboardRow(env, tableName, values) {
   const authBaseMatchesDashboard = !env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_AUTH_BASE_UUID === env.SEATABLE_BASE_UUID;
   const writeApiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : env.SEATABLE_API_TOKEN;
   const token = await getBaseToken(env, writeApiToken);
+  const canonicalValues = await resolveTableColumnNames(env, tableName, values, true);
   const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(env.SEATABLE_BASE_UUID)}/rows/`;
   const response = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ table_name: tableName, rows: [values] }),
+    body: JSON.stringify({ table_name: tableName, rows: [canonicalValues] }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -431,6 +462,35 @@ export async function createDashboardRow(env, tableName, values) {
   }
   if (globalThis.__dashboardRowsCache?.key) globalThis.__dashboardRowsCache.expiresAt = 0;
   return body;
+}
+
+async function resolveTableColumnNames(env, tableName, values, skipMissing = false) {
+  const cacheKey = String(env.SEATABLE_BASE_UUID || "");
+  const now = Date.now();
+  let cached = globalThis.__seatableMetadataCache;
+  if (!cached || cached.key !== cacheKey || cached.expiresAt <= now) {
+    const token = await getBaseToken(env);
+    const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(cacheKey)}/metadata/`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`No se pudo verificar los nombres de columnas en SeaTable (HTTP ${response.status}).`);
+    const tables = body.metadata?.tables || body.tables || [];
+    cached = { key: cacheKey, tables, expiresAt: now + 60_000 };
+    globalThis.__seatableMetadataCache = cached;
+  }
+  const table = cached.tables.find((item) => item.name === tableName);
+  if (!table || !Array.isArray(table.columns)) return values;
+  const actualNames = new Map(table.columns.map((column) => [normalizeHeader(column.name), column.name]));
+  const resolved = {};
+  for (const [columnName, value] of Object.entries(values)) {
+    const actualName = actualNames.get(normalizeHeader(columnName));
+    if (!actualName) {
+      if (skipMissing) continue;
+      throw new Error(`No se encontró la columna "${columnName}" en la hoja "${tableName}"; no se guardaron los cambios.`);
+    }
+    resolved[actualName] = value;
+  }
+  return resolved;
 }
 
 export async function getDashboardColumnType(env, tableName, columnName) {
