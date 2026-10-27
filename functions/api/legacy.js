@@ -76,17 +76,29 @@ export async function onRequestPost({ request, env }) {
         if (!user) return Response.json({ ok: false, error: "Inicia sesión para ver las fotos de producto." }, { status: 401, headers: { "Cache-Control": "no-store" } });
         const requested = Array.isArray(targets) ? targets.slice(0, 30) : [];
         const tableNames = await discoverTableNames(env);
-        const records = await loadDashboardRecords(env);
+        const allowedTables = new Set(tableNames);
         const imagenesPorFila = {};
+        const work = [];
         for (const target of requested) {
           const table = String(target?.hoja || "").trim();
           const rowId = String(target?.rowId || "").trim();
           const key = String(target?.key || "");
-          if (!key || !rowId || !tableNames.includes(table)) continue;
-          const row = records.find((item) => String(item.H || "") === table && String(item._id || "") === rowId);
-          if (!row) { imagenesPorFila[key] = []; continue; }
-          imagenesPorFila[key] = await Promise.all(normalizeImageAttachments(row.LF).map((item) => makeImagePreview(env, item)));
+          if (!key || !rowId || !allowedTables.has(table)) continue;
+          // La lista de registros ya trae los adjuntos. Evita volver a descargar
+          // todas las filas (miles) para mostrar fotos de una página visible.
+          let attachments = target.attachments;
+          if (attachments == null) {
+            const row = await getDashboardRow(env, table, rowId);
+            const column = getDashboardColumnName(env, "LF");
+            attachments = row[column] ?? row.LF;
+          }
+          work.push({ key, attachments: normalizeImageAttachments(attachments) });
         }
+        const previews = await mapWithConcurrency(work, 6, async (item) => ({
+          key: item.key,
+          images: await Promise.all(item.attachments.map((attachment) => makeImagePreview(env, attachment))),
+        }));
+        for (const item of previews) imagenesPorFila[item.key] = item.images;
         value = { ok: true, imagenesPorFila };
         break;
       }
@@ -248,6 +260,18 @@ function normalizeImageAttachments(value) {
   return text.split(/[\r\n]+/).map((item) => item.trim()).filter(Boolean);
 }
 
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const output = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      output[index] = await mapper(items[index], index);
+    }
+  }));
+  return output;
+}
+
 async function makeImagePreview(env, attachment) {
   const original = typeof attachment === "string" ? attachment : String(attachment?.url || "");
   const name = String(attachment?.name || original.split("/").pop() || "Imagen");
@@ -322,5 +346,6 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
+
 
 
