@@ -3235,7 +3235,7 @@
         Limpiar filtros
       </button>
 
-      <button class="btn-primary" onclick="recargarDatos()">
+      <button id="btnActualizarDatos" class="btn-primary" onclick="recargarDatos()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"></polyline>
           <polyline points="1 20 1 14 7 14"></polyline>
@@ -4437,6 +4437,7 @@
     const DASHBOARD_CACHE_STORE = 'snapshots';
     let _dashboardCacheDbPromise = null;
     let _dashboardLastServerSuccessAt = 0;
+    let _dashboardManualRefreshInFlight = false;
 
     function _abrirCacheDashboard() {
       if (!window.indexedDB) return Promise.resolve(null);
@@ -5271,6 +5272,66 @@
       return String(text || '').toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
     }
 
+    function _dashboardInterpretarPreguntaLocal(question, history) {
+      const current = _dashboardNormalizarTexto(question).replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+      const prior = Array.isArray(history) && history.length ? _dashboardNormalizarTexto(history[history.length - 1]) : '';
+      const q = /^(y |tambien|y por |y cuantas|y cuantos)/.test(current) && prior ? prior + ' ' + current : current;
+      const hasCount = /\b(cuantas?|numero|total|conteo|hay|existen|cantidad)\b/.test(q);
+      const hasOPA = /\b(opas?|ordenes? de produccion|ordenes?)\b/.test(q);
+      const filters = [];
+      let measure = 'opa';
+      let mode = 'count';
+      let groupBy = 'none';
+      let date = { field:'none', period:'none', date:'' };
+
+      const knownProjects = Array.from(new Set((Array.isArray(datosFiltrados) ? datosFiltrados : []).map(function(row){ return String(row && row.P || '').trim(); }).filter(Boolean)))
+        .sort(function(a,b){ return b.length-a.length; });
+      const compactQuestion = q.replace(/[^a-z0-9]/g,'');
+      const matchedProject = knownProjects.find(function(project){
+        const normalized = _dashboardNormalizarTexto(project);
+        const compact = normalized.replace(/[^a-z0-9]/g,'');
+        return q.includes(normalized) || (compact.length >= 4 && compactQuestion.includes(compact));
+      });
+      if (matchedProject) filters.push({ field:'P', op:'equals', value:matchedProject });
+      else {
+        const projectCue = q.match(/\b(?:proyecto|proyectos)\s+(?:llamado\s+|llamados\s+|de\s+)?([\p{L}\p{N}][\p{L}\p{N} _.-]{1,60})/u)
+          || q.match(/\ben\s+(?:el\s+)?([\p{L}\p{N}][\p{L}\p{N} _.-]{1,60}?)\s+proyecto\b/u);
+        if (projectCue && !/^(mas|menos|con|sin|por|hay|estan|tienen|diferentes|distintos)\b/.test(projectCue[1])) {
+          const candidate = projectCue[1].replace(/\b(?:hoy|ayer|canceladas?|aprobadas?|enviadas?|en proceso|por estado|por marca)\b.*$/,'').trim();
+          if (candidate) filters.push({ field:'P', op:'contains', value:candidate });
+        }
+      }
+
+      if (/\b(cancelad[oa]s?|anulad[oa]s?)\b/.test(q)) filters.push({ field:'E', op:'status_cancelled', value:'' });
+      else if (/\b(aprobada\s*\/\s*cerrada|aprobadas?\s+y\s+cerradas?|cerrad[oa]s?)\b/.test(q)) filters.push({ field:'E', op:'status_closed', value:'' });
+      else if (/\b(en proceso|en curso|trabajandose)\b/.test(q)) filters.push({ field:'E', op:'status_in_progress', value:'' });
+
+      if (/\bpor (?:cada )?proyecto|proyectos? con mas|proyecto que mas|mas opas por proyecto\b|\b(?:que|cual(?:es)?) proyectos?\b.*\bmas\b/.test(q)) { mode='group'; groupBy='P'; }
+      else if (/\bpor estado|por estatus|estados? con mas|distribucion.*estado\b/.test(q)) { mode='group'; groupBy='E'; }
+      else if (/\bpor marca|marcas? con mas\b/.test(q)) { mode='group'; groupBy='M'; }
+      else if (/\bpor territorio|territorios? con mas\b/.test(q)) { mode='group'; groupBy='TR'; }
+      else if (/\bpor tipo de producto|productos? con mas\b/.test(q)) { mode='group'; groupBy='T'; }
+      else if (/\b(listame|lista|muestrame|mostrar|cuales son|que opas)\b/.test(q)) mode='list';
+      else if (/\b(suma|sumar|total de muestras|cuantas muestras)\b/.test(q) && /\b(recibidas?|recibio|recibidas)\b/.test(q)) { mode='sum'; measure='MR'; }
+      else if (/\b(suma|sumar|total de muestras|cuantas muestras)\b/.test(q) && /\b(enviadas?|envio|enviadas)\b/.test(q)) { mode='sum'; measure='ME'; }
+      else if (!hasCount && !hasOPA && !filters.length && !matchedProject) return null;
+
+      if (/\b(hoy|del dia de hoy)\b/.test(q)) date = { field:'created', period:'today', date:'' };
+      else if (/\b(ayer|dia anterior)\b/.test(q)) date = { field:'created', period:'yesterday', date:'' };
+      else if (/\b(este mes|del mes actual)\b/.test(q)) date = { field:'created', period:'this_month', date:'' };
+      else if (/\b(esta semana|de esta semana)\b/.test(q)) date = { field:'created', period:'this_week', date:'' };
+      const stageMatch = q.match(/\b(fecha de|en)\s+(concepto enviado|concepto aprobado|pre produccion enviada|pre produccion aprobada|fotos de produccion enviadas|fotos de produccion aprobadas|muestras finales enviadas|aprobada cerrada|envio de muestras)\b/);
+      if (stageMatch && date.period !== 'none') {
+        const stage = stageMatch[2];
+        const stageFields = { 'concepto enviado':'F1','concepto aprobado':'F2','pre produccion enviada':'F3','pre produccion aprobada':'F4','fotos de produccion enviadas':'F5','fotos de produccion aprobadas':'F6','muestras finales enviadas':'F7','aprobada cerrada':'F8','envio de muestras':'FM' };
+        date.field = stageFields[stage] || 'created';
+      }
+
+      if (mode === 'group' && groupBy === 'none') return null;
+      if (!hasOPA && !filters.length && mode === 'count') return null;
+      return { mode, measure, filters, groupBy, date, limit:20, clarification:'' };
+    }
+
     function _dashboardResolverRangoFecha(dateFilter) {
       const now = new Date();
       let today = _dashboardFechaISOEnZona(now);
@@ -5305,10 +5366,26 @@
       const mode = ['count','group','sum','list','unsupported'].includes(plan.mode) ? plan.mode : 'unsupported';
       const measure = ['opa','rows','MR','ME'].includes(plan.measure) ? plan.measure : 'opa';
       const groupBy = allowedGroups.has(plan.groupBy) ? plan.groupBy : 'none';
-      const items = (Array.isArray(datosFiltrados) ? datosFiltrados : []).filter(function(row){ return String(row && row.O || '').trim() !== ''; });
+      const items = (Array.isArray(datosFiltrados) ? datosFiltrados : []).filter(function(row){ return row && esOPAValida(row.O); });
+      const unique = function(rows) {
+        const latest = new Map();
+        rows.forEach(function(row){
+          const project = limpiarTexto(row.P) || 'Sin proyecto';
+          const key = [normalizarEstado(project),normalizarOPA(row.O)].join('::');
+          const existing = latest.get(key);
+          if (!existing) { latest.set(key,row); return; }
+          const oldState = buscarEstadoCoincidencia(limpiarTexto(existing.E));
+          const newState = buscarEstadoCoincidencia(limpiarTexto(row.E));
+          const oldRank = oldState ? ESTADOS_ORDEN.indexOf(oldState) : -1;
+          const newRank = newState ? ESTADOS_ORDEN.indexOf(newState) : -1;
+          if (newRank > oldRank || (!existing.E && row.E)) latest.set(key,row);
+        });
+        return Array.from(latest.values());
+      };
+      const uniqueItems = unique(items);
       const dateRange = _dashboardResolverRangoFecha(plan.date);
       let missingCreated = 0;
-      const filtered = items.filter(function(row) {
+      const filtered = uniqueItems.filter(function(row) {
         for (const filter of filters) {
           const actual = _dashboardNormalizarTexto(row[filter.field]);
           const expected = _dashboardNormalizarTexto(filter.value);
@@ -5332,12 +5409,7 @@
         }
         return true;
       });
-      const unique = function(rows) {
-        const seen = new Set();
-        return rows.filter(function(row){ const key=[_dashboardNormalizarTexto(row.H),_dashboardNormalizarTexto(row.P),_dashboardNormalizarTexto(row.O)].join('::'); if(seen.has(key))return false;seen.add(key);return true; });
-      };
-      const uniqueRows = unique(filtered);
-      const metricRows = measure === 'rows' ? filtered : uniqueRows;
+      const uniqueRows = filtered;
       const sumValue = function(rows, field){ return rows.reduce(function(total,row){ const value=Number(String(row[field] || '').replace(',','.')); return total + (Number.isFinite(value) ? value : 0); },0); };
       const fieldLabels = { O:'OPA',P:'Proyecto',E:'Estado',M:'Marca',T:'Tipo de producto',TE:'Tipo específico',TR:'Territorio',PJ:'Personaje',SO:'Sub-OPA' };
       const descriptionParts = [];
@@ -5354,7 +5426,7 @@
       }
       if (mode === 'sum') {
         if (measure !== 'MR' && measure !== 'ME') return { mode:'unsupported', clarification:'Puedo sumar muestras recibidas o muestras enviadas.', description };
-        return { mode, measure, total:sumValue(filtered,measure), matched:uniqueRows.length, description, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
+        return { mode, measure, total:sumValue(uniqueRows,measure), matched:uniqueRows.length, description, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
       }
       if (mode === 'list') return { mode, rows:uniqueRows.slice(0,Math.max(1,Math.min(Number(plan.limit)||10,20))).map(function(row){ return { O:row.O||'',P:row.P||'',E:row.E||'',M:row.M||'',T:row.T||'',TR:row.TR||'' }; }), total:uniqueRows.length, description, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
       return { mode:'count', total:measure==='rows'?filtered.length:uniqueRows.length, measure, description, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
@@ -5380,7 +5452,7 @@
         html += '<div style="align-self:flex-start;max-width:95%;padding:12px 14px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#1e293b;font-size:12px;line-height:1.5;"><b style="font-size:28px;color:#1d4ed8;">' + Number(result.total).toLocaleString('es-CO') + '</b><br>' + escapeHTML(label) + ' que coinciden con ' + escapeHTML(result.description) + '.</div>';
       }
       if (result.partial) html += '<div style="align-self:flex-start;max-width:95%;padding:8px 11px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#92400e;font-size:11px;">⚠️ Faltan fechas de creación en ' + Number(result.missingCreated).toLocaleString('es-CO') + ' filas; el resultado puede ser parcial.</div>';
-      html += '<div style="align-self:flex-start;margin-left:5px;color:#64748b;font-size:10px;">Interpretación de IA · cálculo hecho sobre los datos actuales del Dashboard, sin enviar las filas a la IA.</div>';
+      html += '<div style="align-self:flex-start;margin-left:5px;color:#64748b;font-size:10px;">Consulta interpretada automáticamente · cálculo sobre los datos actuales del Dashboard, sin enviar las filas al modelo.</div>';
       chat.insertAdjacentHTML('beforeend', html);
       chat.scrollTop = chat.scrollHeight;
     }
@@ -5412,12 +5484,16 @@
       input.value = '';
       try {
         const history = Array.isArray(window.__dashboardIAQuestions) ? window.__dashboardIAQuestions.slice(-4) : [];
-        const response = await fetch('/api/assistant', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ token:_authSesionActual.token, question, history }) });
-        const body = await response.json().catch(function(){ return {}; });
-        if (!response.ok || !body.ok) throw new Error(body.error || 'No pude completar la consulta.');
-        const result = _dashboardEjecutarPlan(body.plan || {});
+        let plan = _dashboardInterpretarPreguntaLocal(question, history);
+        if (!plan) {
+          const response = await fetch('/api/assistant', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ token:_authSesionActual.token, question, history }) });
+          const body = await response.json().catch(function(){ return {}; });
+          if (!response.ok || !body.ok) throw new Error(body.error || 'No pude completar la consulta.');
+          plan = body.plan || {};
+        }
+        const result = _dashboardEjecutarPlan(plan);
         placeholder.remove();
-        _dashboardRenderRespuestaIA(question, result, body.plan || {});
+        _dashboardRenderRespuestaIA(question, result, plan);
         window.__dashboardIAQuestions = history.concat(question).slice(-4);
         const badge = document.getElementById('dashboard-consulta-corte');
         const stamp = Number(_dashboardLastServerSuccessAt || 0);
@@ -8196,6 +8272,30 @@
 
     function recargarDatos(alFinalizar) {
 
+      if (_dashboardManualRefreshInFlight) {
+        if (typeof alFinalizar === 'function') alFinalizar(false, new Error('Ya hay una actualización en curso.'));
+        return;
+      }
+      _dashboardManualRefreshInFlight = true;
+      const refreshButton = document.getElementById('btnActualizarDatos');
+      if (refreshButton) { refreshButton.disabled = true; refreshButton.setAttribute('aria-busy','true'); }
+      let refreshFinished = false;
+      const finishRefresh = function(ok, value) {
+        if (refreshFinished) return;
+        refreshFinished = true;
+        _dashboardManualRefreshInFlight = false;
+        clearTimeout(refreshTimeout);
+        if (refreshButton) { refreshButton.disabled = false; refreshButton.removeAttribute('aria-busy'); }
+        if (typeof alFinalizar === 'function') alFinalizar(ok, value);
+      };
+      const refreshTimeout = setTimeout(function() {
+        if (refreshFinished) return;
+        const message = 'SeaTable no confirmó la actualización en 75 segundos. Se conserva la copia actual; si el servidor termina la lectura, los datos se actualizarán al recibirse. Puedes volver a intentarlo en unos segundos.';
+        try { actualizarSyncStatus('SeaTable sigue tardando · se conserva la copia local', true); } catch (_) {}
+        try { mostrarError(message); } catch (_) {}
+        finishRefresh(false, new Error(message));
+      }, 75_000);
+
       _invalidateMemo();
       if (!Array.isArray(datos) || !datos.length) { try { mostrarLoading(); } catch(_) {} }
       try { actualizarSyncStatus('Actualizando desde SeaTable...', false); } catch(_) {}
@@ -8233,11 +8333,11 @@
               _ultimoEtag = String(respuesta.etag);
               try { localStorage.setItem(ETAG_STORAGE_KEY, _ultimoEtag); } catch(_) {}
             }
-            if (typeof alFinalizar === 'function') alFinalizar(true, respuesta);
+            finishRefresh(true, respuesta);
           } catch(error) {
             try { actualizarSyncStatus('No se pudo mostrar la actualización', true); } catch(_) {}
             mostrarError(error.message || String(error));
-            if (typeof alFinalizar === 'function') alFinalizar(false, error);
+            finishRefresh(false, error);
           }
         })
         .withFailureHandler(function(error) {
@@ -8257,7 +8357,7 @@
               ? error.message
               : 'No se pudo actualizar la información. Intenta nuevamente.'
           );
-          if (typeof alFinalizar === 'function') alFinalizar(false, error);
+          finishRefresh(false, error);
 
         })
         .actualizarDashboardDatos();
@@ -12189,7 +12289,6 @@
             try { origR.apply(this, arguments); } catch(_){}
             try {
               setTimeout(function(){ actualizarAnalisisDashboard({ forzarServidor: false }); }, 50);
-              setTimeout(function(){ actualizarAnalisisDashboard({ forzarServidor: true }); }, 1500);
             } catch(_){}
           };
         }
@@ -12268,3 +12367,4 @@
 
 </body>
 </html>
+
