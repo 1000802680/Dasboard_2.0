@@ -7,7 +7,10 @@ const ESTADOS = [
   "Fotos de Producción Aprobada", "Muestras Finales Enviadas",
   "Aprobada / Cerrada", "Cancelado",
 ];
-const EDITABLE_FIELDS = new Set(["O", "P", "T", "TR", "PJ", "SO", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM"]);
+// Se pueden editar los campos de negocio mostrados en la tarjeta de vista
+// previa. LF queda fuera porque sus archivos se administran con la carga segura.
+const EDITABLE_FIELDS = new Set(["O", "P", "T", "TE", "M", "TR", "PO", "B2B", "B2C", "D", "NP", "PJ", "SO", "MR", "ME", "GE", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM"]);
+const NUMERIC_FIELDS = new Set(["MR", "ME"]);
 
 export async function onRequestPost({ request, env }) {
   try {
@@ -110,7 +113,17 @@ export async function onRequestPost({ request, env }) {
         const key = String(fieldKey || "");
         if (!EDITABLE_FIELDS.has(key)) return Response.json({ ok: false, error: "Este campo no se puede editar desde la búsqueda." }, { status: 400, headers: { "Cache-Control": "no-store" } });
         await assertEditableTable(env, table);
-        const newValue = isDateField(key) ? normalizeInputDate(rawValue) : String(rawValue ?? "").trim();
+        let newValue;
+        if (isDateField(key)) newValue = normalizeInputDate(rawValue);
+        else if (NUMERIC_FIELDS.has(key)) {
+          const numericText = String(rawValue ?? "").trim();
+          if (!numericText) newValue = "";
+          else {
+            const parsed = Number(numericText);
+            if (!Number.isFinite(parsed) || parsed < 0) return Response.json({ ok: false, error: "Ingresa una cantidad válida, igual o mayor que cero." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+            newValue = parsed;
+          }
+        } else newValue = String(rawValue ?? "").trim();
         const columnName = getDashboardColumnName(env, key);
         const updates = { [columnName]: newValue };
         const stageIndex = /^F[1-8]$/.test(key) ? Number(key.slice(1)) - 1 : -1;
