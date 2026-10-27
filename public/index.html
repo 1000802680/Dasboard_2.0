@@ -3290,6 +3290,30 @@
 
     </div>
 
+    <section id="dashboard-consulta" aria-labelledby="dashboard-consulta-title" style="margin:0 0 20px;padding:18px 20px;border:1px solid #cbdaf4;border-radius:18px;background:linear-gradient(135deg,#ffffff 0%,#f4f8ff 100%);box-shadow:0 8px 24px rgba(30,64,175,.07);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:11px;">
+          <div style="display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:#e0ecff;color:#1d4ed8;font-size:21px;">✦</div>
+          <div><h2 id="dashboard-consulta-title" style="margin:0;color:#14213d;font-size:17px;font-weight:900;">Mini IA del Dashboard</h2>
+            <p style="margin:3px 0 0;color:#64748b;font-size:12px;">Pregunta con tus palabras. Responde con los datos cargados y los filtros activos, y entiende preguntas de seguimiento.</p></div>
+        </div>
+        <span id="dashboard-consulta-corte" style="padding:6px 10px;border-radius:999px;background:#ecfdf5;border:1px solid #bbf7d0;color:#047857;font-size:11px;font-weight:800;">Mini IA · Cloudflare</span>
+      </div>
+      <div id="dashboard-consulta-respuesta" aria-live="polite" style="display:flex;flex-direction:column;gap:9px;max-height:380px;overflow:auto;margin-bottom:10px;padding:2px 1px;">
+        <div style="align-self:flex-start;max-width:92%;padding:11px 13px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#334155;font-size:12px;line-height:1.5;">Hola. Puedo analizar las OPAs, sus etapas, estados y cantidades de muestras. Por ejemplo: <b>“¿Qué proyecto tiene más OPAs canceladas?”</b> o <b>“Lista las OPAs de BTS2026 creadas ayer”</b>.</div>
+      </div>
+      <form onsubmit="event.preventDefault();consultarDatosDashboard();" style="display:flex;gap:9px;align-items:stretch;">
+        <input id="dashboard-consulta-input" type="text" autocomplete="off" placeholder="Ej.: ¿Cuántas OPAs se crearon hoy?" aria-label="Pregunta sobre los datos del Dashboard" style="flex:1;min-width:0;padding:12px 14px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f172a;font-size:14px;font-weight:600;outline:none;">
+        <button id="dashboard-consulta-submit" type="submit" class="btn-primary" style="margin:0;white-space:nowrap;">Preguntar</button>
+      </form>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;">
+        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs se crearon hoy?')" style="padding:7px 10px;font-size:11px;">OPAs creadas hoy</button>
+        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs se crearon ayer?')" style="padding:7px 10px;font-size:11px;">OPAs creadas ayer</button>
+        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs están canceladas?')" style="padding:7px 10px;font-size:11px;">OPAs canceladas</button>
+        <button type="button" class="btn-secondary" onclick="_dashboardPreguntaEjemplo('¿Cuántas OPAs están en proceso?')" style="padding:7px 10px;font-size:11px;">OPAs en proceso</button>
+      </div>
+    </section>
+
     <!-- =====================================================
          MATRIZ PROYECTO × ETAPA
     ====================================================== -->
@@ -5134,6 +5158,193 @@
       _invalidateMemo();
       actualizarTablaRegistrosBase();
 
+    }
+
+    function _dashboardFechaISOEnZona(fecha) {
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Bogota', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(fecha);
+      const values = {};
+      parts.forEach(function(part){ if (part.type !== 'literal') values[part.type] = part.value; });
+      return values.year + '-' + values.month + '-' + values.day;
+    }
+
+    function _dashboardFechaRegistroISO(value) {
+      if (value == null || value === '') return '';
+      if (typeof value === 'number' && Number.isFinite(value)) value = new Date(value).toISOString();
+      const text = String(value).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+      const date = new Date(text);
+      return Number.isNaN(date.getTime()) ? '' : _dashboardFechaISOEnZona(date);
+    }
+
+    function _dashboardPreguntaEjemplo(question) {
+      const input = document.getElementById('dashboard-consulta-input');
+      if (input) input.value = question;
+      consultarDatosDashboard();
+    }
+
+    function _dashboardNormalizarTexto(text) {
+      return String(text || '').toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+    }
+
+    function _dashboardResolverRangoFecha(dateFilter) {
+      const now = new Date();
+      let today = _dashboardFechaISOEnZona(now);
+      if (!dateFilter || dateFilter.period === 'none') return null;
+      if (dateFilter.period === 'today') return [today, today];
+      if (dateFilter.period === 'yesterday') {
+        const yesterday = new Date(now.getTime() - 86400000);
+        const day = _dashboardFechaISOEnZona(yesterday);
+        return [day, day];
+      }
+      if (dateFilter.period === 'specific_date' && dateFilter.date) return [dateFilter.date, dateFilter.date];
+      const parts = today.split('-').map(Number);
+      const utc = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12));
+      if (dateFilter.period === 'this_week') {
+        const day = (utc.getUTCDay() + 6) % 7;
+        const monday = new Date(utc.getTime() - day * 86400000);
+        const sunday = new Date(monday.getTime() + 6 * 86400000);
+        return [_dashboardFechaISOEnZona(monday), _dashboardFechaISOEnZona(sunday)];
+      }
+      if (dateFilter.period === 'this_month') {
+        return [today.slice(0,7) + '-01', today.slice(0,7) + '-31'];
+      }
+      return null;
+    }
+
+    function _dashboardEjecutarPlan(rawPlan) {
+      const plan = rawPlan && typeof rawPlan === 'object' ? rawPlan : {};
+      const allowedFields = new Set(['O','P','E','M','T','TE','TR','PJ','SO']);
+      const allowedGroups = new Set(['none','P','E','M','T','TE','TR','PJ']);
+      const allowedOps = new Set(['contains','equals','status_in_progress','status_cancelled','status_closed']);
+      const filters = Array.isArray(plan.filters) ? plan.filters.filter(function(f){ return f && allowedFields.has(f.field) && allowedOps.has(f.op); }).slice(0,5) : [];
+      const mode = ['count','group','sum','list','unsupported'].includes(plan.mode) ? plan.mode : 'unsupported';
+      const measure = ['opa','rows','MR','ME'].includes(plan.measure) ? plan.measure : 'opa';
+      const groupBy = allowedGroups.has(plan.groupBy) ? plan.groupBy : 'none';
+      const items = (Array.isArray(datosFiltrados) ? datosFiltrados : []).filter(function(row){ return String(row && row.O || '').trim() !== ''; });
+      const dateRange = _dashboardResolverRangoFecha(plan.date);
+      let missingCreated = 0;
+      const filtered = items.filter(function(row) {
+        for (const filter of filters) {
+          const actual = _dashboardNormalizarTexto(row[filter.field]);
+          const expected = _dashboardNormalizarTexto(filter.value);
+          if (filter.op === 'contains' && !actual.includes(expected)) return false;
+          if (filter.op === 'equals' && actual !== expected) return false;
+          const state = normalizarEstado(row.E);
+          if (filter.op === 'status_cancelled' && state !== normalizarEstado('Cancelado')) return false;
+          if (filter.op === 'status_closed' && state !== normalizarEstado('Aprobada / Cerrada')) return false;
+          if (filter.op === 'status_in_progress' && (!state || state === normalizarEstado('Cancelado') || state === normalizarEstado('Aprobada / Cerrada'))) return false;
+        }
+        if (dateRange) {
+          const field = String(plan.date && plan.date.field || 'none');
+          if (field === 'created') {
+            const date = _dashboardFechaRegistroISO(row._ctime || row._created_at);
+            if (!date) { missingCreated++; return false; }
+            if (date < dateRange[0] || date > dateRange[1]) return false;
+          } else {
+            const date = _dashboardFechaRegistroISO(row[field]);
+            if (!date || date < dateRange[0] || date > dateRange[1]) return false;
+          }
+        }
+        return true;
+      });
+      const unique = function(rows) {
+        const seen = new Set();
+        return rows.filter(function(row){ const key=[_dashboardNormalizarTexto(row.H),_dashboardNormalizarTexto(row.P),_dashboardNormalizarTexto(row.O)].join('::'); if(seen.has(key))return false;seen.add(key);return true; });
+      };
+      const uniqueRows = unique(filtered);
+      const metricRows = measure === 'rows' ? filtered : uniqueRows;
+      const sumValue = function(rows, field){ return rows.reduce(function(total,row){ const value=Number(String(row[field] || '').replace(',','.')); return total + (Number.isFinite(value) ? value : 0); },0); };
+      const fieldLabels = { O:'OPA',P:'Proyecto',E:'Estado',M:'Marca',T:'Tipo de producto',TE:'Tipo específico',TR:'Territorio',PJ:'Personaje',SO:'Sub-OPA' };
+      const descriptionParts = [];
+      filters.forEach(function(filter){ descriptionParts.push((fieldLabels[filter.field] || filter.field) + ' ' + (filter.op.indexOf('status_') === 0 ? filter.op.replace('status_','') : filter.op + ' “' + filter.value + '”')); });
+      if (dateRange) descriptionParts.push((plan.date.field === 'created' ? 'creadas' : 'fecha ' + (fieldLabels[plan.date.field] || plan.date.field)) + ' ' + (dateRange[0] === dateRange[1] ? 'el ' + dateRange[0] : 'entre ' + dateRange[0] + ' y ' + dateRange[1]));
+      const description = descriptionParts.length ? descriptionParts.join(' · ') : 'todos los registros de los filtros actuales';
+      if (mode === 'unsupported') return { mode, clarification:String(plan.clarification || 'Prueba preguntando por cantidad, lista, suma, estado, proyecto, marca o una fecha de etapa.'), description };
+      if (mode === 'group') {
+        if (!allowedGroups.has(groupBy) || groupBy === 'none') return { mode:'unsupported', clarification:'¿Por cuál campo quieres agrupar: proyecto, estado, marca, producto o territorio?', description };
+        const groups = new Map();
+        uniqueRows.forEach(function(row){ const name=String(row[groupBy] || 'Sin dato').trim() || 'Sin dato'; const entry=groups.get(name)||{name,count:0,sum:0};entry.count++;if(measure==='MR'||measure==='ME')entry.sum+=Number(row[measure])||0;groups.set(name,entry); });
+        const grouped=[...groups.values()].sort(function(a,b){ return (measure==='MR'||measure==='ME' ? b.sum-a.sum : b.count-a.count) || a.name.localeCompare(b.name); }).slice(0,Math.max(1,Math.min(Number(plan.limit)||10,20)));
+        return { mode, measure, groupBy, grouped, description, total:uniqueRows.length, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
+      }
+      if (mode === 'sum') {
+        if (measure !== 'MR' && measure !== 'ME') return { mode:'unsupported', clarification:'Puedo sumar muestras recibidas o muestras enviadas.', description };
+        return { mode, measure, total:sumValue(filtered,measure), matched:uniqueRows.length, description, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
+      }
+      if (mode === 'list') return { mode, rows:uniqueRows.slice(0,Math.max(1,Math.min(Number(plan.limit)||10,20))).map(function(row){ return { O:row.O||'',P:row.P||'',E:row.E||'',M:row.M||'',T:row.T||'',TR:row.TR||'' }; }), total:uniqueRows.length, description, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
+      return { mode:'count', total:measure==='rows'?filtered.length:uniqueRows.length, measure, description, partial:dateRange && plan.date.field==='created' && missingCreated>0, missingCreated };
+    }
+
+    function _dashboardRenderRespuestaIA(question, result, plan) {
+      const chat = document.getElementById('dashboard-consulta-respuesta');
+      if (!chat) return;
+      let html = '<div style="align-self:flex-end;max-width:88%;padding:10px 13px;border-radius:13px 13px 4px 13px;background:#1d4ed8;color:#fff;font-size:12px;line-height:1.5;">' + escapeHTML(question) + '</div>';
+      if (result.mode === 'unsupported') {
+        html += '<div style="align-self:flex-start;max-width:95%;padding:12px 14px;border:1px solid #fed7aa;border-radius:13px 13px 13px 4px;background:#fff7ed;color:#9a3412;font-size:12px;line-height:1.5;"><b>No pude resolver esa pregunta con los campos disponibles.</b><br>' + escapeHTML(result.clarification) + '</div>';
+      } else if (result.mode === 'group') {
+        const label = ({P:'Proyecto',E:'Estado',M:'Marca',T:'Tipo de producto',TE:'Tipo específico',TR:'Territorio',PJ:'Personaje'})[result.groupBy] || 'Grupo';
+        const rows = result.grouped.map(function(item){ return '<tr><td style="padding:6px 9px;border-top:1px solid #e2e8f0;">' + escapeHTML(item.name) + '</td><td style="padding:6px 9px;border-top:1px solid #e2e8f0;text-align:right;font-weight:800;">' + ((result.measure==='MR'||result.measure==='ME')?Number(item.sum).toLocaleString('es-CO'):item.count.toLocaleString('es-CO')) + '</td></tr>'; }).join('');
+        html += '<div style="align-self:flex-start;width:min(640px,95%);padding:12px 14px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#1e293b;font-size:12px;line-height:1.5;"><b>Resultados agrupados por ' + escapeHTML(label.toLowerCase()) + '</b><div style="margin:3px 0 8px;color:#64748b;">' + escapeHTML(result.description) + ' · ' + Number(result.total).toLocaleString('es-CO') + ' OPAs únicas</div><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="text-align:left;color:#64748b;">' + escapeHTML(label) + '</th><th style="text-align:right;color:#64748b;">' + ((result.measure==='MR'||result.measure==='ME')?'Total':'OPAs') + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      } else if (result.mode === 'list') {
+        const rows = result.rows.map(function(item){ return '<tr><td style="padding:6px 8px;border-top:1px solid #e2e8f0;font-weight:800;color:#1d4ed8;">' + escapeHTML(item.O) + '</td><td style="padding:6px 8px;border-top:1px solid #e2e8f0;">' + escapeHTML(item.P || '—') + '</td><td style="padding:6px 8px;border-top:1px solid #e2e8f0;">' + escapeHTML(item.E || 'Sin estado') + '</td></tr>'; }).join('');
+        html += '<div style="align-self:flex-start;width:min(680px,95%);padding:12px 14px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#1e293b;font-size:12px;line-height:1.5;"><b>Encontré ' + Number(result.total).toLocaleString('es-CO') + ' OPAs.</b> Mostrando hasta ' + result.rows.length + '.<div style="margin:3px 0 8px;color:#64748b;">' + escapeHTML(result.description) + '</div><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="text-align:left;color:#64748b;">OPA</th><th style="text-align:left;color:#64748b;">Proyecto</th><th style="text-align:left;color:#64748b;">Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      } else if (result.mode === 'sum') {
+        html += '<div style="align-self:flex-start;max-width:95%;padding:12px 14px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#1e293b;font-size:12px;line-height:1.5;"><b style="font-size:24px;color:#1d4ed8;">' + Number(result.total).toLocaleString('es-CO') + '</b><br>Total de ' + (result.measure==='MR'?'muestras recibidas':'muestras enviadas') + ' en ' + Number(result.matched).toLocaleString('es-CO') + ' OPAs · ' + escapeHTML(result.description) + '.</div>';
+      } else {
+        const label = result.measure === 'rows' ? 'registros' : 'OPAs únicas';
+        html += '<div style="align-self:flex-start;max-width:95%;padding:12px 14px;border:1px solid #dbe7f7;border-radius:13px 13px 13px 4px;background:#fff;color:#1e293b;font-size:12px;line-height:1.5;"><b style="font-size:28px;color:#1d4ed8;">' + Number(result.total).toLocaleString('es-CO') + '</b><br>' + escapeHTML(label) + ' que coinciden con ' + escapeHTML(result.description) + '.</div>';
+      }
+      if (result.partial) html += '<div style="align-self:flex-start;max-width:95%;padding:8px 11px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#92400e;font-size:11px;">⚠️ Faltan fechas de creación en ' + Number(result.missingCreated).toLocaleString('es-CO') + ' filas; el resultado puede ser parcial.</div>';
+      html += '<div style="align-self:flex-start;margin-left:5px;color:#64748b;font-size:10px;">Interpretación de IA · cálculo hecho sobre los datos actuales del Dashboard, sin enviar las filas a la IA.</div>';
+      chat.insertAdjacentHTML('beforeend', html);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function consultarDatosDashboard() {
+      const input = document.getElementById('dashboard-consulta-input');
+      const submit = document.getElementById('dashboard-consulta-submit');
+      const chat = document.getElementById('dashboard-consulta-respuesta');
+      const question = String(input && input.value || '').trim();
+      if (!input || !chat || !question) return;
+      if (!_authSesionActual || !_authSesionActual.token) {
+        chat.insertAdjacentHTML('beforeend','<div style="align-self:flex-start;padding:10px 13px;border:1px solid #fed7aa;border-radius:13px;background:#fff7ed;color:#9a3412;font-size:12px;">Inicia sesión para usar la mini IA.</div>');
+        chat.scrollTop = chat.scrollHeight;
+        _authAbrirModal();
+        return;
+      }
+      if (!Array.isArray(datosFiltrados) || !datosFiltrados.length) {
+        chat.insertAdjacentHTML('beforeend','<div style="align-self:flex-start;padding:10px 13px;border:1px solid #fed7aa;border-radius:13px;background:#fff7ed;color:#9a3412;font-size:12px;">No hay registros cargados con los filtros actuales. Usa “Actualizar datos” e inténtalo de nuevo.</div>');
+        return;
+      }
+      if (submit) submit.disabled = true;
+      if (input) input.disabled = true;
+      const placeholder = document.createElement('div');
+      placeholder.style.cssText = 'align-self:flex-start;padding:10px 13px;border:1px solid #dbe7f7;border-radius:13px;background:#fff;color:#64748b;font-size:12px;';
+      placeholder.textContent = 'Entendiendo tu pregunta y consultando los datos…';
+      chat.insertAdjacentHTML('beforeend','<div style="align-self:flex-end;max-width:88%;padding:10px 13px;border-radius:13px 13px 4px 13px;background:#1d4ed8;color:#fff;font-size:12px;line-height:1.5;">' + escapeHTML(question) + '</div>');
+      chat.appendChild(placeholder);
+      chat.scrollTop = chat.scrollHeight;
+      input.value = '';
+      try {
+        const history = Array.isArray(window.__dashboardIAQuestions) ? window.__dashboardIAQuestions.slice(-4) : [];
+        const response = await fetch('/api/assistant', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ token:_authSesionActual.token, question, history }) });
+        const body = await response.json().catch(function(){ return {}; });
+        if (!response.ok || !body.ok) throw new Error(body.error || 'No pude completar la consulta.');
+        const result = _dashboardEjecutarPlan(body.plan || {});
+        placeholder.remove();
+        _dashboardRenderRespuestaIA(question, result, body.plan || {});
+        window.__dashboardIAQuestions = history.concat(question).slice(-4);
+        const badge = document.getElementById('dashboard-consulta-corte');
+        const stamp = Number(_dashboardLastServerSuccessAt || 0);
+        if (badge) badge.textContent = stamp ? 'IA activa · datos ' + new Intl.DateTimeFormat('es-CO',{timeZone:'America/Bogota',hour:'2-digit',minute:'2-digit'}).format(new Date(stamp)) : 'IA activa · datos cargados';
+      } catch (error) {
+        placeholder.style.background = '#fff7ed'; placeholder.style.borderColor = '#fed7aa'; placeholder.style.color = '#9a3412';
+        placeholder.textContent = String(error && error.message || 'La IA no está disponible.');
+        input.value = question;
+      } finally {
+        if (submit) submit.disabled = false;
+        if (input) { input.disabled = false; input.focus(); }
+      }
     }
 
     function cambiarPaginaRegistros(delta) {
