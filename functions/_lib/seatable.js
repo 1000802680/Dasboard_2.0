@@ -280,17 +280,58 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
   // Cache API de Cloudflare comparte el resultado entre solicitudes/aislamientos
   // cercanos. Así los usuarios concurrentes no vuelven a leer todas las hojas.
   const sharedCache = getSharedDashboardCache(env);
+  const sharedRequest = dashboardCacheRequest(env);
+  let ownsRefreshLease = false;
   if (!forceRefresh && sharedCache) {
-    try {
-      const shared = await sharedCache.match(dashboardCacheRequest(env));
-      if (shared) {
-        const snapshot = await shared.json();
-        if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 45_000 };
-          return snapshot.records;
+    const shared = await readSharedDashboardSnapshot(sharedCache, sharedRequest);
+    if (shared) {
+      const lockRequest = dashboardCacheRequest(env, "refresh-lock");
+      const lockResponse = await sharedCache.match(lockRequest);
+      if (lockResponse) {
+        const lock = await lockResponse.json().catch(() => ({}));
+        if (Number(shared.updatedAt || 0) < Number(lock.startedAt || 0)) {
+          const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()));
+          if (refreshed) {
+            globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 25_000 };
+            return refreshed.records;
+          }
+          if (await sharedCache.match(lockRequest)) throw new Error("SeaTable sigue actualizándose en segundo plano. Conservamos la copia disponible; vuelve a consultar en unos segundos.");
+        } else {
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 25_000 };
+          return shared.records;
         }
+      } else {
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 25_000 };
+        return shared.records;
       }
-    } catch (_) {}
+    }
+  }
+  if (sharedCache) {
+    const lockRequest = dashboardCacheRequest(env, "refresh-lock");
+    // Una pequeña espera escalonada permite que el primer usuario publique el
+    // lease antes de que los demás decidan iniciar otra lectura completa.
+    await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 180)));
+    let lockResponse = await sharedCache.match(lockRequest);
+    if (lockResponse) {
+      const lock = await lockResponse.json().catch(() => ({}));
+      const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()));
+      if (refreshed) {
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 25_000 };
+        return refreshed.records;
+      }
+      // La actualización del otro usuario falló o venció el lease; intentar una.
+      lockResponse = await sharedCache.match(lockRequest);
+      if (lockResponse) throw new Error("La actualización compartida sigue en curso. Conservamos la copia disponible; vuelve a intentar en unos segundos.");
+    }
+    if (!lockResponse) {
+      const startedAt = Date.now();
+      try {
+        await sharedCache.put(lockRequest, new Response(JSON.stringify({ startedAt }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=90" },
+        }));
+        ownsRefreshLease = true;
+      } catch (_) {}
+    }
   }
 
   const promise = (async () => {
@@ -319,16 +360,20 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     // Refresca los registros junto con el sondeo del dashboard, para que los
     // cambios en filas existentes no queden ocultos detrás de una caché larga.
     // La acción manual "Actualizar datos" sigue forzando una lectura inmediata.
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 45_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 25_000 };
     if (sharedCache) {
       try {
-        await sharedCache.put(dashboardCacheRequest(env), new Response(JSON.stringify({ records, tableNames: detectedTableNames }), {
-          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=45" },
+        await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, tableNames: detectedTableNames, updatedAt: Date.now() }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=25" },
         }));
       } catch (_) {}
     }
     return records;
-  })();
+  })().finally(async () => {
+    if (ownsRefreshLease && sharedCache) {
+      try { await sharedCache.delete(dashboardCacheRequest(env, "refresh-lock")); } catch (_) {}
+    }
+  });
   globalThis.__dashboardRowsLoading = { key: cacheKey, promise };
   try { return await promise; }
   finally { if (globalThis.__dashboardRowsLoading?.promise === promise) globalThis.__dashboardRowsLoading = null; }
@@ -357,7 +402,7 @@ export async function searchDashboardRecordsByOPA(env, query) {
       if (response) {
         const snapshot = await response.json();
         if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 45_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 25_000 };
           return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
         }
       }
@@ -423,9 +468,29 @@ function getSharedDashboardCache(env) {
   catch (_) { return null; }
 }
 
-function dashboardCacheRequest(env) {
+function dashboardCacheRequest(env, suffix = "snapshot") {
   const key = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
-  return new Request(`https://dashboard-cache.invalid/v1/${encodeURIComponent(key)}`);
+  return new Request(`https://dashboard-cache.invalid/v1/${encodeURIComponent(key)}/${suffix}`);
+}
+
+async function readSharedDashboardSnapshot(cache, request) {
+  try {
+    const response = await cache.match(request);
+    if (!response) return null;
+    const snapshot = await response.json();
+    return Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames) ? snapshot : null;
+  } catch (_) { return null; }
+}
+
+async function waitForSharedDashboardRefresh(cache, snapshotRequest, lockRequest, startedAt) {
+  const deadline = Date.now() + 75_000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const snapshot = await readSharedDashboardSnapshot(cache, snapshotRequest);
+    if (snapshot && Number(snapshot.updatedAt || 0) >= startedAt) return snapshot;
+    if (!(await cache.match(lockRequest))) return null;
+  }
+  return null;
 }
 
 export async function updateDashboardRow(env, tableName, rowId, values) {
@@ -584,7 +649,6 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
-
 
 
 
