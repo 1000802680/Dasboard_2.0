@@ -94,6 +94,11 @@ function assertConfig(env) {
 }
 
 export async function discoverTableNames(env, token = null) {
+  const metadataCacheKey = String(env.SEATABLE_BASE_UUID || "");
+  const cachedMetadata = globalThis.__seatableMetadataCache;
+  if (cachedMetadata?.key === metadataCacheKey && cachedMetadata.expiresAt > Date.now() && Array.isArray(cachedMetadata.tables)) {
+    return dashboardDataTableNames(cachedMetadata.tables);
+  }
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
   token = token || await getBaseToken(env);
@@ -102,6 +107,11 @@ export async function discoverTableNames(env, token = null) {
   const metadataBody = await metadataResponse.json().catch(() => ({}));
   if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de pestañas de SeaTable (HTTP ${metadataResponse.status}).`);
   const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
+  globalThis.__seatableMetadataCache = { key: metadataCacheKey, tables, expiresAt: Date.now() + 60_000 };
+  return dashboardDataTableNames(tables);
+}
+
+function dashboardDataTableNames(tables) {
   const names = tables.map((table) => table.name).filter(Boolean);
   if (!names.length) throw new Error("SeaTable no devolvió pestañas. Verifica el UUID y los permisos del token.");
   const excludedTables = new Set([
@@ -259,18 +269,20 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
   const now = Date.now();
   const cached = globalThis.__dashboardRowsCache;
   if (!forceRefresh && cached?.key === cacheKey && cached.expiresAt > now) return cached.records;
-  if (!forceRefresh && globalThis.__dashboardRowsLoading?.key === cacheKey) return globalThis.__dashboardRowsLoading.promise;
+  // Una actualización manual también comparte la lectura que ya esté en curso
+  // dentro del mismo isolate, evitando que varios usuarios disparen el mismo scan.
+  if (globalThis.__dashboardRowsLoading?.key === cacheKey) return globalThis.__dashboardRowsLoading.promise;
 
   // Cache API de Cloudflare comparte el resultado entre solicitudes/aislamientos
   // cercanos. Así los usuarios concurrentes no vuelven a leer todas las hojas.
-  const sharedCache = !forceRefresh && getSharedDashboardCache(env);
-  if (sharedCache) {
+  const sharedCache = getSharedDashboardCache(env);
+  if (!forceRefresh && sharedCache) {
     try {
       const shared = await sharedCache.match(dashboardCacheRequest(env));
       if (shared) {
         const snapshot = await shared.json();
         if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 15_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 45_000 };
           return snapshot.records;
         }
       }
@@ -303,11 +315,11 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     // Refresca los registros junto con el sondeo del dashboard, para que los
     // cambios en filas existentes no queden ocultos detrás de una caché larga.
     // La acción manual "Actualizar datos" sigue forzando una lectura inmediata.
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 15_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 45_000 };
     if (sharedCache) {
       try {
         await sharedCache.put(dashboardCacheRequest(env), new Response(JSON.stringify({ records, tableNames: detectedTableNames }), {
-          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=15" },
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=45" },
         }));
       } catch (_) {}
     }
@@ -341,23 +353,20 @@ export async function searchDashboardRecordsByOPA(env, query) {
       if (response) {
         const snapshot = await response.json();
         if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 15_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 45_000 };
           return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
         }
       }
     } catch (_) {}
   }
 
+  // Reutiliza los metadatos de las hojas ya consultados por el dashboard,
+  // evitando otra petición de esquema cada vez que se busca una OPA.
+  const tableNames = new Set(await discoverTableNames(env));
+  const tables = (globalThis.__seatableMetadataCache?.tables || []).filter((table) => table.name && tableNames.has(table.name));
   const token = await getBaseToken(env);
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
-  const metadataResponse = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-  });
-  const metadata = await metadataResponse.json().catch(() => ({}));
-  if (!metadataResponse.ok) throw new Error(`No se pudo leer la estructura de SeaTable (HTTP ${metadataResponse.status}).`);
-  const excluded = new Set(["USUARIOS", "HISTORIAL_AUDITORIA", "HISTORIAL DE AUTORIA"].map(normalizeHeader));
-  const tables = (metadata.metadata?.tables || metadata.tables || []).filter((table) => table.name && !excluded.has(normalizeHeader(table.name)));
   const opaColumnName = normalizeHeader(getColumnMap(env).O);
   const searchable = tables.map((table) => ({
     name: table.name,
@@ -436,7 +445,7 @@ export async function updateDashboardRow(env, tableName, rowId, values) {
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no guardó los cambios en ${tableName} (HTTP ${response.status}). Verifica que SEATABLE_API_TOKEN tenga permiso de lectura y escritura.${detail ? ` ${detail}` : ""}`);
   }
-  if (globalThis.__dashboardRowsCache?.key) globalThis.__dashboardRowsCache.expiresAt = 0;
+  await invalidateDashboardSnapshot(env);
   return body;
 }
 
@@ -460,8 +469,17 @@ export async function createDashboardRow(env, tableName, values) {
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
   }
-  if (globalThis.__dashboardRowsCache?.key) globalThis.__dashboardRowsCache.expiresAt = 0;
+  await invalidateDashboardSnapshot(env);
   return body;
+}
+
+async function invalidateDashboardSnapshot(env) {
+  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  if (globalThis.__dashboardRowsCache?.key === cacheKey) globalThis.__dashboardRowsCache.expiresAt = 0;
+  try {
+    const sharedCache = getSharedDashboardCache(env);
+    if (sharedCache) await sharedCache.delete(dashboardCacheRequest(env));
+  } catch (_) {}
 }
 
 async function resolveTableColumnNames(env, tableName, values, skipMissing = false) {
@@ -518,17 +536,38 @@ export async function getDashboardRow(env, tableName, rowId) {
 }
 
 export async function getDashboardFileDownloadLink(env, path) {
+  const cacheKey = `${env.SEATABLE_BASE_UUID || ""}|${String(path || "")}`;
+  const now = Date.now();
+  const linkCache = globalThis.__dashboardImageLinkCache || (globalThis.__dashboardImageLinkCache = new Map());
+  const cachedLink = linkCache.get(cacheKey);
+  if (cachedLink?.promise) return cachedLink.promise;
+  if (cachedLink?.expiresAt > now) return cachedLink.link;
   const authBaseMatchesDashboard = !env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_AUTH_BASE_UUID === env.SEATABLE_BASE_UUID;
   const apiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : env.SEATABLE_API_TOKEN;
   if (!apiToken) throw new Error("Falta configurar el API token de SeaTable para mostrar imágenes.");
   const url = new URL(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-download-link/`);
   url.searchParams.set("path", path);
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`SeaTable no pudo generar el enlace de la imagen (HTTP ${response.status}).`);
-  const link = body.download_link || body.url || body.link;
-  if (!link) throw new Error("SeaTable no devolvió el enlace temporal de la imagen.");
-  return link;
+  const promise = (async () => {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`SeaTable no pudo generar el enlace de la imagen (HTTP ${response.status}).`);
+    const link = body.download_link || body.url || body.link;
+    if (!link) throw new Error("SeaTable no devolvió el enlace temporal de la imagen.");
+    // Los enlaces de descarga de SeaTable son temporales; un minuto evita
+    // regenerarlos en cada render sin guardar una URL vencida demasiado tiempo.
+    linkCache.set(cacheKey, { link, expiresAt: Date.now() + 60_000 });
+    if (linkCache.size > 2_000) {
+      const cleanupTime = Date.now();
+      for (const [key, entry] of linkCache) {
+        if (entry.expiresAt <= cleanupTime && !entry.promise) linkCache.delete(key);
+        if (linkCache.size <= 1_500) break;
+      }
+    }
+    return link;
+  })();
+  linkCache.set(cacheKey, { promise, expiresAt: now + 30_000 });
+  try { return await promise; }
+  catch (error) { linkCache.delete(cacheKey); throw error; }
 }
 
 export async function refreshForNewTables(env) {
