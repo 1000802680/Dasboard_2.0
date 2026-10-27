@@ -12,6 +12,7 @@ Este directorio prepara una migración gradual de Google Apps Script a Cloudflar
 - El login nuevo usa SeaTable para usuarios y auditoría; los registros de OPA permanecen en modo consulta y la búsqueda de OPA exige una sesión válida.
 - Los filtros son dependientes: Marca (tabla) → Proyecto → Tipo de producto → Número de OPA. Las tablas `USUARIOS` y `HISTORIAL_AUDITORIA` se excluyen del dashboard.
 - El dashboard revisa los metadatos de las pestañas cada 60 segundos. Si detecta una pestaña nueva, la incorpora y vuelve a leer la base. Los registros en memoria duran hasta 5 minutos; “Actualizar datos” fuerza una lectura nueva de SeaTable de inmediato.
+- El Dashboard incluye una mini IA para preguntas en lenguaje natural. Cloudflare Workers AI interpreta la pregunta y devuelve un plan limitado; el navegador aplica ese plan a los datos cargados y a los filtros activos. Las filas no se envían al modelo.
 
 ## Pendiente antes de usarlo con el equipo
 
@@ -27,6 +28,12 @@ También falta confirmar cómo se trata un mismo número de OPA repetido en dist
 2. Copia `.env.example` a `.dev.vars` y completa URL, API token, UUID de base y, si hace falta, `SEATABLE_COLUMN_MAP`. Por defecto, el código descubre todas las tablas.
 3. Ejecuta `npx wrangler pages dev public`.
 4. Comprueba `http://localhost:8788/api/health` y después `/api/legacy` desde la interfaz.
+
+## Mini IA del Dashboard
+
+La mini IA requiere que el proyecto de Cloudflare Pages tenga un binding de Workers AI llamado `AI`. Ya está declarado en `wrangler.toml`; si Cloudflare no lo toma desde ese archivo, agrégalo en Settings → Functions → Workers AI, con el nombre `AI`, y vuelve a desplegar. Las preguntas requieren iniciar sesión. El modelo solo recibe la pregunta actual y hasta cuatro preguntas anteriores para entender seguimientos; el cálculo se hace localmente con los datos ya cargados. Las respuestas basadas en “hoy” usan la fecha real de creación de SeaTable (`_ctime`); si faltan esas fechas, la interfaz advierte que el total puede ser parcial.
+
+El código de la página publicado por Pages está en `public/index.html` porque `wrangler.toml` define `pages_build_output_dir = "./public"`. Editar el `Index.html` de la raíz no cambia la página publicada.
 
 `SEATABLE_COLUMN_MAP` debe ser JSON con clave interna del dashboard y nombre exacto en SeaTable. Ejemplo: `{"P":"PROYECTO","O":"NUMERO DE OPA","E":"ESTADO PLATAFORMA","F3":"PRE-PRODUCCION ENVIADA"}`. Para bases con muchas columnas, `SEATABLE_VIEW_NAME` puede apuntar a una vista de SeaTable que muestre solo las columnas utilizadas; crea esa vista con el mismo nombre en cada tabla incluida.
 
@@ -47,4 +54,5 @@ En Cloudflare configura `AUTH_SESSION_SECRET` como secreto aleatorio largo y `AU
 4. Publica primero en una URL de vista previa y compara conteos contra SeaTable antes de compartir el enlace final.
 
 El dashboard consulta SeaTable cada 30 segundos para reflejar cambios en filas existentes y pestañas nuevas. El botón “Actualizar datos” fuerza una lectura inmediata. Las rutas de Functions cuentan contra el cupo diario gratuito de Workers; sirve solo las rutas API a través de Functions y mantiene los archivos estáticos fuera de sus invocaciones cuando se genere `_routes.json`.
+
 
