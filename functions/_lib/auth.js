@@ -19,6 +19,7 @@ const DEFAULT_PERMISSIONS = {
 // Keep password derivation at the highest broadly compatible limit.
 const ITERATIONS = 100_000;
 const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
+const AUTH_USER_CACHE_TTL_MS = 20_000;
 
 function authConfig(env) {
   // Por defecto, los usuarios viven en la misma base del dashboard y pueden
@@ -162,10 +163,23 @@ async function authenticatedUser(token, env) {
   let claims;
   try { claims = JSON.parse(new TextDecoder().decode(fromBase64Url(payloadPart))); } catch { return null; }
   if (!claims.sub || !Number.isFinite(claims.exp) || claims.exp <= Date.now()) return null;
+  const cacheKey = `${env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID || ""}|${claims.sub}`;
+  const now = Date.now();
+  const userCache = globalThis.__dashboardAuthUserCache || (globalThis.__dashboardAuthUserCache = new Map());
+  const cachedUser = userCache.get(cacheKey);
+  if (cachedUser && cachedUser.expiresAt > now) return cachedUser.user;
   const rows = await allRows(env, USERS_TABLE);
   const row = rows.find((item) => String(item.ID_USUARIO || item._id || "") === String(claims.sub));
   if (!row) return null;
-  return normalizeUser(row);
+  const user = normalizeUser(row);
+  userCache.set(cacheKey, { user, expiresAt: now + AUTH_USER_CACHE_TTL_MS });
+  if (userCache.size > 500) {
+    for (const [key, entry] of userCache) {
+      if (entry.expiresAt <= now) userCache.delete(key);
+      if (userCache.size <= 400) break;
+    }
+  }
+  return user;
 }
 
 async function passwordDigest(hashPwd, salt, iterations = ITERATIONS) {
@@ -369,3 +383,4 @@ function toAuditRecord(row) {
 }
 
 export const AUTH_TABLE_COLUMNS = { users: USER_COLUMNS, audit: AUDIT_COLUMNS };
+
