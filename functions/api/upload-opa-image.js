@@ -5,7 +5,8 @@ const MAX_IMAGES = 6;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost(context) {
+  const { request, env } = context;
   try {
     const form = await request.formData();
     const user = await getAuthenticatedUser(String(form.get("token") || ""), env);
@@ -79,11 +80,13 @@ export async function onRequestPost({ request, env }) {
       else merged.push({ name: item.name, size: item.size, type: "file", url: item.path });
     }
     await updateDashboardRow(env, tableName, rowId, { [columnName]: merged });
-    await recordBusinessAudit(env, {
+    const auditTask = recordBusinessAudit(env, {
       username: user.username, role: user.rol, action: "ADJUNTAR_IMAGENES",
       detail: { columna: columnName, archivos: saved.map((item) => item.name) },
       opa: String(form.get("numeroOPA") || ""), table: tableName, row: rowId,
     });
+    if (typeof context?.waitUntil === "function") context.waitUntil(auditTask);
+    else await auditTask;
     const images = await Promise.all(merged.map(async (item) => {
       const path = typeof item === "string" ? item : item.url;
       const name = typeof item === "string" ? item.split("/").pop() : item.name;
@@ -114,3 +117,4 @@ function pathToImagePath(value) {
 function json(body, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
+
