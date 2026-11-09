@@ -4503,7 +4503,7 @@
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 30000;  // Actualiza cambios de SeaTable en segundo plano cada 30 segundos
+    const POLL_INTERVAL_MS      = 60000;  // Revisa cambios cada minuto para evitar escanear miles de filas cada 30 s.
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
@@ -5570,27 +5570,52 @@
             _crearOPAStatus(result && result.error || 'No se pudo crear el registro.', true);
             return;
           }
-          _crearOPAStatus('Registro guardado. Actualizando el dashboard y la tabla…', false);
-          recargarDatos(function(ok) {
-            if (button) button.disabled = false;
-            if (!ok) { _crearOPAStatus('El registro quedó guardado en SeaTable, pero no se pudo actualizar la vista. Pulsa “Actualizar datos”.', true); return; }
+          _crearOPAStatus('Registro guardado. Actualizando la vista…', false);
+          const agregadoLocal = _agregarRegistroCreadoLocal(hoja, campos, result);
+          if (button) button.disabled = false;
+          if (!agregadoLocal) {
+            _crearOPAStatus('El registro quedó guardado en SeaTable. Se mostrará en el siguiente sondeo; puedes usar “Actualizar datos” para traerlo antes.', false);
+          } else {
             try { limpiarFiltros(); } catch(_) {}
             const filterOPA = document.getElementById('filtroOPA');
             if (filterOPA && Array.from(filterOPA.options).some(function(option) { return option.value === String(campos.O); })) {
               filterOPA.value = String(campos.O);
               actualizarDashboard();
             }
+            _crearOPAStatus('Registro guardado y mostrado inmediatamente. SeaTable lo sincronizará con los demás usuarios.', false);
             cerrarModalCrearOPA();
             cambiarTab('registros');
             const form = document.getElementById('crear-opa-form');
             if (form) form.reset();
-          });
+          }
         })
         .withFailureHandler(function(error) {
           if (button) button.disabled = false;
           _crearOPAStatus(error && error.message || 'Error al guardar el registro.', true);
         })
         .crearRegistroOPA({ token: _authSesionActual.token, hoja: hoja, campos: campos });
+    }
+
+    function _agregarRegistroCreadoLocal(hoja, campos, result) {
+      const rowId = String(result && result.rowId || '');
+      if (!rowId || !Array.isArray(datos)) return false;
+      const registro = { H: String(hoja || ''), _id: rowId, _ctime: new Date().toISOString(), _mtime: new Date().toISOString() };
+      Object.keys(campos || {}).forEach(function(key) {
+        if (campos[key] == null || String(campos[key]).trim() === '') return;
+        registro[key] = (key === 'MR' || key === 'ME') ? Number(campos[key]) || 0 : String(campos[key]).trim();
+      });
+      if (!registro.E) {
+        const latestStage = ['F8','F7','F6','F5','F4','F3','F2','F1'].find(function(key) { return registro[key]; });
+        if (latestStage) registro.E = _estadosOpcionesDefault[Number(latestStage.slice(1)) - 1] || '';
+      }
+      const existingIndex = datos.findIndex(function(item) { return String(item._id || '') === rowId && String(item.H || '') === String(hoja || ''); });
+      if (existingIndex >= 0) datos[existingIndex] = registro;
+      else datos.push(registro);
+      try { _invalidateMemo(); } catch(_) {}
+      try { _guardarCacheDashboard({ _ts: Date.now(), registros: datos }); } catch(_) {}
+      try { llenarFiltroHoja(); actualizarListasYDashboard(); } catch(_) {}
+      try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_) {}
+      return true;
     }
 
     function actualizarTablaRegistrosBase() {
