@@ -109,6 +109,7 @@ function parsePermissions(raw, role) {
     return {
       ...Object.fromEntries(Object.keys(defaults).map((key) => [key, typeof obj?.[key] === "boolean" ? obj[key] : defaults[key]])),
       asignaciones: normalizeAssignments(obj?.asignaciones),
+      empresa: ["Primavera", "Conceptos Gráficos"].includes(String(obj?.empresa || "")) ? String(obj.empresa) : "",
     };
   } catch { return defaults; }
 }
@@ -146,7 +147,7 @@ async function hmac(value, env) {
 }
 
 async function makeSession(user, env) {
-  const payload = toBase64Url(new TextEncoder().encode(JSON.stringify({ sub: user.id, iat: Date.now(), exp: Date.now() + SESSION_LIFETIME_MS })));
+  const payload = toBase64Url(new TextEncoder().encode(JSON.stringify({ sub: user.id, pwdv: user.salt, iat: Date.now(), exp: Date.now() + SESSION_LIFETIME_MS })));
   const signature = toBase64Url(await hmac(payload, env));
   return `${payload}.${signature}`;
 }
@@ -162,16 +163,17 @@ async function authenticatedUser(token, env) {
   if (expected.length !== received.length || expected.some((byte, i) => byte !== received[i])) return null;
   let claims;
   try { claims = JSON.parse(new TextDecoder().decode(fromBase64Url(payloadPart))); } catch { return null; }
-  if (!claims.sub || !Number.isFinite(claims.exp) || claims.exp <= Date.now()) return null;
+  if (!claims.sub || !claims.pwdv || !Number.isFinite(claims.exp) || claims.exp <= Date.now()) return null;
   const cacheKey = `${env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID || ""}|${claims.sub}`;
   const now = Date.now();
   const userCache = globalThis.__dashboardAuthUserCache || (globalThis.__dashboardAuthUserCache = new Map());
   const cachedUser = userCache.get(cacheKey);
-  if (cachedUser && cachedUser.expiresAt > now) return cachedUser.user;
+  if (cachedUser && cachedUser.expiresAt > now) return claims.pwdv !== cachedUser.user.salt ? null : cachedUser.user;
   const rows = await allRows(env, USERS_TABLE);
   const row = rows.find((item) => String(item.ID_USUARIO || item._id || "") === String(claims.sub));
   if (!row) return null;
   const user = normalizeUser(row);
+  if (claims.pwdv !== user.salt) return null;
   userCache.set(cacheKey, { user, expiresAt: now + AUTH_USER_CACHE_TTL_MS });
   if (userCache.size > 500) {
     for (const [key, entry] of userCache) {
@@ -222,6 +224,7 @@ function publicUser(user) {
     id: user.id, username: user.username, nombreCompleto: user.nombreCompleto,
     rol: user.rol, correo: user.correo, fechaRegistro: user.fechaRegistro,
     ultimoAcceso: user.ultimoAcceso, permisos: user.permisos,
+    empresa: user.permisos.empresa || "",
   };
 }
 
@@ -232,6 +235,10 @@ export async function getAuthenticatedUser(token, env) {
 export async function handleAuthRequest(functionName, args, env) {
   authConfig(env);
   switch (functionName) {
+    case "authSetupStatus": {
+      const currentUsers = await allRows(env, USERS_TABLE);
+      return { ok: true, requierePrimerAdministrador: !currentUsers.some((row) => String(row.ROL || "").toUpperCase() === "ADMINISTRADOR") };
+    }
     case "registerUser": {
       const p = args[0] || {};
       const username = String(p.username || "").trim();
@@ -253,7 +260,9 @@ export async function handleAuthRequest(functionName, args, env) {
       const hash = await passwordDigest(passwordInput, salt);
       const now = new Date().toISOString();
       const id = crypto.randomUUID();
-      const permissions = { ...DEFAULT_PERMISSIONS, cambiar_estado: role === "ADMINISTRADOR", panel_admin: role === "ADMINISTRADOR" };
+      const empresa = String(p.empresa || "");
+      if (!empresa || !["Primavera", "Conceptos Gráficos"].includes(empresa)) return { ok: false, error: "Selecciona una empresa válida." };
+      const permissions = { ...DEFAULT_PERMISSIONS, cambiar_estado: role === "ADMINISTRADOR", panel_admin: role === "ADMINISTRADOR", empresa };
       await requestTable(env, USERS_TABLE, { method: "POST", rows: [{
         ID_USUARIO: id, USERNAME: username, NOMBRE_COMPLETO: String(p.nombreCompleto || "").trim(),
         ROL: role, HASH_PWD: `pbkdf2-sha256:${ITERATIONS}:${hash}`, SALT: salt,
@@ -309,11 +318,29 @@ export async function handleAuthRequest(functionName, args, env) {
       const permissions = {
         ...Object.fromEntries(Object.keys(defaults).map((key) => [key, typeof input[key] === "boolean" ? input[key] : defaults[key]])),
         asignaciones: normalizeAssignments(parsePermissions(row.PERMISOS_JSON, role).asignaciones),
+        empresa: parsePermissions(row.PERMISOS_JSON, role).empresa,
       };
       if (role === "ADMINISTRADOR") permissions.panel_admin = true;
       await requestTable(env, USERS_TABLE, { method: "PUT", updates: [{ row_id: row._id, row: { PERMISOS_JSON: JSON.stringify(permissions) } }] });
       await addAudit(env, { username: admin.username, role: admin.rol, action: "CAMBIO_PERMISOS", detail: { usuario_objetivo: row.USERNAME, permisos: permissions } });
       return { ok: true, username: row.USERNAME, permisos: permissions };
+    }
+    case "adminRestablecerContrasena": {
+      const admin = await requireAdmin(args[0], env);
+      if (admin.error) return { ok: false, error: admin.error };
+      const target = String(args[1] || "").trim().toLocaleLowerCase();
+      const passwordInput = String(args[2] || "");
+      if (passwordInput.length < 20) return { ok: false, error: "La contraseña temporal no es válida; vuelve a escribirla." };
+      const rows = await allRows(env, USERS_TABLE);
+      const row = rows.find((item) => String(item.USERNAME || "").trim().toLocaleLowerCase() === target);
+      if (!row) return { ok: false, error: "Usuario no encontrado." };
+      const salt = toBase64Url(crypto.getRandomValues(new Uint8Array(18)));
+      const hash = await passwordDigest(passwordInput, salt);
+      await requestTable(env, USERS_TABLE, { method: "PUT", updates: [{ row_id: row._id, row: { HASH_PWD: `pbkdf2-sha256:${ITERATIONS}:${hash}`, SALT: salt } }] });
+      const cacheKey = `${env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID || ""}|${row.ID_USUARIO || row._id}`;
+      globalThis.__dashboardAuthUserCache?.delete(cacheKey);
+      await addAudit(env, { username: admin.username, role: admin.rol, action: "RESTABLECER_CONTRASENA", detail: { usuario_objetivo: row.USERNAME } });
+      return { ok: true, username: row.USERNAME, mensaje: "Contraseña restablecida. La persona deberá iniciar sesión con la nueva contraseña." };
     }
     case "obtenerMisActividades": {
       const user = await authenticatedUser(args[0], env);
@@ -383,4 +410,3 @@ function toAuditRecord(row) {
 }
 
 export const AUTH_TABLE_COLUMNS = { users: USER_COLUMNS, audit: AUDIT_COLUMNS };
-
