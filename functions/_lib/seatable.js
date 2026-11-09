@@ -127,8 +127,34 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   const token = await getBaseToken(env);
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
-  const tableNames = knownTableNames || await discoverTableNames(env, token);
+  // La metadata aporta el esquema de cada hoja y permite pedir por SQL solo
+  // las columnas que consume el Dashboard, en vez de bajar todas las columnas.
+  const discoveredNames = await discoverTableNames(env, token);
+  const tableNames = knownTableNames || discoveredNames;
   if (!tableNames.length) throw new Error("No se encontraron tablas en la base SeaTable. Revisa permisos y configuración.");
+
+  const columnMap = getColumnMap(env);
+  const metadataTables = globalThis.__seatableMetadataCache?.tables || [];
+  const projectedColumnsByTable = new Map();
+  for (const tableName of tableNames) {
+    const table = metadataTables.find((item) => item.name === tableName);
+    const availableColumns = Array.isArray(table?.columns) ? table.columns : [];
+    if (!availableColumns.length) continue;
+    const byNormalizedName = new Map();
+    for (const column of availableColumns) {
+      for (const candidate of [column.name, column.key]) {
+        const normalized = normalizeHeader(candidate);
+        if (normalized && !byNormalizedName.has(normalized)) byNormalizedName.set(normalized, candidate);
+      }
+    }
+    const selected = new Set(["_id", "_ctime", "_mtime"]);
+    for (const configuredName of Object.values(columnMap)) {
+      const actualName = byNormalizedName.get(normalizeHeader(configuredName));
+      if (actualName) selected.add(actualName);
+    }
+    // Evita una consulta vacía si el esquema de metadata no coincide con lo esperado.
+    if (selected.size > 3) projectedColumnsByTable.set(tableName, [...selected]);
+  }
 
   const pageSize = 1000;
   // Las hojas son independientes; limitamos la concurrencia para acelerar la
@@ -157,17 +183,24 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   async function readTableWithSql(tableName) {
     const tableRows = [];
     const quotedTable = `\`${String(tableName).replace(/`/g, "``")}\``;
+    const selectedColumns = projectedColumnsByTable.get(tableName);
+    const projection = selectedColumns
+      ? selectedColumns.map((column) => "`" + String(column).replace(/`/g, "``") + "`").join(", ")
+      : "*";
     const sqlPageSize = 10_000;
     for (let offset = 0; ; offset += sqlPageSize) {
       const response = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ sql: `SELECT * FROM ${quotedTable} LIMIT ${sqlPageSize} OFFSET ${offset}`, convert_keys: true }),
+        body: JSON.stringify({ sql: `SELECT ${projection} FROM ${quotedTable} LIMIT ${sqlPageSize} OFFSET ${offset}`, convert_keys: true }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(`No se pudo leer la hoja "${tableName}" con SQL (HTTP ${response.status}).`);
       const rows = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
       if (!Array.isArray(rows)) throw new Error(`SeaTable devolvió un formato inesperado para la hoja "${tableName}".`);
+      if (selectedColumns && rows.length && !Object.prototype.hasOwnProperty.call(rows[0], "_id")) {
+        throw new Error(`La consulta de columnas de "${tableName}" no devolvió el identificador de fila.`);
+      }
       tableRows.push(...rows);
       if (rows.length < sqlPageSize) break;
       if (offset + rows.length >= 100_000) throw new Error("La lectura supera el tope de seguridad de 100.000 filas. Usa vistas o consulta por páginas/filtros.");
@@ -179,7 +212,15 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
     // del endpoint de filas. Si SQL no está disponible, conserva compatibilidad.
     if (!env.SEATABLE_VIEW_NAME) {
       try { return await readTableWithSql(tableName); }
-      catch (_) { return readTableWithRowsAPI(tableName); }
+      catch (projectionError) {
+        if (projectedColumnsByTable.has(tableName)) {
+          // Si SeaTable no admite alguna columna proyectada, intenta la consulta
+          // SQL completa antes de caer al API paginado más lento.
+          projectedColumnsByTable.delete(tableName);
+          try { return await readTableWithSql(tableName); } catch (_) {}
+        }
+        return readTableWithRowsAPI(tableName);
+      }
     }
     return readTableWithRowsAPI(tableName);
   }
@@ -292,16 +333,16 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         if (Number(shared.updatedAt || 0) < Number(lock.startedAt || 0)) {
           const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()));
           if (refreshed) {
-            globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 25_000 };
+            globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 60_000 };
             return refreshed.records;
           }
           if (await sharedCache.match(lockRequest)) throw new Error("SeaTable sigue actualizándose en segundo plano. Conservamos la copia disponible; vuelve a consultar en unos segundos.");
         } else {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 25_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 60_000 };
           return shared.records;
         }
       } else {
-        globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 25_000 };
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 60_000 };
         return shared.records;
       }
     }
@@ -316,7 +357,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       const lock = await lockResponse.json().catch(() => ({}));
       const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()));
       if (refreshed) {
-        globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 25_000 };
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 60_000 };
         return refreshed.records;
       }
       // La actualización del otro usuario falló o venció el lease; intentar una.
@@ -360,11 +401,11 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     // Refresca los registros junto con el sondeo del dashboard, para que los
     // cambios en filas existentes no queden ocultos detrás de una caché larga.
     // La acción manual "Actualizar datos" sigue forzando una lectura inmediata.
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 25_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 60_000 };
     if (sharedCache) {
       try {
         await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, tableNames: detectedTableNames, updatedAt: Date.now() }), {
-          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=25" },
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=60" },
         }));
       } catch (_) {}
     }
@@ -402,7 +443,7 @@ export async function searchDashboardRecordsByOPA(env, query) {
       if (response) {
         const snapshot = await response.json();
         if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 25_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 60_000 };
           return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
         }
       }
@@ -543,12 +584,11 @@ export async function createDashboardRow(env, tableName, values) {
 }
 
 async function invalidateDashboardSnapshot(env) {
-  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
-  if (globalThis.__dashboardRowsCache?.key === cacheKey) globalThis.__dashboardRowsCache.expiresAt = 0;
-  try {
-    const sharedCache = getSharedDashboardCache(env);
-    if (sharedCache) await sharedCache.delete(dashboardCacheRequest(env));
-  } catch (_) {}
+  // No borrar el snapshot por cada edición: con varios usuarios escribiendo
+  // seguido, eso causaba un escaneo completo de todas las hojas por cada cambio.
+  // El editor actualiza su copia local al instante; los demás reciben la nueva
+  // versión al vencer el TTL (60 s) o al usar "Actualizar datos" (forzado).
+  void env;
 }
 
 async function resolveTableColumnNames(env, tableName, values, skipMissing = false) {
@@ -581,12 +621,18 @@ async function resolveTableColumnNames(env, tableName, values, skipMissing = fal
 }
 
 export async function getDashboardColumnType(env, tableName, columnName) {
-  const token = await getBaseToken(env);
-  const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(env.SEATABLE_BASE_UUID)}/metadata/`;
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`No se pudo verificar la columna de imágenes en SeaTable (HTTP ${response.status}).`);
-  const tables = body.metadata?.tables || body.tables || [];
+  const cacheKey = String(env.SEATABLE_BASE_UUID || "");
+  let metadata = globalThis.__seatableMetadataCache;
+  if (!metadata || metadata.key !== cacheKey || metadata.expiresAt <= Date.now()) {
+    const token = await getBaseToken(env);
+    const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(cacheKey)}/metadata/`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`No se pudo verificar la columna de imágenes en SeaTable (HTTP ${response.status}).`);
+    metadata = { key: cacheKey, tables: body.metadata?.tables || body.tables || [], expiresAt: Date.now() + 60_000 };
+    globalThis.__seatableMetadataCache = metadata;
+  }
+  const tables = metadata.tables || [];
   const table = tables.find((item) => item.name === tableName);
   const column = table?.columns?.find((item) => normalizeHeader(item.name) === normalizeHeader(columnName));
   if (!column) throw new Error(`No se encontró la columna "${columnName}" en la hoja "${tableName}".`);
@@ -649,6 +695,7 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
+
 
 
 
