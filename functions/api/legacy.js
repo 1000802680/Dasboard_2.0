@@ -12,7 +12,8 @@ const ESTADOS = [
 const EDITABLE_FIELDS = new Set(["O", "P", "T", "TE", "M", "TR", "PO", "B2B", "B2C", "D", "NP", "PJ", "SO", "MR", "ME", "GE", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM"]);
 const NUMERIC_FIELDS = new Set(["MR", "ME"]);
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost(context) {
+  const { request, env } = context;
   try {
     const { functionName, args = [] } = await request.json();
     let value;
@@ -147,7 +148,7 @@ export async function onRequestPost({ request, env }) {
           }
         }
         await updateDashboardRow(env, String(table), String(rowId || ""), updates);
-        await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valor: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
+        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valor: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
         value = { ok: true, campo: columnName, valorNuevo: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) };
         break;
       }
@@ -169,7 +170,7 @@ export async function onRequestPost({ request, env }) {
           updates[getDashboardColumnName(env, `F${stageIndex + 1}`)] = normalizeInputDate(p.fechaElegida);
         }
         await updateDashboardRow(env, table, rowId, updates);
-        await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
+        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
         value = { ok: true, hoja: table, fila: rowId, estado: state, fechaCampo: stageIndex >= 0 && stageIndex < 8 && p.fechaElegida ? `F${stageIndex + 1}` : "", fechaEscrita: p.fechaElegida ? normalizeInputDate(p.fechaElegida) : "" };
         break;
       }
@@ -204,7 +205,7 @@ export async function onRequestPost({ request, env }) {
         const result = await createDashboardRow(env, table, row);
         const rowId = String(result.row_id || result._id || result.id || "");
         try {
-          await recordBusinessAudit(env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
+          await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
         } catch (auditError) {
           console.warn("No se pudo guardar la auditoría del nuevo registro:", auditError);
         }
@@ -218,6 +219,15 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     return Response.json({ ok: false, error: error.message || "Error procesando la solicitud." }, { status: 502 });
   }
+}
+
+async function scheduleBusinessAudit(context, env, event) {
+  const task = recordBusinessAudit(env, event);
+  if (typeof context?.waitUntil === "function") {
+    context.waitUntil(task);
+    return;
+  }
+  await task;
 }
 
 async function assertEditableTable(env, tableName) {
@@ -359,5 +369,6 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
+
 
 
