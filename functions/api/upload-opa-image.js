@@ -15,6 +15,8 @@ export async function onRequestPost(context) {
 
     const tableName = String(form.get("table") || "").trim();
     const rowId = String(form.get("rowId") || "").trim();
+    const columnKey = String(form.get("columnKey") || "LF").trim().toUpperCase();
+    if (!["LF", "GE"].includes(columnKey)) return json({ ok: false, error: "Solo puedes adjuntar fotos del producto o de la guía de envío." }, 400);
     if (!tableName || !rowId) return json({ ok: false, error: "Falta identificar la hoja y la fila de la OPA." }, 400);
     if (!(await discoverTableNames(env)).includes(tableName)) return json({ ok: false, error: "La hoja indicada no pertenece a las hojas de datos del dashboard." }, 400);
 
@@ -31,13 +33,14 @@ export async function onRequestPost(context) {
     const apiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : dashboardToken;
     if (!apiToken) throw new Error("Falta configurar el API token de SeaTable para subir imágenes.");
 
-    const columnName = getDashboardColumnName(env, "LF");
+    const columnName = getDashboardColumnName(env, columnKey);
     const [columnType, currentRow] = await Promise.all([
       getDashboardColumnType(env, tableName, columnName),
       getDashboardRow(env, tableName, rowId),
     ]);
-    const fileType = columnType === "image" ? "image" : columnType === "file" ? "file" : "";
-    if (!fileType) return json({ ok: false, error: `La columna "${columnName}" debe ser de tipo Imagen o Archivo para guardar fotos. En SeaTable cambia el tipo de esa columna y vuelve a intentar.` }, 400);
+    const normalizedColumnType = columnType.replace(/[\s_-]/g, "");
+    const fileType = columnType === "image" ? "image" : columnType === "file" ? "file" : columnKey === "GE" && ["text", "longtext"].includes(normalizedColumnType) ? "text" : "";
+    if (!fileType) return json({ ok: false, error: `La columna "${columnName}" debe ser de tipo Imagen o Archivo${columnKey === "GE" ? " o Texto largo" : ""} para guardar fotos.` }, 400);
 
     const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
     const linkResponse = await fetch(`${server}/api/v2.1/dtable/app-upload-link/`, {
@@ -73,15 +76,17 @@ export async function onRequestPost(context) {
       saved.push({ name: uploadedName, size: file.size, path: relativeUrl, type: fileType });
     }
 
-    const existing = normalizeExisting(currentRow[columnName], fileType);
+    const existingGuide = fileType === "text" ? normalizeTextGuide(currentRow[columnName]) : null;
+    const existing = fileType === "text" ? existingGuide.photos : normalizeExisting(currentRow[columnName], fileType);
     const merged = [...existing];
     for (const item of saved) {
-      if (fileType === "image") merged.push(item.path);
+      if (fileType === "image" || fileType === "text") merged.push(item.path);
       else merged.push({ name: item.name, size: item.size, type: "file", url: item.path });
     }
-    await updateDashboardRow(env, tableName, rowId, { [columnName]: merged });
+    const storedValue = fileType === "text" ? JSON.stringify({ version: 1, link: existingGuide.link, photos: merged }) : merged;
+    await updateDashboardRow(env, tableName, rowId, { [columnName]: storedValue });
     const auditTask = recordBusinessAudit(env, {
-      username: user.username, role: user.rol, action: "ADJUNTAR_IMAGENES",
+      username: user.username, role: user.rol, action: columnKey === "GE" ? "ADJUNTAR_FOTOS_GUIA_ENVIO" : "ADJUNTAR_IMAGENES",
       detail: { columna: columnName, archivos: saved.map((item) => item.name) },
       opa: String(form.get("numeroOPA") || ""), table: tableName, row: rowId,
     });
@@ -93,7 +98,7 @@ export async function onRequestPost(context) {
       try { return { name, url: await getDashboardFileDownloadLink(env, pathToImagePath(path)) }; }
       catch (_) { return { name, url: "" }; }
     }));
-    return json({ ok: true, imagenes: images, cantidad: saved.length, mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en SeaTable.` });
+    return json({ ok: true, columna: columnKey, imagenes: images, cantidad: saved.length, valorGuardado: storedValue, enlaceGuia: existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
   } catch (error) {
     return json({ ok: false, error: error.message || "No se pudieron subir las imágenes." }, 502);
   }
@@ -108,6 +113,21 @@ function normalizeExisting(value, type) {
   return [];
 }
 
+function normalizeTextGuide(value) {
+  const text = String(value || "").trim();
+  if (!text) return { link: "", photos: [] };
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return { link: "", photos: parsed.map((item) => typeof item === "string" ? item : item?.url || "").filter(Boolean) };
+    if (parsed && typeof parsed === "object") return {
+      link: String(parsed.link || parsed.enlace || ""),
+      photos: Array.isArray(parsed.photos || parsed.fotos || parsed.attachments) ? (parsed.photos || parsed.fotos || parsed.attachments).map((item) => typeof item === "string" ? item : item?.url || "").filter(Boolean) : [],
+    };
+  } catch (_) {}
+  if (/^https?:\/\//i.test(text)) return { link: text, photos: [] };
+  return { link: "", photos: text.split(/[\r\n]+/).map((item) => item.trim()).filter((item) => /^\/(?:workspace\/\d+\/)?(?:images|files)\//i.test(item)) };
+}
+
 function pathToImagePath(value) {
   const match = String(value || "").match(/\/(images|files)\/([0-9]{4}-[0-9]{2})\/([^/?#]+)/i);
   if (!match) throw new Error("No se pudo reconocer la ruta de una imagen guardada.");
@@ -117,4 +137,3 @@ function pathToImagePath(value) {
 function json(body, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
-
