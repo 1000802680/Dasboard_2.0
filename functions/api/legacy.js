@@ -1,4 +1,4 @@
-import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardFileDownloadLink, getDashboardRow, loadDashboardRecords, refreshForNewTables, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
+import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, loadDashboardRecords, refreshForNewTables, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const ESTADOS = [
@@ -61,6 +61,8 @@ export async function onRequestPost(context) {
               proyecto: r.P || "", tipoProducto: r.T || "", territorio: r.TR || "",
               personaje: r.PJ || "", subOpa: r.SO || "", fechaUltima: latestDate(r),
               imagenes: await Promise.all(normalizeImageAttachments(r.LF).map((item) => makeImagePreview(env, item))),
+              guiaImagenes: await Promise.all(normalizeGuideValue(r.GE).photos.map((item) => makeImagePreview(env, item))),
+              guiaEnlace: normalizeGuideValue(r.GE).link,
               fechas: { F: r.F, F1: r.F1, F2: r.F2, F3: r.F3, F4: r.F4, F5: r.F5, F6: r.F6, F7: r.F7, F8: r.F8, FM: r.FM },
               headers: {
                 F1: "Concepto Enviado", F2: "Concepto Aprobado", F3: "Pre-Producción Enviada",
@@ -124,9 +126,21 @@ export async function onRequestPost(context) {
             if (!Number.isFinite(parsed) || parsed < 0) return Response.json({ ok: false, error: "Ingresa una cantidad válida, igual o mayor que cero." }, { status: 400, headers: { "Cache-Control": "no-store" } });
             newValue = parsed;
           }
+        } else if (key === "SO") {
+          try { newValue = normalizeSubOpa(rawValue); }
+          catch (error) { return Response.json({ ok: false, error: error.message }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
         } else newValue = String(rawValue ?? "").trim();
         const columnName = getDashboardColumnName(env, key);
         const updates = { [columnName]: newValue };
+        if (key === "GE") {
+          const columnType = await getDashboardColumnType(env, String(table), columnName);
+          if (["image", "file"].includes(columnType)) return Response.json({ ok: false, error: "La columna de guía es de adjuntos. Usa el botón ‘Adjuntar foto’ para guardar imágenes; el enlace web no se puede guardar en esa columna." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+          if (["text", "long-text", "long text"].includes(columnType)) {
+            const currentRow = await getDashboardRow(env, String(table), String(rowId || ""));
+            const existing = normalizeGuideValue(getRowValueForField(currentRow, columnName) ?? currentRow.GE);
+            updates[columnName] = JSON.stringify({ version: 1, link: newValue, photos: existing.photos });
+          }
+        }
         const stageIndex = /^F[1-8]$/.test(key) ? Number(key.slice(1)) - 1 : -1;
         let estadoActualizado = "";
         if (stageIndex >= 0 && newValue) {
@@ -149,7 +163,7 @@ export async function onRequestPost(context) {
         }
         await updateDashboardRow(env, String(table), String(rowId || ""), updates);
         await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valor: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
-        value = { ok: true, campo: columnName, valorNuevo: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) };
+        value = { ok: true, campo: columnName, valorNuevo: newValue, ...(key === "GE" ? { valorAlmacenado: updates[columnName] } : {}), ...(estadoActualizado ? { estado: estadoActualizado } : {}) };
         break;
       }
       case "cambiarEstadoOPA": {
@@ -189,6 +203,10 @@ export async function onRequestPost(context) {
           if (raw == null || String(raw).trim() === "") continue;
           let value = String(raw).trim();
           if (isDateField(key)) value = normalizeInputDate(value);
+          if (key === "SO") {
+            try { value = normalizeSubOpa(value); }
+            catch (error) { return Response.json({ ok: false, error: error.message }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
+          }
           if (key === "MR" || key === "ME") {
             value = Number(value);
             if (!Number.isFinite(value) || value < 0) return Response.json({ ok: false, error: "Las cantidades de muestras deben ser números iguales o mayores que cero." }, { status: 400, headers: { "Cache-Control": "no-store" } });
@@ -281,6 +299,28 @@ function normalizeImageAttachments(value) {
     if (Array.isArray(parsed)) return parsed;
   } catch (_) {}
   return text.split(/[\r\n]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeGuideValue(value) {
+  if (Array.isArray(value)) return { link: "", photos: value };
+  if (value && typeof value === "object") return { link: String(value.link || value.enlace || ""), photos: normalizeImageAttachments(value.photos || value.fotos || value.attachments || []) };
+  const text = String(value || "").trim();
+  if (!text) return { link: "", photos: [] };
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return { link: "", photos: parsed };
+    if (parsed && typeof parsed === "object") return { link: String(parsed.link || parsed.enlace || ""), photos: normalizeImageAttachments(parsed.photos || parsed.fotos || parsed.attachments || []) };
+  } catch (_) {}
+  if (/^https?:\/\//i.test(text)) return { link: text, photos: [] };
+  const photos = normalizeImageAttachments(text);
+  return photos.length ? { link: "", photos } : { link: text, photos: [] };
+}
+
+function normalizeSubOpa(value) {
+  const emptyValues = new Set(["N/A", "NA", "N.A.", "-", "SIN REGISTRAR", "NINGUNO", "NINGUNA"]);
+  const entries = [...new Set(String(value ?? "").split(/[,;|\n\r]+/).map((item) => item.trim()).filter((item) => item && !emptyValues.has(item.toUpperCase())))];
+  if (entries.length > 10) throw new Error("Puedes asociar máximo 10 sub-OPAs al mismo número de OPA.");
+  return entries.join(" | ");
 }
 
 async function mapWithConcurrency(items, concurrency, mapper) {
