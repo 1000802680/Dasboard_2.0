@@ -248,7 +248,7 @@ function toInternalRecord(row, tableName, sourceKeyMap) {
   for (const [sourceKey, internal] of sourceKeyMap) {
     const value = row[sourceKey];
     if (value == null || value === "") continue;
-    if (internal === "LF" && Array.isArray(value)) result[internal] = value;
+    if ((internal === "LF" || internal === "GE") && Array.isArray(value)) result[internal] = value;
     else if (internal === "MR" || internal === "ME") result[internal] = Number(value) || 0;
     else if (internal === "F" || (internal.length === 2 && internal[0] === "F") || internal === "FM") result[internal] = normalizeDate(value);
     else result[internal] = String(value).trim();
@@ -695,6 +695,7 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
+
 
 
 
