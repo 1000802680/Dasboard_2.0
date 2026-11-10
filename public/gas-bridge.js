@@ -16,7 +16,9 @@
       const endpoint = authFunctions.has(String(property)) ? "/api/auth" : "/api/legacy";
       return (...args) => {
         const controller = new AbortController();
-        const timeoutMs = String(property) === "searchOPAByNumber" ? 18_000 : 30_000;
+        const functionName = String(property);
+        const timeoutMs = functionName === "searchOPAByNumber" ? 18_000
+          : (functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 80_000 : 30_000);
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
         return fetch(endpoint, {
         method: "POST",
@@ -25,13 +27,20 @@
         signal: controller.signal,
       }).then(async (response) => {
         const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.error || `Error del servidor (${response.status})`);
+          if (!response.ok) {
+            if (response.status === 404) throw new Error(`Cloudflare no encontró ${endpoint} (HTTP 404). El proyecto debe desplegarse como Pages con la carpeta functions/; revisa que no esté usando "wrangler deploy" de Workers.`);
+            throw new Error(body.error || `Error del servidor (${response.status})`);
+          }
         if (typeof success === "function") success(body);
         return body;
       }).catch((error) => {
+        const rawMessage = String(error && error.message || error || "");
+        const isNetworkFailure = error.name === "TypeError" || /failed to fetch|fetch failed|networkerror|load failed/i.test(rawMessage);
         const message = error.name === "AbortError"
-          ? `La solicitud tardó demasiado (${Math.round(timeoutMs / 1000)} s). Intenta de nuevo; si se repite, pulsa Actualizar datos.`
-          : (error.message || String(error));
+          ? `La solicitud tardó demasiado (${Math.round(timeoutMs / 1000)} s). Se conserva la copia local; revisa la conexión o vuelve a intentar.`
+          : (isNetworkFailure
+            ? `No se pudo conectar con la API de Cloudflare (/api). Verifica internet y que el proyecto Pages publique la carpeta public junto con functions/api; no es un problema que se resuelva borrando la caché del navegador.`
+            : (rawMessage || String(error)));
         if (typeof failure === "function") failure({ message });
         else console.error("Error de API:", error);
       }).finally(() => clearTimeout(timeout));
