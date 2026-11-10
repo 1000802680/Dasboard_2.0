@@ -427,11 +427,13 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       return records;
     }
     const updatedAt = Date.now();
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, updatedAt, expiresAt: updatedAt + 60_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, revision: scanRevision, updatedAt, expiresAt: updatedAt + 60_000 };
     if (sharedCache) {
       try {
-        await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, tableNames: detectedTableNames, updatedAt }), {
-          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=60" },
+        await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, tableNames: detectedTableNames, revision: scanRevision, updatedAt }), {
+          // Keep a usable snapshot available while a newer scan runs. Freshness
+          // is controlled by updatedAt/revision below, not by Cache API expiry.
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
         }));
       } catch (_) {}
     }
@@ -690,14 +692,13 @@ async function invalidateDashboardSnapshot(env) {
 
   const sharedCache = getSharedDashboardCache(env);
   if (!sharedCache) return;
-  // El marcador evita que una lectura iniciada antes de esta escritura vuelva
-  // a publicar un snapshot obsoleto al terminar.
+  // Mark the snapshot stale without deleting it: all clients can keep reading
+  // the last usable copy while one request rebuilds it in the background.
   const revision = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   try {
     await sharedCache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision }), {
       headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
     }));
-    await sharedCache.delete(dashboardCacheRequest(env));
   } catch (_) {}
 }
 
@@ -795,31 +796,39 @@ export async function getDashboardFileDownloadLink(env, path) {
   catch (error) { linkCache.delete(cacheKey); throw error; }
 }
 
-export async function refreshForNewTables(env) {
+export async function refreshForNewTables(env, context = null) {
   const cached = globalThis.__dashboardRowsCache;
   const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
   const sharedCache = getSharedDashboardCache(env);
   const shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
 
   if (shared) {
-    // El snapshot compartido es la referencia entre distintos isolates.
-    if (cached?.key === cacheKey && cached.expiresAt > Date.now() && Number(cached.updatedAt || 0) >= Number(shared.updatedAt || 0)) {
-      const currentNames = await discoverTableNames(env);
-      const previous = [...(shared.tableNames || [])].sort().join("\u0000");
-      const current = [...currentNames].sort().join("\u0000");
-      if (previous === current) return cached.records;
-      cached.expiresAt = 0;
-      return loadDashboardRecords(env, { tableNames: currentNames });
+    const revision = await readDashboardSnapshotRevision(sharedCache, env);
+    globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, revision: shared.revision || "", updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
+
+    // Mutations and periodic refreshes only mark the snapshot stale. Return it
+    // now, then let Pages finish the full SeaTable scan after the response.
+    const isStale = String(shared.revision || "") !== revision || Date.now() - Number(shared.updatedAt || 0) >= 60_000;
+    if (isStale && context && typeof context.waitUntil === "function") {
+      const pending = globalThis.__dashboardBackgroundRefresh;
+      if (pending?.key === cacheKey) context.waitUntil(pending.promise);
+      else {
+        const promise = loadDashboardRecords(env, { forceRefresh: true })
+          .catch((error) => console.warn("Dashboard background refresh failed:", error?.message || error));
+        globalThis.__dashboardBackgroundRefresh = { key: cacheKey, promise };
+        context.waitUntil(promise.finally(() => {
+          if (globalThis.__dashboardBackgroundRefresh?.promise === promise) globalThis.__dashboardBackgroundRefresh = null;
+        }));
+      }
     }
-    globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
-    return shared.records;
+    return { records: shared.records, updatedAt: Number(shared.updatedAt || 0), refreshing: isStale };
   }
 
-  // Si una escritura eliminó el snapshot, no continuar usando la copia vieja
-  // de este isolate. loadDashboardRecords coordina el nuevo escaneo entre
-  // solicitudes simultáneas con el lease compartido.
+  // Cold start for a region with no shared snapshot: a full read is necessary
+  // once; later requests use stale-while-revalidate above.
   if (cached?.key === cacheKey) cached.expiresAt = 0;
-  return loadDashboardRecords(env);
+  const records = await loadDashboardRecords(env);
+  return { records, updatedAt: Number(globalThis.__dashboardRowsCache?.updatedAt || Date.now()), refreshing: false };
 }
 
 
