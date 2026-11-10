@@ -2402,6 +2402,10 @@
       color: #fff;
       box-shadow: 0 4px 0 rgba(12, 74, 110, 0.08);
     }
+    #tab-analisis-dias .ad-filtro-dias { padding:5px; gap:4px; background:#f1f5f9; border-color:#dbe5f1; border-radius:14px; box-shadow:0 3px 12px rgba(15,23,42,.045); }
+    #tab-analisis-dias .ad-filtro-btn { padding:9px 13px; border-radius:10px; color:#52657f; }
+    #tab-analisis-dias .ad-filtro-btn:hover { color:#1d4ed8; background:#fff; }
+    #tab-analisis-dias .ad-filtro-btn.active { background:linear-gradient(135deg,#2563eb,#4f46e5); color:#fff; box-shadow:0 5px 12px rgba(37,99,235,.24); }
     .ad-cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -2414,7 +2418,14 @@
       border-radius: 16px;
       padding: 16px 18px;
       box-shadow: var(--shadow-sm);
+      position:relative; overflow:hidden; transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
     }
+    #tab-analisis-dias .ad-card::before { content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ad-accent,#3b82f6); }
+    #tab-analisis-dias .ad-card:nth-child(1) { --ad-accent:#2563eb;background:linear-gradient(135deg,#eff6ff,#fff 72%); }
+    #tab-analisis-dias .ad-card:nth-child(2) { --ad-accent:#16a34a;background:linear-gradient(135deg,#f0fdf4,#fff 72%); }
+    #tab-analisis-dias .ad-card:nth-child(3) { --ad-accent:#ef4444;background:linear-gradient(135deg,#fff1f2,#fff 72%); }
+    #tab-analisis-dias .ad-card:nth-child(4) { --ad-accent:#8b5cf6;background:linear-gradient(135deg,#f5f3ff,#fff 72%); }
+    #tab-analisis-dias .ad-card:hover { transform:translateY(-3px);box-shadow:0 12px 26px rgba(15,23,42,.1);border-color:#bfdbfe; }
     .ad-card-title {
       display: inline-flex;
       align-items: center;
@@ -2446,6 +2457,23 @@
       color: var(--muted-light);
       font-weight: 500;
     }
+    #tab-analisis-dias #seg-panel-diario { overflow:hidden;border:1px solid #dbe5f1;border-radius:20px;box-shadow:0 10px 28px rgba(15,23,42,.065);background:#fff; }
+    #tab-analisis-dias #seg-panel-diario > .panel-title { padding:18px 22px;background:linear-gradient(115deg,#eff6ff 0%,#fff 58%,#f5f3ff 100%);border-bottom:1px solid #e5edf7; }
+    #tab-analisis-dias #seg-panel-diario .panel-title-left { align-items:flex-start; }
+    #tab-analisis-dias #seg-panel-diario .panel-title-icon { width:42px;height:42px;flex:0 0 42px;border-radius:13px !important;background:#e0e7ff !important;color:#4338ca !important; }
+    #tab-analisis-dias #seg-panel-diario .panel-title-left h2 { color:#14213d;font-size:17px;letter-spacing:-.02em; }
+    #tab-analisis-dias #seg-panel-diario .analisis-chart-head-badge { padding:8px 12px;background:#fff;border-color:#c7d2fe;color:#52657f;box-shadow:0 3px 10px rgba(79,70,229,.08); }
+    #tab-analisis-dias #seg-panel-diario .analisis-chart-head-badge strong { color:#3730a3;font-size:14px; }
+    #tab-analisis-dias .analisis-daily-table-wrap { padding:0 18px 16px;max-height:460px; }
+    #tab-analisis-dias .analisis-daily-table { border-collapse:separate;border-spacing:0; }
+    #tab-analisis-dias .analisis-daily-table thead th { position:sticky;top:0;z-index:2;padding:12px 16px;background:#f8fafc;color:#64748b;border-bottom:1px solid #dbe5f1;font-size:10.5px;font-weight:850;letter-spacing:.055em;text-transform:uppercase; }
+    #tab-analisis-dias .analisis-daily-table thead th:first-child { border-radius:10px 0 0 10px;text-align:left; }
+    #tab-analisis-dias .analisis-daily-table thead th:last-child { border-radius:0 10px 10px 0;text-align:left; }
+    #tab-analisis-dias .analisis-daily-table td { padding:8px 16px;border-bottom:1px solid #edf2f7;color:#24344d; }
+    #tab-analisis-dias .analisis-daily-table tbody tr { transition:background .15s ease; }
+    #tab-analisis-dias .analisis-daily-table tbody tr:hover td { background:#f5f8ff; }
+    #tab-analisis-dias .analisis-daily-table tbody tr:last-child td { border-bottom:0; }
+    @media (max-width:700px) { #tab-analisis-dias .ad-filtro-dias { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%; } #tab-analisis-dias .ad-filtro-btn { padding:9px 7px;font-size:11px; } #tab-analisis-dias #seg-panel-diario > .panel-title { align-items:flex-start;flex-direction:column; } #tab-analisis-dias .analisis-daily-table-wrap { padding:0 10px 12px; } }
     .ad-table-wrap {
       max-height: 580px;
       overflow: auto;
@@ -3758,7 +3786,7 @@
           <thead>
             <tr>
               <th>Fecha</th>
-              <th style="width:160px;">Cantidad OPAs subidas / movidas</th>
+              <th style="width:43%;">Cantidad OPAs subidas / movidas · ver detalle</th>
             </tr>
           </thead>
           <tbody>
@@ -4188,49 +4216,52 @@
   ========================================================= -->
   <div id="modal-cambiar-estado"
        style="position:fixed;inset:0;z-index:30000;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.62);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);padding:20px;">
-    <div style="width:min(520px,100%);max-height:92vh;background:rgba(255,255,255,.98);border-radius:18px;box-shadow:0 22px 60px rgba(15,23,42,.3);border:1px solid rgba(30,64,175,.08);display:flex;flex-direction:column;overflow:hidden;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 20px;border-bottom:1px solid rgba(148,163,184,.22);">
+    <div style="width:min(560px,100%);max-height:94vh;background:#fff;border-radius:20px;box-shadow:0 26px 76px rgba(15,23,42,.34);border:1px solid #dbeafe;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 22px;background:linear-gradient(120deg,#eff6ff 0%,#fff 72%);border-bottom:1px solid #dbeafe;">
         <div style="min-width:0;">
-          <div style="font-size:11.5px;color:#64748b;font-weight:600;letter-spacing:.2px;margin-bottom:3px;">Cambiar Estado · Búsqueda de OPA</div>
-          <h3 id="ce-titulo" style="margin:0;font-size:17px;color:#0f172a;font-weight:800;">Cambiar estado OPA</h3>
+          <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#1d4ed8;font-weight:850;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;"><span style="display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:7px;background:#dbeafe;">↻</span> Gestión de etapa · OPA</div>
+          <h3 id="ce-titulo" style="margin:0;font-size:19px;color:#10213d;font-weight:900;">Cambiar estado OPA</h3>
         </div>
         <button type="button" onclick="_ceCerrar()"
-                style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:9999px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;font-weight:800;font-size:16px;cursor:pointer;">✕</button>
+                style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;color:#334155;font-weight:800;font-size:16px;cursor:pointer;transition:.15s;" onmouseover="this.style.background='#fee2e2';this.style.color='#b91c1c';" onmouseout="this.style.background='#fff';this.style.color='#334155';">✕</button>
       </div>
-      <div style="padding:18px 20px 20px 20px;overflow-y:auto;">
-        <div id="ce-info" style="padding:12px 14px;border-radius:12px;background:#f1f5f9;border:1px solid #dbe3ee;color:#334155;font-size:12.5px;font-weight:600;margin-bottom:16px;">
+      <div style="padding:19px 22px 22px;overflow-y:auto;background:linear-gradient(180deg,#fff 0%,#fbfdff 100%);">
+        <div id="ce-info" style="padding:13px 15px;border-radius:14px;background:linear-gradient(120deg,#eff6ff,#f8fbff);border:1px solid #bfdbfe;border-left:4px solid #3b82f6;color:#334155;font-size:12.5px;font-weight:600;margin-bottom:18px;box-shadow:0 3px 12px rgba(37,99,235,.06);">
           —
         </div>
         <div id="ce-status" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:12px;font-weight:600;font-size:12.5px;"></div>
 
-        <div style="margin-bottom:14px;">
-          <label for="ce-select-estado" style="display:block;font-size:12px;color:#334155;font-weight:800;margin-bottom:6px;">Nuevo estado de plataforma</label>
+        <div style="margin-bottom:16px;padding:14px;border:1px solid #e2e8f0;border-radius:15px;background:#fff;box-shadow:0 3px 12px rgba(15,23,42,.035);">
+          <label for="ce-select-estado" style="display:flex;align-items:center;gap:7px;font-size:12px;color:#334155;font-weight:850;margin-bottom:8px;"><span style="display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:7px;background:#dbeafe;color:#1d4ed8;">1</span> Nuevo estado de plataforma</label>
           <select id="ce-select-estado"
             onchange="_ceActualizarEstadoSeleccionado()"
-            style="width:100%;padding:11px 12px;border-radius:12px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:700;font-size:14px;outline:none;box-sizing:border-box;">
+            style="width:100%;padding:12px 13px;border-radius:12px;border:1.5px solid #bfdbfe;background:linear-gradient(135deg,#f8fbff,#fff);color:#10213d;font-weight:750;font-size:14px;outline:none;box-sizing:border-box;box-shadow:0 0 0 3px rgba(59,130,246,.06);">
           </select>
-          <div id="ce-estado-ayuda" style="display:flex;align-items:center;gap:9px;margin-top:8px;padding:9px 11px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:700;"><span style="width:9px;height:9px;border-radius:50%;background:#94a3b8;"></span><span>Elige un estado para ver su posición en el flujo.</span></div>
+          <div id="ce-estado-ayuda" style="display:flex;align-items:center;gap:9px;margin-top:9px;padding:9px 11px;border-radius:11px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;"><span style="width:9px;height:9px;border-radius:50%;background:#94a3b8;"></span><span>Elige un estado para ver su posición en el flujo.</span></div>
+          <div id="ce-stepper" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px;"></div>
         </div>
 
-        <div style="margin-bottom:18px;">
-          <label for="ce-input-fecha" style="display:block;font-size:12px;color:#334155;font-weight:800;margin-bottom:6px;">
+        <div style="margin-bottom:18px;padding:14px;border:1px solid #e2e8f0;border-radius:15px;background:linear-gradient(135deg,#f8fbff,#fff);">
+          <label for="ce-input-fecha" style="display:flex;align-items:center;gap:7px;font-size:12px;color:#334155;font-weight:850;margin-bottom:8px;">
+            <span style="display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:7px;background:#dcfce7;color:#15803d;">2</span>
             Fecha del cambio (escribe la fecha de la etapa en formato <b>dd/mm/aaaa</b>)
           </label>
           <div style="position:relative;">
-            <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#64748b;font-weight:800;">📅</span>
+            <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#15803d;font-weight:800;">📅</span>
             <input type="text" id="ce-input-fecha" placeholder="Ej: 23/09/2026"
-              style="width:100%;padding:11px 12px 11px 38px;border-radius:12px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:14px;outline:none;box-sizing:border-box;" />
+              style="width:100%;padding:12px 12px 12px 40px;border-radius:12px;border:1.5px solid #bbf7d0;background:#f0fdf4;color:#14532d;font-weight:750;font-size:14px;outline:none;box-sizing:border-box;" />
           </div>
-          <div style="margin-top:6px;font-size:11.5px;color:#64748b;font-weight:500;">
+          <div style="display:flex;align-items:flex-start;gap:6px;margin-top:8px;font-size:11px;color:#64748b;font-weight:550;line-height:1.45;">
+            <span style="color:#16a34a;">●</span>
             Esta fecha se escribirá directamente en la hoja en la columna de la etapa (F1..F8 o la detectada para el estado).
           </div>
         </div>
 
         <div style="display:flex;gap:10px;">
-          <button class="btn-secondary" onclick="_ceCerrar()" style="flex:1;justify-content:center;margin:0;">
+          <button class="btn-secondary" onclick="_ceCerrar()" style="flex:1;justify-content:center;margin:0;border-radius:12px;">
             Cancelar
           </button>
-          <button id="ce-btn-guardar" class="btn-primary" onclick="_ceGuardar()" style="flex:1;justify-content:center;margin:0;">
+          <button id="ce-btn-guardar" class="btn-primary" onclick="_ceGuardar()" style="flex:1;justify-content:center;margin:0;border-radius:12px;box-shadow:0 5px 13px rgba(37,99,235,.2);">
             💾 Guardar cambios
           </button>
         </div>
@@ -9270,6 +9301,7 @@
         const fechasOrdenadas = Array.from(conteoPorFecha.keys()).sort(function(a, b) {
           return a < b ? 1 : (a > b ? -1 : 0);
         });
+        const maxDia = fechasOrdenadas.reduce(function(max, key) { return Math.max(max, conteoPorFecha.get(key) || 0); }, 0);
 
         let totalRango = 0;
         let diasRango = 0;
@@ -9279,16 +9311,18 @@
           const cant = conteoPorFecha.get(k) || 0;
           if (cant <= 0) continue;
           totalRango += cant; diasRango++;
+          const porcentaje = maxDia ? Math.max(4, Math.round((cant / maxDia) * 100)) : 0;
           html +=
             '<tr>' +
-              '<td style="font-weight:700;color:#0f172a;">' + escapeHTML(_fechaLarga(k)) + '</td>' +
-              '<td>' +
+              '<td style="font-weight:800;color:#1e293b;white-space:nowrap;"><span style="display:inline-flex;align-items:center;gap:8px;"><span style="display:inline-flex;width:27px;height:27px;align-items:center;justify-content:center;border-radius:9px;background:#eff6ff;color:#2563eb;font-size:12px;">▦</span>' + escapeHTML(_fechaLarga(k)) + '</span></td>' +
+              '<td style="width:43%;">' +
                 '<button type="button" onclick="_segAbrirDrill(\'' + escapeAttr(k) + '\')" title="Ver detalle: estados y números de OPA del día" ' +
-                  'style="min-width:96px;padding:6px 16px;border-radius:9999px;background:linear-gradient(180deg,#1e40af,#1e3a8a);color:#fff;font-weight:800;font-size:13px;border:1px solid #1e40af;box-shadow:0 8px 18px rgba(30,64,175,.18);cursor:pointer;transition:transform .08s ease,box-shadow .15s ease;" ' +
-                  'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 12px 24px rgba(30,64,175,.26)\';" ' +
-                  'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'0 8px 18px rgba(30,64,175,.18)\';" ' +
-                  'onmousedown="this.style.transform=\'translateY(0)\';">' +
-                  (cant.toLocaleString ? cant.toLocaleString('es') : String(cant)) +
+                  'style="display:flex;align-items:center;gap:12px;width:min(380px,100%);padding:7px 10px;border-radius:12px;background:#fff;color:#0f172a;font-weight:800;font-size:12px;border:1px solid #dbeafe;box-shadow:0 2px 7px rgba(15,23,42,.035);cursor:pointer;text-align:left;transition:transform .12s ease,box-shadow .15s ease,border-color .15s ease;" ' +
+                  'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 7px 16px rgba(37,99,235,.12)\';this.style.borderColor=\'#93c5fd\';" ' +
+                  'onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 2px 7px rgba(15,23,42,.035)\';this.style.borderColor=\'#dbeafe\';">' +
+                  '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:42px;padding:5px 8px;border-radius:9px;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;font-size:12px;font-weight:900;">' + (cant.toLocaleString ? cant.toLocaleString('es') : String(cant)) + '</span>' +
+                  '<span style="display:block;flex:1;height:8px;overflow:hidden;border-radius:999px;background:#e8eef7;"><span style="display:block;width:' + porcentaje + '%;height:100%;border-radius:999px;background:linear-gradient(90deg,#38bdf8,#4f46e5);"></span></span>' +
+                  '<span style="color:#64748b;font-size:10px;font-weight:800;min-width:30px;text-align:right;">' + porcentaje + '%</span>' +
                 '</button>' +
               '</td>' +
             '</tr>';
@@ -11802,14 +11836,12 @@
         if (tit) tit.textContent = 'Cambiar estado OPA ' + (_ceActual.numeroOPA || '');
         if (info) {
           info.innerHTML =
-            '<div style="display:flex;flex-wrap:wrap;gap:8px 14px;">' +
-            '<div><span style="color:#1d4ed8;font-weight:800;">OPA:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.numeroOPA || '—') + '</b></div>' +
-            '<div><span style="color:#1d4ed8;font-weight:800;">Hoja:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.hoja || '—') + '</b></div>' +
-            '<div><span style="color:#1d4ed8;font-weight:800;">Fila:</span> <b style="color:#0f172a;">#' + escapeHTML(String(_ceActual.fila || '—')) + '</b></div>' +
-            ( _ceActual.proyecto ? '<div style="width:100%;"><span style="color:#1d4ed8;font-weight:800;">Proyecto:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.proyecto) + '</b>' +
-              (_ceActual.tipoProducto ? ' · <span style="color:#1d4ed8;font-weight:800;">Tipo Prod:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.tipoProducto) + '</b>' : '') +
-              (_ceActual.territorio ? ' · <span style="color:#1d4ed8;font-weight:800;">Territorio:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.territorio) + '</b>' : '') + '</div>' : '') +
-            '<div style="width:100%;"><span style="color:#1d4ed8;font-weight:800;">Estado actual:</span> <b style="color:#0f172a;">' + escapeHTML(_ceActual.estadoActual || 'Sin estado') + '</b></div>' +
+            '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;">' +
+            '<div style="padding:7px 9px;border-radius:9px;background:#fff;border:1px solid #dbeafe;"><div style="font-size:9px;color:#64748b;font-weight:850;text-transform:uppercase;letter-spacing:.05em;">Número OPA</div><b style="display:block;margin-top:3px;color:#1d4ed8;font-size:13px;">' + escapeHTML(_ceActual.numeroOPA || '—') + '</b></div>' +
+            '<div style="padding:7px 9px;border-radius:9px;background:#fff;border:1px solid #dbeafe;"><div style="font-size:9px;color:#64748b;font-weight:850;text-transform:uppercase;letter-spacing:.05em;">Hoja</div><b style="display:block;margin-top:3px;color:#0f172a;font-size:12px;overflow-wrap:anywhere;">' + escapeHTML(_ceActual.hoja || '—') + '</b></div>' +
+            '<div style="padding:7px 9px;border-radius:9px;background:#fff;border:1px solid #dbeafe;"><div style="font-size:9px;color:#64748b;font-weight:850;text-transform:uppercase;letter-spacing:.05em;">Fila</div><b style="display:block;margin-top:3px;color:#0f172a;font-size:12px;">#' + escapeHTML(String(_ceActual.fila || '—')) + '</b></div>' +
+            (_ceActual.proyecto ? '<div style="grid-column:1/-1;display:flex;gap:6px 14px;flex-wrap:wrap;padding:7px 9px;border-radius:9px;background:#fff;border:1px solid #dbeafe;font-size:11px;"><span><b style="color:#64748b;">Proyecto</b> · ' + escapeHTML(_ceActual.proyecto) + '</span>' + (_ceActual.tipoProducto ? '<span><b style="color:#64748b;">Producto</b> · ' + escapeHTML(_ceActual.tipoProducto) + '</span>' : '') + (_ceActual.territorio ? '<span><b style="color:#64748b;">Territorio</b> · ' + escapeHTML(_ceActual.territorio) + '</span>' : '') + '</div>' : '') +
+            '<div style="grid-column:1/-1;display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:9px;background:#eff6ff;border:1px solid #bfdbfe;font-size:11px;"><span style="color:#2563eb;font-weight:850;">Estado actual</span><span style="padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e40af;font-weight:850;">' + escapeHTML(_ceActual.estadoActual || 'Sin estado') + '</span></div>' +
             '</div>';
         }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
@@ -11852,12 +11884,25 @@
       const value = String(select.value || '');
       const index = _estadosOpcionesDefault.indexOf(value);
       const colors = ['#2563eb','#0d9488','#d97706','#ca8a04','#7c3aed','#0f766e','#0891b2','#15803d','#dc2626'];
+      const mantiene = !!(_ceActual && value && value === _ceActual.estadoActual);
+      let activeIndex = index;
+      if (activeIndex < 0 && _ceActual) activeIndex = _estadosOpcionesDefault.indexOf(String(_ceActual.estadoActual || ''));
       const color = index >= 0 ? colors[index] : '#64748b';
-      const caption = index >= 0 ? ('Etapa ' + String(index + 1).padStart(2,'0') + ' de ' + _estadosOpcionesDefault.length + ' · ' + value) : ('Se conservará el estado actual · ' + (value || 'Sin estado'));
+      const caption = mantiene ? ('Se mantiene el estado actual · Etapa ' + (activeIndex >= 0 ? String(activeIndex + 1).padStart(2,'0') : '—')) : index >= 0 ? ('Etapa ' + String(index + 1).padStart(2,'0') + ' de ' + _estadosOpcionesDefault.length + ' · ' + value) : ('Se conservará el estado actual · ' + (value || 'Sin estado'));
       ayuda.style.borderColor = color + '44';
       ayuda.style.background = color + '0d';
       ayuda.style.color = color;
       ayuda.innerHTML = '<span style="width:9px;height:9px;border-radius:50%;background:' + color + ';flex:0 0 9px;"></span><span>' + escapeHTML(caption) + '</span>';
+      const stepper = document.getElementById('ce-stepper');
+      if (stepper) stepper.innerHTML = _estadosOpcionesDefault.map(function(name, i) {
+        const cancelled = i === _estadosOpcionesDefault.length - 1;
+        const selected = i === activeIndex && activeIndex >= 0;
+        const complete = activeIndex >= 0 && i < activeIndex && activeIndex !== _estadosOpcionesDefault.length - 1;
+        const tone = selected ? (cancelled ? '#dc2626' : colors[i]) : complete ? '#15803d' : cancelled ? '#b91c1c' : '#94a3b8';
+        const bg = selected ? (cancelled ? '#fef2f2' : '#eff6ff') : complete ? '#f0fdf4' : cancelled ? '#fff7f7' : '#f8fafc';
+        const border = selected ? tone : complete ? '#86efac' : cancelled ? '#fecaca' : '#e2e8f0';
+        return '<div title="Etapa ' + String(i + 1).padStart(2,'0') + ' · ' + escapeAttr(name) + '" style="display:flex;align-items:center;gap:6px;min-width:0;padding:7px 8px;border-radius:9px;border:1px solid ' + border + ';background:' + bg + ';color:' + tone + ';' + (selected ? 'box-shadow:0 0 0 2px ' + tone + '22;' : '') + '"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:0 0 20px;border-radius:7px;background:' + tone + ';color:#fff;font-size:9px;font-weight:900;">' + String(i + 1).padStart(2,'0') + '</span><span style="min-width:0;font-size:9.5px;font-weight:800;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHTML(name) + '</span></div>';
+      }).join('');
     }
 
     function _ceCerrar() {
@@ -12015,6 +12060,32 @@
       }
     }
 
+    function _ecListaValoresUnicos(campoClave, valorActual) {
+      const candidatos = { P:'Proyecto', T:'Tipo de producto', TE:'Tipo de producto específico', M:'Marca', TR:'Territorio', PJ:'Personaje', PO:'Portafolio' };
+      if (!candidatos[campoClave]) return [];
+      const encontrados = new Map();
+      const agregar = function(value) {
+        const text = String(value == null ? '' : value).trim();
+        if (!text || /^(?:—|-|N\/A|NA|N\.A\.|SIN REGISTRAR|PENDIENTE)$/i.test(text)) return;
+        const key = text.toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+        if (key && !encontrados.has(key)) encontrados.set(key, text);
+      };
+      (Array.isArray(datos) ? datos : []).forEach(function(row) { if (row) agregar(row[campoClave]); });
+      Object.keys(window._busqOpaCache || {}).forEach(function(key) {
+        const row = window._busqOpaCache[key];
+        if (!row) return;
+        const value = campoClave === 'P' ? row.proyecto : campoClave === 'T' ? row.tipoProducto : campoClave === 'TR' ? row.territorio : campoClave === 'PJ' ? row.personaje : (row.todasLasFechas && row.todasLasFechas[campoClave]);
+        agregar(value);
+      });
+      agregar(valorActual);
+      return Array.from(encontrados.values()).sort(function(a, b) { return a.localeCompare(b, 'es', { numeric:true, sensitivity:'base' }); }).slice(0, 500);
+    }
+
+    function _ecElegirOpcion(value) {
+      const input = document.getElementById('ec-input-valor');
+      if (input && value) { input.value = value; input.focus(); }
+    }
+
     function _ecAbrir(dataId, campoClave, label, icon) {
       try {
         if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
@@ -12058,6 +12129,8 @@
         const lbl = document.getElementById('ec-label-valor');
         const ic = document.getElementById('ec-input-icon');
         const inp = document.getElementById('ec-input-valor');
+        const select = document.getElementById('ec-select-opciones');
+        const ayudaOpciones = document.getElementById('ec-ayuda-opciones');
         const stat = document.getElementById('ec-status');
         if (tit) tit.textContent = icon + ' Editar ' + label;
         if (info) {
@@ -12079,6 +12152,15 @@
           inp.value = esFecha && /^\d{4}-\d{2}-\d{2}$/.test(_ecActual.valorActual) ? _ecActual.valorActual : _ecActual.valorActual;
           try { inp.focus(); if(inp.select && !esFecha) inp.select(); } catch(_) {}
         }
+        if (select) {
+          const opciones = _ecListaValoresUnicos(campoClave, valorActual);
+          const admiteLista = opciones.length > 0 && ['P','T','TE','M','TR','PJ','PO'].indexOf(campoClave) >= 0;
+          select.style.display = admiteLista ? 'block' : 'none';
+          select.innerHTML = '<option value="">Selecciona un valor existente…</option>' + (admiteLista ? opciones.map(function(value) { return '<option value="' + escapeAttr(value) + '">' + escapeHTML(value) + '</option>'; }).join('') : '');
+          select.value = admiteLista && opciones.indexOf(valorActual) >= 0 ? valorActual : '';
+          if (ayudaOpciones) ayudaOpciones.style.display = admiteLista ? 'block' : 'none';
+          if (lbl && admiteLista) lbl.textContent = 'Selecciona un valor existente o escribe uno nuevo para ' + label + ':';
+        } else if (ayudaOpciones) ayudaOpciones.style.display = 'none';
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
         if (m) m.style.display = 'flex';
       } catch(err) {
