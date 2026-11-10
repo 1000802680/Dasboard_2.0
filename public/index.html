@@ -289,6 +289,10 @@
       letter-spacing: -0.01em;
     }
 
+    /* El diagnóstico de sincronización es información operativa para admins. */
+    #syncStatus { display: none !important; }
+    .es-admin-dashboard #syncStatus { display: inline-flex !important; }
+
     .sync-status.sync-offline {
       background: linear-gradient(180deg, rgba(245,158,11,.08), rgba(245,158,11,.02));
       border-color: rgba(245,158,11,.25);
@@ -4175,12 +4179,12 @@
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
           <label style="font-size:12px;font-weight:800;color:#334155;">Hoja / marca *<select id="crear-opa-hoja" required style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Número de OPA *<input id="crear-opa-O" required maxlength="120" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Proyecto<input id="crear-opa-P" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de producto<input id="crear-opa-T" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo específico<input id="crear-opa-TE" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Marca<input id="crear-opa-M" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Territorio<input id="crear-opa-TR" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Personaje<input id="crear-opa-PJ" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Proyecto<select id="crear-opa-P" onchange="_crearOPAToggleCustom('P')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-P-nuevo" maxlength="200" placeholder="Escribe el nombre del proyecto" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de producto<select id="crear-opa-T" onchange="_crearOPAToggleCustom('T')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-T-nuevo" maxlength="200" placeholder="Escribe el tipo de producto" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo específico<select id="crear-opa-TE" onchange="_crearOPAToggleCustom('TE')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-TE-nuevo" maxlength="200" placeholder="Escribe el tipo específico" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Marca<select id="crear-opa-M" onchange="_crearOPAToggleCustom('M')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-M-nuevo" maxlength="200" placeholder="Escribe la marca" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Territorio<select id="crear-opa-TR" onchange="_crearOPAToggleCustom('TR')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-TR-nuevo" maxlength="200" placeholder="Escribe el territorio" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Personaje<select id="crear-opa-PJ" onchange="_crearOPAToggleCustom('PJ')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-PJ-nuevo" maxlength="200" placeholder="Escribe el personaje" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Sub-OPAs (máximo 10)<input id="crear-opa-SO" maxlength="500" placeholder="Ej.: 01, 02, 03" title="Escribe hasta 10 sub-OPAs separadas por coma, punto y coma o barra vertical" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Sepáralas con coma. El sistema guarda hasta 10 en el mismo número de OPA.</span></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Estado de plataforma<select id="crear-opa-E" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"><option value="">Sin estado</option><option>Concepto Enviado</option><option>Concepto Aprobado</option><option>Pre-Producción Enviada</option><option>Pre-Producción Aprobada</option><option>Fotos de Producción Enviada</option><option>Fotos de Producción Aprobada</option><option>Muestras Finales Enviadas</option><option>Aprobada / Cerrada</option><option>Cancelado</option></select></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Fecha<input id="crear-opa-F" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
@@ -4193,7 +4197,7 @@
           <label style="font-size:12px;font-weight:800;color:#334155;">Muestras finales enviadas<input id="crear-opa-F7" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Aprobada / cerrada<input id="crear-opa-F8" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Fecha envío muestras<input id="crear-opa-FM" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Portafolio<input id="crear-opa-PO" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Portafolio<select id="crear-opa-PO" onchange="_crearOPAToggleCustom('PO')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-PO-nuevo" maxlength="200" placeholder="Escribe el portafolio" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2B<input id="crear-opa-B2B" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2C<input id="crear-opa-B2C" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras recibidas<input id="crear-opa-MR" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
@@ -5615,6 +5619,18 @@
         return '<option value="' + escapeAttr(tabla) + '">' + escapeHTML(tabla) + '</option>';
       }).join('');
       if (actual && tablas.includes(actual)) select.value = actual;
+      const valoresActuales = { P: limpiarTexto(document.getElementById('filtroProyecto') && document.getElementById('filtroProyecto').value) };
+      ['P','T','TE','M','TR','PJ','PO'].forEach(function(key) {
+        const campo = document.getElementById('crear-opa-' + key);
+        if (!campo) return;
+        const opciones = _ecListaValoresUnicos(key, valoresActuales[key] || '');
+        campo.innerHTML = '<option value="">Selecciona un valor existente…</option>' + opciones.map(function(value) {
+          return '<option value="' + escapeAttr(value) + '">' + escapeHTML(value) + '</option>';
+        }).join('') + '<option value="__nuevo__">＋ Escribir un valor nuevo…</option>';
+        campo.value = valoresActuales[key] && opciones.includes(valoresActuales[key]) ? valoresActuales[key] : '';
+        const inputNuevo = document.getElementById('crear-opa-' + key + '-nuevo');
+        if (inputNuevo) { inputNuevo.value = ''; inputNuevo.style.display = 'none'; }
+      });
       const status = document.getElementById('crear-opa-status');
       if (status) { status.style.display = 'none'; status.textContent = ''; }
       modal.style.display = 'flex';
@@ -5624,6 +5640,24 @@
     function cerrarModalCrearOPA() {
       const modal = document.getElementById('modal-crear-opa');
       if (modal) modal.style.display = 'none';
+    }
+
+    function _crearOPAToggleCustom(key) {
+      const select = document.getElementById('crear-opa-' + key);
+      const input = document.getElementById('crear-opa-' + key + '-nuevo');
+      if (!select || !input) return;
+      const custom = select.value === '__nuevo__';
+      input.style.display = custom ? 'block' : 'none';
+      input.required = custom;
+      if (custom) input.focus();
+      else { input.required = false; input.value = ''; }
+    }
+
+    function _crearOPAValorCampo(key, input) {
+      const categorical = ['P','T','TE','M','TR','PJ','PO'].includes(key);
+      if (!categorical || !input || input.value !== '__nuevo__') return String(input && input.value || '').trim();
+      const custom = document.getElementById('crear-opa-' + key + '-nuevo');
+      return String(custom && custom.value || '').trim();
     }
 
     function _crearOPAStatus(message, error, success) {
@@ -5659,7 +5693,8 @@
       const campos = {};
       keys.forEach(function(key) {
         const input = document.getElementById('crear-opa-' + key);
-        if (input && String(input.value || '').trim()) campos[key] = String(input.value).trim();
+        const value = _crearOPAValorCampo(key, input);
+        if (value) campos[key] = value;
       });
       const hoja = String(document.getElementById('crear-opa-hoja').value || '').trim();
       if (!hoja) { _crearOPAStatus('Selecciona la hoja / marca donde se guardará el registro.', true); return; }
@@ -10017,6 +10052,8 @@
         const txt = document.getElementById('txt-usuario-header');
         const rol = document.getElementById('txt-rol-header');
         if (!btn) return;
+        const esAdminActual = !!(_authSesionActual && _authSesionActual.logueado && String(_authSesionActual.rol || '').toUpperCase() === 'ADMINISTRADOR');
+        document.documentElement.classList.toggle('es-admin-dashboard', esAdminActual);
         if (_authSesionActual && _authSesionActual.logueado) {
           const nom = String(_authSesionActual.nombreCompleto || _authSesionActual.username || 'U');
           const initials = nom.split(/\s+/).map(function(s){ return s ? s.charAt(0).toUpperCase() : ''; }).join('').slice(0, 2) || 'U';
@@ -10032,6 +10069,7 @@
             rol.innerHTML = (esAdmin ? '🛡️ ADMINISTRADOR' : '👤 Usuario') + ' · @' + String(_authSesionActual.username || '');
           }
         } else {
+          document.documentElement.classList.remove('es-admin-dashboard');
           btn.textContent = '👤';
           if (txt) { txt.style.display = 'block'; txt.textContent = 'No iniciada'; }
           if (rol) { rol.style.display = 'block'; rol.innerHTML = '🔒 Invitado'; }
