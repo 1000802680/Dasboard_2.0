@@ -3979,7 +3979,7 @@
         <div>
           <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">📋 Historial y Auditoría</h2>
           <p style="margin:5px 0 0 0;color:#64748b;font-size:13px;font-weight:500;">
-            Vista de administrador: Todos los cambios de estado, ediciones de campo, inicios de sesión y cambios de permisos — agrupados por usuario.
+            Seguimiento diario por persona: OPAs creadas, fotos cargadas, ediciones y cambios realizados. Acceso exclusivo para administradores.
           </p>
         </div>
         <div style="display:flex;gap:10px;flex-shrink:0;flex-wrap:wrap;">
@@ -3988,7 +3988,7 @@
       </div>
 
       <!-- TARJETAS RESUMEN GLOBALES -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px;">
+      <div style="display:none;">
         <div class="estado-chip-card" style="padding:14px 16px;background:linear-gradient(135deg,#eff6ff,#dbeafe);border-color:#bfdbfe;">
           <div style="font-size:11px;color:#1e40af;font-weight:800;letter-spacing:.3px;margin-bottom:6px;">USUARIOS REGISTRADOS</div>
           <div id="hist-global-usuarios" style="font-size:28px;color:#0f172a;font-weight:900;line-height:1;">—</div>
@@ -4029,7 +4029,7 @@
             <option value="EDITAR_CAMPO">✏️ Editar campo (lápiz)</option>
             <option value="CAMBIO_PERMISOS">🔐 Cambio de permisos</option>
             <option value="CREAR_REGISTRO_OPA">➕ Crear registro</option>
-            <option value="ADJUNTAR_IMAGENES">🖼️ Adjuntar imágenes</option>
+            <option value="ADJUNTAR_IMAGENES|ADJUNTAR_FOTOS_GUIA_ENVIO">🖼️ Adjuntar imágenes</option>
             <option value="LOGIN_OK|LOGIN">✅ Inicios de sesión</option>
             <option value="LOGIN_FALLIDO">❌ Logins fallidos</option>
           </select>
@@ -4043,24 +4043,24 @@
       </div>
 
       <!-- RESUMEN POR USUARIO -->
-      <div class="panel" style="padding:18px 20px;margin-bottom:16px;">
+      <div class="panel" style="padding:18px 20px;margin-bottom:16px;display:none;">
         <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
           <div><h3 style="margin:0;font-size:16px;color:#0f172a;font-weight:900;">📈 Productividad diaria por usuario</h3>
-            <div style="margin-top:4px;font-size:12px;color:#64748b;">Registros creados, ediciones, estados e imágenes. Los inicios de sesión no cuentan como producción.</div></div>
+            <div style="margin-top:4px;font-size:12px;color:#64748b;">OPAs creadas, ediciones, cambios de estado e imágenes cargadas por cada persona en el día seleccionado.</div></div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <button type="button" class="btn-secondary" onclick="_historialElegirDia(-1)">Ayer</button>
             <button type="button" class="btn-secondary" onclick="_historialElegirDia(0)">Hoy</button>
-            <input id="hist-productividad-fecha" type="date" onchange="_historialRenderProductividad()" aria-label="Día de productividad" style="padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-weight:700;" />
+            <input id="hist-productividad-fecha" type="date" onchange="_historialRenderProductividad();_historialAplicarFiltros()" aria-label="Día de productividad" style="padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-weight:700;" />
           </div>
         </div>
         <div id="hist-productividad-resumen" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px;margin-bottom:12px;"></div>
         <div style="overflow:auto;border:1px solid #e2e8f0;border-radius:12px;">
           <table class="opa-table" style="width:100%;min-width:760px;border-collapse:collapse;">
-            <thead style="background:#f8fafc;"><tr><th>Usuario</th><th>Registros creados</th><th>Ediciones</th><th>Cambios de estado</th><th>Imágenes</th><th>OPAs únicas</th><th>Acciones productivas</th></tr></thead>
+            <thead style="background:#f8fafc;"><tr><th>Usuario</th><th>OPAs creadas</th><th>Ediciones</th><th>Cambios de estado</th><th>Imágenes subidas</th><th>OPAs únicas trabajadas</th><th>Acciones productivas</th></tr></thead>
             <tbody id="hist-productividad-body"><tr><td colspan="7" style="text-align:center;padding:18px;color:#64748b;">Selecciona un día.</td></tr></tbody>
           </table>
         </div>
-        <div style="margin-top:8px;font-size:11px;color:#64748b;">Cálculo basado en las últimas 3.000 acciones disponibles en la auditoría.</div>
+        <div style="margin-top:8px;font-size:11px;color:#64748b;">El reporte se calcula con las últimas 3.000 acciones guardadas en la auditoría.</div>
       </div>
 
       <!-- RESUMEN POR USUARIO -->
@@ -4077,7 +4077,7 @@
       <!-- TABLA DETALLE AUDITORÍA -->
       <div class="panel" style="padding:0;overflow:hidden;">
         <div style="padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-          <h3 style="margin:0;font-size:15px;color:#0f172a;font-weight:900;">📝 Detalle de Auditoría (orden cronológico inverso)</h3>
+          <h3 style="margin:0;font-size:15px;color:#0f172a;font-weight:900;">📝 Actividad de usuarios del día seleccionado</h3>
           <div id="hist-detalle-contador" style="font-size:12px;color:#64748b;font-weight:700;">0 filas</div>
         </div>
         <div style="overflow-x:auto;max-height:72vh;overflow-y:auto;">
@@ -4111,6 +4111,7 @@
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <span id="registros-contador" class="badge-total">0 registros</span>
+          <button type="button" class="btn-secondary" onclick="descargarExcelRegistros()" style="margin:0;">⬇️ Descargar Excel</button>
           <button type="button" class="btn-primary" onclick="abrirModalCrearOPA()" style="margin:0;">＋ Agregar datos</button>
         </div>
       </div>
@@ -5523,6 +5524,47 @@
       actualizarTablaRegistrosBase();
     }
 
+    function descargarExcelRegistros() {
+      try {
+        const sensitive = /^(USUARIOS?|HISTORIALAUDITORIA|HISTORIALDEAUTORIA)$/i;
+        const headers = [
+          ['H','Hoja / marca'],['O','Número de OPA'],['P','Proyecto'],['T','Tipo de producto'],['TE','Tipo específico'],['M','Marca'],['TR','Territorio'],
+          ['LF','Fotos del producto'],['E','Estado plataforma'],['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],
+          ['F4','Pre-producción aprobada'],['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],
+          ['F8','Aprobada / cerrada'],['FM','Fecha envío de muestras'],['SO','Sub-OPAs'],['PO','Portafolio'],['B2B','SKU B2B'],['B2C','SKU B2C'],
+          ['D','Descripción ERP'],['NP','Nombre de producto en OPA'],['PJ','Personaje'],['MR','Muestras recibidas'],['ME','Muestras enviadas'],['GE','Enlace guía de envío']
+        ];
+        const source = Array.isArray(datosFiltrados) ? datosFiltrados : (Array.isArray(datos) ? datos : []);
+        const rows = source.filter(function(row) {
+          const table = String(row && row.H || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase();
+          return !sensitive.test(table) && !/(USUARIOS|AUDITORIA|AUTORIA)/i.test(table) && String(row && row.O || '').trim() !== '';
+        });
+        if (!rows.length) { alert('No hay registros de OPA para descargar con los filtros actuales.'); return; }
+        const xmlEscape = function(value) { return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); };
+        const cellValue = function(row,key) {
+          let value = row[key];
+          if (key === 'GE' && typeof value === 'string') {
+            try { const parsed = JSON.parse(value); if (parsed && !Array.isArray(parsed)) value = [parsed.link || parsed.enlace || '', ...(parsed.photos || parsed.fotos || parsed.attachments || []).map(function(item){ return item && (item.name || item.path || item.url) || item; })].filter(Boolean).join(' | '); } catch(_) {}
+          }
+          if (Array.isArray(value)) return value.map(function(item){ return item && typeof item === 'object' ? (item.name || item.path || item.url || JSON.stringify(item)) : item; }).join(' | ');
+          if (value && typeof value === 'object') return value.name || value.path || value.url || JSON.stringify(value);
+          return value == null ? '' : String(value);
+        };
+        const cell = function(value, style) { return '<Cell' + (style ? ' ss:StyleID="' + style + '"' : '') + '><Data ss:Type="String">' + xmlEscape(value) + '</Data></Cell>'; };
+        const xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1E40AF" ss:Pattern="Solid"/></Style><Style ss:ID="Complete"><Font ss:Color="#166534" ss:Bold="1"/><Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/></Style><Style ss:ID="Pending"><Font ss:Color="#991B1B" ss:Bold="1"/><Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/></Style></Styles><Worksheet ss:Name="Registros OPA"><Table>' +
+          '<Row>' + headers.map(function(item){ return cell(item[1],'Header'); }).join('') + '</Row>' +
+          rows.map(function(row){ return '<Row>' + headers.map(function(item){ const value=cellValue(row,item[0]); const style=item[0]==='E' ? (/cancel/i.test(value) ? 'Pending' : (/aprob|cerrad/i.test(value) ? 'Complete' : '')) : ''; return cell(value,style); }).join('') + '</Row>'; }).join('') +
+          '</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane><ActivePane>2</ActivePane></WorksheetOptions></Worksheet></Workbook>';
+        const blob = new Blob(['\ufeff',xml],{type:'application/vnd.ms-excel;charset=utf-8'});
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'Registros_OPA_' + new Date().toISOString().slice(0,10) + '.xls';
+        document.body.appendChild(link); link.click(); link.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); },1000);
+      } catch(error) { alert('No se pudo generar el Excel: ' + String(error && error.message || error)); }
+    }
+
     function abrirModalCrearOPA() {
       if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
       if (_authSesionActual.permisos && _authSesionActual.permisos.cambiar_estado === false) {
@@ -5549,14 +5591,30 @@
       if (modal) modal.style.display = 'none';
     }
 
-    function _crearOPAStatus(message, error) {
+    function _crearOPAStatus(message, error, success) {
       const status = document.getElementById('crear-opa-status');
       if (!status) return;
       status.style.display = 'block';
-      status.style.background = error ? '#fef2f2' : '#eff6ff';
-      status.style.color = error ? '#b91c1c' : '#1d4ed8';
-      status.style.border = error ? '1px solid #fecaca' : '1px solid #bfdbfe';
+      status.style.background = error ? '#fef2f2' : success ? '#f0fdf4' : '#eff6ff';
+      status.style.color = error ? '#b91c1c' : success ? '#166534' : '#1d4ed8';
+      status.style.border = error ? '1px solid #fecaca' : success ? '1px solid #bbf7d0' : '1px solid #bfdbfe';
       status.textContent = message;
+    }
+
+    function _mostrarAvisoOPAguardada(message) {
+      let notice = document.getElementById('opa-save-notice');
+      if (!notice) {
+        notice = document.createElement('div');
+        notice.id = 'opa-save-notice';
+        notice.setAttribute('role','status');
+        notice.setAttribute('aria-live','polite');
+        notice.style.cssText = 'position:fixed;top:20px;right:20px;z-index:50000;max-width:min(440px,calc(100vw - 40px));padding:14px 18px;border:1px solid #86efac;border-radius:14px;background:#f0fdf4;color:#166534;box-shadow:0 12px 32px rgba(15,23,42,.18);font-size:14px;font-weight:800;';
+        document.body.appendChild(notice);
+      }
+      notice.textContent = message || '✅ OPA guardada correctamente en SeaTable.';
+      notice.style.display = 'block';
+      clearTimeout(window.__opaSaveNoticeTimer);
+      window.__opaSaveNoticeTimer = setTimeout(function(){ if (notice) notice.style.display = 'none'; },5000);
     }
 
     function guardarNuevoRegistroOPA() {
@@ -5581,11 +5639,12 @@
             _crearOPAStatus(result && result.error || 'No se pudo crear el registro.', true);
             return;
           }
+          _mostrarAvisoOPAguardada(result.mensaje || '✅ OPA guardada correctamente en SeaTable.');
           _crearOPAStatus('Registro guardado. Actualizando la vista…', false);
           const agregadoLocal = _agregarRegistroCreadoLocal(hoja, campos, result);
           if (button) button.disabled = false;
           if (!agregadoLocal) {
-            _crearOPAStatus('El registro quedó guardado en SeaTable. Se mostrará en el siguiente sondeo; puedes usar “Actualizar datos” para traerlo antes.', false);
+            _crearOPAStatus('✅ OPA guardada en SeaTable. Usa “Actualizar datos” para cargarla en la tabla.', false, true);
           } else {
             try { limpiarFiltros(); } catch(_) {}
             const filterOPA = document.getElementById('filtroOPA');
@@ -5681,11 +5740,11 @@
         const lapiz = function(field, label, icon) {
           return puedeEditar ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + field + '\',\'' + escapeAttr(label) + '\',\'' + escapeAttr(icon) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:22px;height:22px;cursor:pointer;font-size:11px;">✏️</button>' : '';
         };
-        const fechasColores = [ ['#2563eb','#eff6ff'],['#0d9488','#f0fdfa'],['#d97706','#fffbeb'],['#7c3aed','#f5f3ff'],['#db2777','#fdf2f8'],['#0891b2','#ecfeff'],['#ca8a04','#fefce8'],['#15803d','#f0fdf4'],['#64748b','#f8fafc'] ];
+        const colorCompletado = ['#15803d','#f0fdf4'], colorPendiente = ['#dc2626','#fef2f2'];
         const dateCards = etapas.map(function(item, stageIndex) {
-          const field = item[0], label = item[1], value = fechas[field], tone = fechasColores[stageIndex] || fechasColores[8];
-          return '<div class="registro-fecha-card" title="Etapa ' + String(stageIndex + 1).padStart(2,'0') + ': ' + escapeAttr(label) + (value ? ' · ' + escapeAttr(value) : ' · Sin fecha') + '" style="display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;padding:7px 8px;border:1px solid ' + (value ? tone[0] + '55' : '#dbe3ee') + ';border-left:3px solid ' + tone[0] + ';border-radius:10px;background:' + (value ? tone[1] : '#f8fafc') + ';">' +
-            '<div style="min-width:0;flex:1;"><div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#475569;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="flex:0 0 auto;padding:1px 5px;border-radius:5px;background:' + tone[0] + ';color:#fff;font-size:9px;">' + String(stageIndex + 1).padStart(2,'0') + '</span><span style="overflow:hidden;text-overflow:ellipsis;">' + escapeHTML(label) + '</span></div><span data-opa-date-field="' + escapeAttr(dataId + ':' + field) + '" style="display:block;margin-top:3px;font-size:11.5px;color:' + (value ? '#0f172a' : '#94a3b8') + ';font-weight:850;font-variant-numeric:tabular-nums;">' + escapeHTML(value || 'Pendiente') + '</span></div>' +
+          const field = item[0], label = item[1], value = fechas[field], tone = value ? colorCompletado : colorPendiente;
+          return '<div class="registro-fecha-card" title="Etapa ' + String(stageIndex + 1).padStart(2,'0') + ': ' + escapeAttr(label) + (value ? ' · Completada: ' + escapeAttr(value) : ' · Pendiente') + '" style="display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;padding:7px 8px;border:1px solid ' + tone[0] + '55;border-left:3px solid ' + tone[0] + ';border-radius:10px;background:' + tone[1] + ';">' +
+            '<div style="min-width:0;flex:1;"><div style="display:flex;align-items:center;gap:5px;font-size:10px;color:' + (value ? '#166534' : '#991b1b') + ';font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="flex:0 0 auto;padding:1px 5px;border-radius:5px;background:' + tone[0] + ';color:#fff;font-size:9px;">' + String(stageIndex + 1).padStart(2,'0') + '</span><span style="overflow:hidden;text-overflow:ellipsis;">' + escapeHTML(label) + '</span></div><span data-opa-date-field="' + escapeAttr(dataId + ':' + field) + '" style="display:block;margin-top:3px;font-size:11.5px;color:' + (value ? '#166534' : '#b91c1c') + ';font-weight:850;font-variant-numeric:tabular-nums;">' + escapeHTML(value || 'Pendiente') + '</span></div>' +
             lapiz(field, label, '📅') + '</div>';
         }).join('');
         const images = registroBusqueda.imagenes;
@@ -10643,7 +10702,7 @@
     function _historialElegirDia(offset) {
       const d = new Date(); d.setDate(d.getDate() + (Number(offset) || 0));
       const input = document.getElementById('hist-productividad-fecha');
-      if (input) { input.value = _historialFechaBogota(d); _historialRenderProductividad(); }
+      if (input) { input.value = _historialFechaBogota(d); _historialRenderProductividad(); _historialAplicarFiltros(); }
     }
 
     function _historialRenderProductividad() {
@@ -10660,14 +10719,21 @@
       });
       events.forEach(function(item) {
         const type = String(item.tipoAccion || '').toUpperCase();
-        const category = type.indexOf('CREAR_REGISTRO_OPA') >= 0 || type === 'CREAR_REGISTRO' ? 'creados' :
+        const category = type.indexOf('CREAR_REGISTRO') >= 0 ? 'creados' :
           type.indexOf('EDITAR_CAMPO') >= 0 ? 'ediciones' :
           type.indexOf('CAMBIO_ESTADO') >= 0 ? 'estados' :
-          type.indexOf('ADJUNTAR_IMAGENES') >= 0 ? 'imagenes' : '';
+          type.indexOf('ADJUNTAR') >= 0 ? 'imagenes' : '';
         if (!category) return;
         const username = String(item.username || 'Sin usuario');
         const stat = porUsuario[username] || (porUsuario[username] = { username, creados:0, ediciones:0, estados:0, imagenes:0, opas:{}, total:0 });
-        stat[category]++;
+        let cantidad = 1;
+        if (category === 'imagenes') {
+          try {
+            const detail = typeof item.detalleJSON === 'string' ? JSON.parse(item.detalleJSON || '{}') : item.detalleJSON;
+            cantidad = Array.isArray(detail && (detail.archivos || detail.files)) ? (detail.archivos || detail.files).length : Math.max(1, Number(detail && detail.cantidad) || 1);
+          } catch(_) {}
+        }
+        stat[category] += cantidad;
         stat.total++;
         if (item.opaAfectada) stat.opas[String(item.opaAfectada)] = true;
       });
@@ -10872,11 +10938,16 @@
         const inpTexto = document.getElementById('hist-filtro-texto');
 
         const filtroUsr = String(selUsr && selUsr.value || '').trim();
+        const filtroDia = String(document.getElementById('hist-productividad-fecha') && document.getElementById('hist-productividad-fecha').value || '').trim();
         const filtroTipoRaw = String(selTipo && selTipo.value || '').trim();
         const filtroTipoArr = filtroTipoRaw ? filtroTipoRaw.split('|').filter(function(x){ return x && x.trim(); }).map(function(x){ return x.trim().toUpperCase(); }) : [];
         const filtroTexto = String(inpTexto && inpTexto.value || '').trim().toLowerCase();
 
         const resultados = window.__historialCache.listado.filter(function(h) {
+          if (filtroDia) {
+            const instante = new Date(h.tsISO || '');
+            if (isNaN(instante.getTime()) || _historialFechaBogota(instante) !== filtroDia) return false;
+          }
           if (filtroUsr) {
             const hu = String(h.username || '').trim();
             if (hu !== filtroUsr) return false;
@@ -11474,7 +11545,7 @@
         }).join('');
         const dateCards = dates.map(function(def) {
           const value = row.fechas?.[def[0]] || '';
-          return '<div style="padding:10px 12px;border:1px solid ' + (value?'#bfdbfe':'#dbe3ef') + ';border-radius:10px;background:' + (value?'#eff6ff':'#fff') + ';"><div style="color:#64748b;font-size:10px;font-weight:800;">' + escapeHTML(def[1]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[0]) + '" style="margin-top:5px;color:' + (value?'#1e3a8a':'#94a3b8') + ';font-size:12px;font-weight:800;">' + escapeHTML(String(value || 'Pendiente')) + '</div></div>';
+          return '<div style="padding:10px 12px;border:1px solid ' + (value?'#86efac':'#fecaca') + ';border-radius:10px;background:' + (value?'#f0fdf4':'#fef2f2') + ';"><div style="color:' + (value?'#166534':'#991b1b') + ';font-size:10px;font-weight:800;">' + escapeHTML(def[1]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[0]) + '" style="margin-top:5px;color:' + (value?'#166534':'#b91c1c') + ';font-size:12px;font-weight:800;">' + escapeHTML(String(value || 'Pendiente')) + '</div></div>';
         }).join('');
         const photos = (row.imagenes || []).map(function(img) {
           const url = _opaSafeImageUrl(img && img.url);
