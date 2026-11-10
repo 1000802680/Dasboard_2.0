@@ -172,7 +172,7 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   const pageSize = 1000;
   // Las hojas son independientes; limitamos la concurrencia para acelerar la
   // carga sin disparar cientos de solicitudes a SeaTable.
-  const maxConcurrentTables = Math.min(4, tableNames.length);
+  const maxConcurrentTables = Math.min(8, tableNames.length);
   let nextTableIndex = 0;
   async function readTableWithRowsAPI(tableName) {
     const tableRows = [];
@@ -183,7 +183,7 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
       url.searchParams.set("limit", String(pageSize));
       url.searchParams.set("convert_keys", "true");
       if (env.SEATABLE_VIEW_NAME) url.searchParams.set("view_name", env.SEATABLE_VIEW_NAME);
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+      const response = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }, 15_000);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(`Error leyendo la tabla "${tableName}" de SeaTable (HTTP ${response.status}).`);
       const rows = Array.isArray(body) ? body : (body.rows || body.results || []);
@@ -202,11 +202,11 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
       : "*";
     const sqlPageSize = 10_000;
     for (let offset = 0; ; offset += sqlPageSize) {
-      const response = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
+      const response = await fetchWithTimeout(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ sql: `SELECT ${projection} FROM ${quotedTable} LIMIT ${sqlPageSize} OFFSET ${offset}`, convert_keys: true }),
-      });
+      }, 15_000);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(`No se pudo leer la hoja "${tableName}" con SQL (HTTP ${response.status}).`);
       const rows = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
@@ -226,11 +226,17 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
     if (!env.SEATABLE_VIEW_NAME) {
       try { return await readTableWithSql(tableName); }
       catch (projectionError) {
+        // Un timeout indica que SeaTable está lento; volver a pedir la misma
+        // tabla por dos APIs distintas solo triplicaba la espera del usuario.
+        if (/tardó más de/i.test(String(projectionError && projectionError.message || projectionError))) throw projectionError;
         if (projectedColumnsByTable.has(tableName)) {
           // Si SeaTable no admite alguna columna proyectada, intenta la consulta
           // SQL completa antes de caer al API paginado más lento.
           projectedColumnsByTable.delete(tableName);
-          try { return await readTableWithSql(tableName); } catch (_) {}
+          try { return await readTableWithSql(tableName); }
+          catch (fallbackError) {
+            if (/tardó más de/i.test(String(fallbackError && fallbackError.message || fallbackError))) throw fallbackError;
+          }
         }
         return readTableWithRowsAPI(tableName);
       }
@@ -344,12 +350,10 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       if (lockResponse) {
         const lock = await lockResponse.json().catch(() => ({}));
         if (Number(shared.updatedAt || 0) < Number(lock.startedAt || 0)) {
-          const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()));
-          if (refreshed) {
-            globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 60_000 };
-            return refreshed.records;
-          }
-          if (await sharedCache.match(lockRequest)) throw new Error("SeaTable sigue actualizándose en segundo plano. Conservamos la copia disponible; vuelve a consultar en unos segundos.");
+          // La carga normal devuelve la copia existente de inmediato; el lease
+          // indica que otro usuario ya está preparando la versión nueva.
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 60_000 };
+          return shared.records;
         } else {
           globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 60_000 };
           return shared.records;
@@ -368,7 +372,9 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     let lockResponse = await sharedCache.match(lockRequest);
     if (lockResponse) {
       const lock = await lockResponse.json().catch(() => ({}));
-      const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()));
+      // En el primer arranque puede no existir aún una copia compartida. Espera
+      // brevemente a que el primer lector la publique, en vez de esperar 75 s.
+      const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()), 24_000);
       if (refreshed) {
         globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 60_000 };
         return refreshed.records;
@@ -591,8 +597,8 @@ async function readSharedDashboardSnapshot(cache, request) {
   } catch (_) { return null; }
 }
 
-async function waitForSharedDashboardRefresh(cache, snapshotRequest, lockRequest, startedAt) {
-  const deadline = Date.now() + 75_000;
+async function waitForSharedDashboardRefresh(cache, snapshotRequest, lockRequest, startedAt, maxWaitMs = 12_000) {
+  const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 400));
     const snapshot = await readSharedDashboardSnapshot(cache, snapshotRequest);
