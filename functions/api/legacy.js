@@ -92,23 +92,33 @@ export async function onRequestPost(context) {
         const tableNames = await discoverTableNames(env);
         const allowedTables = new Set(tableNames);
         const imagenesPorFila = {};
-        const work = [];
+        const normalizedTargets = [];
+        const rowRequests = new Map();
         for (const target of requested) {
           const table = String(target?.hoja || "").trim();
           const rowId = String(target?.rowId || "").trim();
           const key = String(target?.key || "");
           const columnKey = String(target?.columnKey || "LF").toUpperCase() === "GE" ? "GE" : "LF";
           if (!key || !rowId || !allowedTables.has(table)) continue;
-          // La lista de registros ya trae los adjuntos. Evita volver a descargar
-          // todas las filas (miles) para mostrar fotos de una página visible.
-          let attachments = target.attachments;
-          if (attachments == null) {
-            const row = await getDashboardRow(env, table, rowId);
-            const column = getDashboardColumnName(env, columnKey);
-            attachments = row[column] ?? row[columnKey];
-          }
-          const normalized = columnKey === "GE" ? normalizeGuideValue(attachments).photos : normalizeImageAttachments(attachments);
-          work.push({ key, attachments: normalized });
+          const rowKey = `${table}\u001f${rowId}`;
+          normalizedTargets.push({ key, table, rowId, columnKey, rowKey });
+          if (!rowRequests.has(rowKey)) rowRequests.set(rowKey, { table, rowId });
+        }
+        // Leer las filas actuales, no los adjuntos que venían en una copia del
+        // dashboard. Las fotos subidas por otra sesión así aparecen aunque el
+        // dispositivo conserve un snapshot antiguo. Una lectura sirve para LF
+        // y GE de la misma fila.
+        const freshRows = new Map();
+        await mapWithConcurrency([...rowRequests.entries()], 6, async ([rowKey, item]) => {
+          freshRows.set(rowKey, await getDashboardRow(env, item.table, item.rowId));
+        });
+        const work = [];
+        for (const target of normalizedTargets) {
+          const row = freshRows.get(target.rowKey) || {};
+          const column = getDashboardColumnName(env, target.columnKey);
+          const attachments = row[column] ?? row[target.columnKey];
+          const normalized = target.columnKey === "GE" ? normalizeGuideValue(attachments).photos : normalizeImageAttachments(attachments);
+          work.push({ key: target.key, attachments: normalized });
         }
         const previews = await mapWithConcurrency(work, 6, async (item) => ({
           key: item.key,
