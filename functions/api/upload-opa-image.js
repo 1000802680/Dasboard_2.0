@@ -77,13 +77,14 @@ export async function onRequestPost(context) {
     }
 
     const existingGuide = fileType === "text" ? normalizeTextGuide(currentRow[columnName]) : null;
+    const requestedGuideLink = String(form.get("guideLink") || "").trim();
     const existing = fileType === "text" ? existingGuide.photos : normalizeExisting(currentRow[columnName], fileType);
     const merged = [...existing];
     for (const item of saved) {
       if (fileType === "image" || fileType === "text") merged.push(item.path);
       else merged.push({ name: item.name, size: item.size, type: "file", url: item.path });
     }
-    const storedValue = fileType === "text" ? JSON.stringify({ version: 1, link: existingGuide.link, photos: merged }) : merged;
+    const storedValue = fileType === "text" ? JSON.stringify({ version: 1, link: requestedGuideLink || existingGuide.link, photos: merged }) : merged;
     await updateDashboardRow(env, tableName, rowId, { [columnName]: storedValue });
     const auditTask = recordBusinessAudit(env, {
       username: user.username, role: user.rol, action: columnKey === "GE" ? "ADJUNTAR_FOTOS_GUIA_ENVIO" : "ADJUNTAR_IMAGENES",
@@ -98,7 +99,7 @@ export async function onRequestPost(context) {
       try { return { name, url: await getDashboardFileDownloadLink(env, pathToImagePath(path)) }; }
       catch (_) { return { name, url: "" }; }
     }));
-    return json({ ok: true, columna: columnKey, imagenes: images, cantidad: saved.length, valorGuardado: storedValue, enlaceGuia: existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
+    return json({ ok: true, columna: columnKey, imagenes: images, cantidad: saved.length, valorGuardado: storedValue, enlaceGuia: requestedGuideLink || existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
   } catch (error) {
     return json({ ok: false, error: error.message || "No se pudieron subir las imágenes." }, 502);
   }
