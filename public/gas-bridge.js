@@ -17,6 +17,18 @@
       return (...args) => {
         const controller = new AbortController();
         const functionName = String(property);
+        // OPA search is an exact lookup over data already delivered to this
+        // browser. Use that copy immediately when it contains a match; this
+        // avoids a slow round trip across every SeaTable table for common hits.
+        if (functionName === "searchOPAByNumber" && typeof window.__dashboardSearchOPA === "function") {
+          try {
+            const localResult = window.__dashboardSearchOPA(args[0]);
+            if (localResult && localResult.ok) {
+              if (typeof success === "function") queueMicrotask(() => success(localResult));
+              return Promise.resolve(localResult);
+            }
+          } catch (_) {}
+        }
         const timeoutMs = functionName === "searchOPAByNumber" ? 18_000
           : (functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 80_000 : 30_000);
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -53,6 +65,8 @@
   window.google.script = window.google.script || {};
   window.google.script.run = makeRunner(null, null);
 })();
+
+
 
 
 
