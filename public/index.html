@@ -4178,16 +4178,16 @@
         <div id="crear-opa-status" style="display:none;margin-bottom:14px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;"></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
           <label style="font-size:12px;font-weight:800;color:#334155;">Hoja / marca *<select id="crear-opa-hoja" required style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Nombre del producto en OPA<input id="crear-opa-NP" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Número de OPA *<input id="crear-opa-O" required maxlength="120" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Número(s) de Sub-OPA (máximo 10)<input id="crear-opa-SO" maxlength="500" placeholder="Ej.: 01, 02, 03" title="Escribe hasta 10 sub-OPAs separadas por coma, punto y coma o barra vertical" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Sepáralas con coma. El sistema guarda hasta 10 en el mismo número de OPA.</span></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Proyecto<select id="crear-opa-P" onchange="_crearOPAToggleCustom('P')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-P-nuevo" maxlength="200" placeholder="Escribe el nombre del proyecto" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de producto<select id="crear-opa-T" onchange="_crearOPAToggleCustom('T')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-T-nuevo" maxlength="200" placeholder="Escribe el tipo de producto" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Tipo de producto<select id="crear-opa-T" onchange="_crearOPATipoProductoChange();_crearOPAToggleCustom('T')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-T-nuevo" maxlength="200" oninput="_crearOPATipoProductoChange()" placeholder="Escribe el tipo de producto" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Tipo específico<select id="crear-opa-TE" onchange="_crearOPAToggleCustom('TE')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-TE-nuevo" maxlength="200" placeholder="Escribe el tipo específico" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Marca<select id="crear-opa-M" onchange="_crearOPAToggleCustom('M')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-M-nuevo" maxlength="200" placeholder="Escribe la marca" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Marca / casa licenciataria<select id="crear-opa-M" onchange="_crearOPAToggleCustom('M')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-M-nuevo" maxlength="200" placeholder="Escribe la marca o casa licenciataria" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Territorio<select id="crear-opa-TR" onchange="_crearOPAToggleCustom('TR')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-TR-nuevo" maxlength="200" placeholder="Escribe el territorio" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Personaje<select id="crear-opa-PJ" onchange="_crearOPAToggleCustom('PJ')" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></select><input id="crear-opa-PJ-nuevo" maxlength="200" placeholder="Escribe el personaje" style="display:none;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #93c5fd;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Sub-OPAs (máximo 10)<input id="crear-opa-SO" maxlength="500" placeholder="Ej.: 01, 02, 03" title="Escribe hasta 10 sub-OPAs separadas por coma, punto y coma o barra vertical" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Sepáralas con coma. El sistema guarda hasta 10 en el mismo número de OPA.</span></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Estado de plataforma<select id="crear-opa-E" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"><option value="">Sin estado</option><option>Concepto Enviado</option><option>Concepto Aprobado</option><option>Pre-Producción Enviada</option><option>Pre-Producción Aprobada</option><option>Fotos de Producción Enviada</option><option>Fotos de Producción Aprobada</option><option>Muestras Finales Enviadas</option><option>Aprobada / Cerrada</option><option>Cancelado</option></select></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Fecha<input id="crear-opa-F" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Concepto enviado<input id="crear-opa-F1" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Concepto aprobado<input id="crear-opa-F2" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Pre-producción enviada<input id="crear-opa-F3" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
@@ -4202,9 +4202,8 @@
           <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2C<input id="crear-opa-B2C" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras recibidas<input id="crear-opa-MR" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras enviadas<input id="crear-opa-ME" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Enlace guía de envío<input id="crear-opa-GE" type="url" maxlength="500" placeholder="https://…" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Después de guardar, busca la OPA y usa “Adjuntar foto” para guardar imágenes de la guía en esta columna.</span></label>
+          <div style="font-size:12px;font-weight:800;color:#334155;">Enlace o fotos de la guía de envío<input id="crear-opa-GE" type="url" maxlength="500" placeholder="https://… (opcional)" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">El enlace y las imágenes se guardan en ENLACE GUÍA DE ENVÍO.</span><button type="button" onclick="document.getElementById('crear-opa-GE-files').click()" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:40px;margin-top:7px;padding:8px 11px;border:1px dashed #60a5fa;border-radius:10px;background:#eff6ff;color:#1d4ed8;font:inherit;font-size:12px;cursor:pointer;">📎 Adjuntar fotos de la guía</button><input id="crear-opa-GE-files" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_crearOPAPreviewGuia(this)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">JPG, PNG, WEBP o GIF · hasta 6 fotos, máximo 8 MB cada una.</span><div id="crear-opa-GE-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div></div>
           <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Descripción ERP<input id="crear-opa-D" maxlength="1000" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Nombre del producto en OPA<input id="crear-opa-NP" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap;">
           <button type="button" class="btn-secondary" onclick="cerrarModalCrearOPA()">Cancelar</button>
@@ -5613,13 +5612,22 @@
       const select = document.getElementById('crear-opa-hoja');
       const modal = document.getElementById('modal-crear-opa');
       if (!select || !modal) return;
+      const form = document.getElementById('crear-opa-form');
+      if (form) form.reset();
+      const guiaPreview = document.getElementById('crear-opa-GE-preview');
+      if (guiaPreview) guiaPreview.innerHTML = '';
+      (window.__crearOPAObjectUrls || []).forEach(function(url) { try { URL.revokeObjectURL(url); } catch(_) {} });
+      window.__crearOPAObjectUrls = [];
       const actual = limpiarTexto(document.getElementById('filtroHoja') && document.getElementById('filtroHoja').value);
       const tablas = Array.from(new Set((datos || []).map(function(row) { return limpiarTexto(row.H); }).filter(Boolean))).sort(compararTexto);
       select.innerHTML = '<option value="">Selecciona la hoja donde guardar…</option>' + tablas.map(function(tabla) {
         return '<option value="' + escapeAttr(tabla) + '">' + escapeHTML(tabla) + '</option>';
       }).join('');
       if (actual && tablas.includes(actual)) select.value = actual;
-      const valoresActuales = { P: limpiarTexto(document.getElementById('filtroProyecto') && document.getElementById('filtroProyecto').value) };
+      const valoresActuales = {
+        P: limpiarTexto(document.getElementById('filtroProyecto') && document.getElementById('filtroProyecto').value),
+        T: limpiarTexto(document.getElementById('filtroProducto') && document.getElementById('filtroProducto').value)
+      };
       ['P','T','TE','M','TR','PJ','PO'].forEach(function(key) {
         const campo = document.getElementById('crear-opa-' + key);
         if (!campo) return;
@@ -5631,6 +5639,7 @@
         const inputNuevo = document.getElementById('crear-opa-' + key + '-nuevo');
         if (inputNuevo) { inputNuevo.value = ''; inputNuevo.style.display = 'none'; }
       });
+      _crearOPATipoProductoChange();
       const status = document.getElementById('crear-opa-status');
       if (status) { status.style.display = 'none'; status.textContent = ''; }
       modal.style.display = 'flex';
@@ -5653,6 +5662,33 @@
       else { input.required = false; input.value = ''; }
     }
 
+    function _crearOPANormalizarOpcion(value) {
+      return String(value || '').trim().toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    }
+
+    function _crearOPATipoProductoChange() {
+      const selectT = document.getElementById('crear-opa-T');
+      const inputT = document.getElementById('crear-opa-T-nuevo');
+      const selectTE = document.getElementById('crear-opa-TE');
+      const inputTE = document.getElementById('crear-opa-TE-nuevo');
+      if (!selectT || !selectTE) return;
+      const tipo = selectT.value === '__nuevo__' ? String(inputT && inputT.value || '').trim() : String(selectT.value || '').trim();
+      const target = _crearOPANormalizarOpcion(tipo);
+      const encontrados = new Map();
+      if (target) (Array.isArray(datos) ? datos : []).forEach(function(row) {
+        if (!row || _crearOPANormalizarOpcion(row.T) !== target) return;
+        const especifico = String(row.TE || '').trim();
+        const key = _crearOPANormalizarOpcion(especifico);
+        if (key && !encontrados.has(key)) encontrados.set(key, especifico);
+      });
+      const options = Array.from(encontrados.values()).sort(function(a,b) { return a.localeCompare(b, 'es', { numeric:true, sensitivity:'base' }); });
+      selectTE.innerHTML = '<option value="">' + (target ? (options.length ? 'Selecciona un tipo específico…' : 'No hay tipos registrados para este producto…') : 'Primero selecciona un tipo de producto…') + '</option>' + options.map(function(value) {
+        return '<option value="' + escapeAttr(value) + '">' + escapeHTML(value) + '</option>';
+      }).join('') + '<option value="__nuevo__">＋ Escribir un tipo específico nuevo…</option>';
+      selectTE.disabled = !target;
+      if (inputTE) { inputTE.value = ''; inputTE.style.display = 'none'; inputTE.required = false; }
+    }
+
     function _crearOPAValorCampo(key, input) {
       const categorical = ['P','T','TE','M','TR','PJ','PO'].includes(key);
       if (!categorical || !input || input.value !== '__nuevo__') return String(input && input.value || '').trim();
@@ -5670,7 +5706,7 @@
       status.textContent = message;
     }
 
-    function _mostrarAvisoOPAguardada(message) {
+    function _mostrarAvisoOPAguardada(message, warning) {
       let notice = document.getElementById('opa-save-notice');
       if (!notice) {
         notice = document.createElement('div');
@@ -5680,6 +5716,9 @@
         notice.style.cssText = 'position:fixed;top:20px;right:20px;z-index:50000;max-width:min(440px,calc(100vw - 40px));padding:14px 18px;border:1px solid #86efac;border-radius:14px;background:#f0fdf4;color:#166534;box-shadow:0 12px 32px rgba(15,23,42,.18);font-size:14px;font-weight:800;';
         document.body.appendChild(notice);
       }
+      notice.style.borderColor = warning ? '#fcd34d' : '#86efac';
+      notice.style.background = warning ? '#fffbeb' : '#f0fdf4';
+      notice.style.color = warning ? '#92400e' : '#166534';
       notice.textContent = message || '✅ OPA guardada correctamente en SeaTable.';
       notice.style.display = 'block';
       clearTimeout(window.__opaSaveNoticeTimer);
@@ -5689,7 +5728,7 @@
     function guardarNuevoRegistroOPA() {
       if (!_authSesionActual || !_authSesionActual.token) { cerrarModalCrearOPA(); _authAbrirModal(); return; }
       const button = document.getElementById('crear-opa-submit');
-      const keys = ['O','P','T','TE','M','TR','PJ','SO','E','F','F1','F2','F3','F4','F5','F6','F7','F8','FM','PO','B2B','B2C','D','NP','MR','ME','GE'];
+      const keys = ['O','P','T','TE','M','TR','PJ','SO','E','F1','F2','F3','F4','F5','F6','F7','F8','FM','PO','B2B','B2C','D','NP','MR','ME','GE'];
       const campos = {};
       keys.forEach(function(key) {
         const input = document.getElementById('crear-opa-' + key);
@@ -5700,21 +5739,38 @@
       if (!hoja) { _crearOPAStatus('Selecciona la hoja / marca donde se guardará el registro.', true); return; }
       if (!campos.O) { _crearOPAStatus('El número de OPA es obligatorio.', true); return; }
       if (_opaSubOpaItems(campos.SO || '').length > 10) { _crearOPAStatus('Puedes asociar máximo 10 sub-OPAs al mismo número de OPA.', true); return; }
+      const guideFilesInput = document.getElementById('crear-opa-GE-files');
+      const guideFiles = Array.from(guideFilesInput && guideFilesInput.files || []);
+      const guideLink = String(campos.GE || '').trim();
+      if (guideFiles.length > 6) { _crearOPAStatus('Puedes adjuntar hasta 6 imágenes de guía por registro.', true); return; }
+      if (guideFiles.length) delete campos.GE; // El endpoint de carga decide cómo almacenar archivos según el tipo de columna.
       _crearOPAStatus('Guardando el registro en SeaTable…', false);
       if (button) button.disabled = true;
       google.script.run
-        .withSuccessHandler(function(result) {
+        .withSuccessHandler(async function(result) {
           if (!result || !result.ok) {
             if (button) button.disabled = false;
             _crearOPAStatus(result && result.error || 'No se pudo crear el registro.', true);
             return;
           }
-          _mostrarAvisoOPAguardada(result.mensaje || '✅ OPA guardada correctamente en SeaTable.');
-          _crearOPAStatus('Registro guardado. Actualizando la vista…', false);
+          let uploadWarning = '';
+          if (guideFiles.length && result.rowId) {
+            _crearOPAStatus('OPA creada. Subiendo la guía de envío…', false);
+            try {
+              const upload = await _crearOPASubirGuia(_authSesionActual.token, hoja, result.rowId, campos.O, guideLink, guideFiles);
+              campos.GE = upload.valorGuardado;
+            } catch (error) {
+              uploadWarning = String(error && error.message || error);
+            }
+          } else if (guideFiles.length) {
+            uploadWarning = 'La OPA se creó, pero SeaTable no devolvió el identificador para asociar las imágenes. Busca la OPA y adjunta la guía desde sus acciones.';
+          }
           const agregadoLocal = _agregarRegistroCreadoLocal(hoja, campos, result);
           if (button) button.disabled = false;
+          if (uploadWarning) _mostrarAvisoOPAguardada('OPA creada, pero no se pudieron guardar las fotos de la guía: ' + uploadWarning, true);
+          else _mostrarAvisoOPAguardada(guideFiles.length ? '✅ OPA e imágenes de guía guardadas en SeaTable.' : (result.mensaje || '✅ OPA guardada correctamente en SeaTable.'));
           if (!agregadoLocal) {
-            _crearOPAStatus('✅ OPA guardada en SeaTable. Usa “Actualizar datos” para cargarla en la tabla.', false, true);
+            _crearOPAStatus(uploadWarning ? 'OPA guardada. La carga de la guía falló; no vuelvas a crear la OPA. Búscala y adjunta la guía.' : '✅ OPA guardada en SeaTable. Usa “Actualizar datos” para cargarla en la tabla.', !!uploadWarning, !uploadWarning);
           } else {
             try { limpiarFiltros(); } catch(_) {}
             const filterOPA = document.getElementById('filtroOPA');
@@ -5722,7 +5778,7 @@
               filterOPA.value = String(campos.O);
               actualizarDashboard();
             }
-            _crearOPAStatus('Registro guardado y mostrado inmediatamente. SeaTable lo sincronizará con los demás usuarios.', false);
+            _crearOPAStatus(uploadWarning ? 'OPA guardada y mostrada. La imagen no se adjuntó; puedes subirla después desde la búsqueda de OPA.' : 'Registro guardado y mostrado inmediatamente. SeaTable lo sincronizará con los demás usuarios.', !!uploadWarning, !uploadWarning);
             cerrarModalCrearOPA();
             cambiarTab('registros');
             const form = document.getElementById('crear-opa-form');
@@ -5736,13 +5792,43 @@
         .crearRegistroOPA({ token: _authSesionActual.token, hoja: hoja, campos: campos });
     }
 
+    async function _crearOPASubirGuia(token, table, rowId, numeroOPA, guideLink, files) {
+      const form = new FormData();
+      form.append('token', token);
+      form.append('table', table);
+      form.append('rowId', rowId);
+      form.append('numeroOPA', numeroOPA);
+      form.append('columnKey', 'GE');
+      if (guideLink) form.append('guideLink', guideLink);
+      files.forEach(function(file) { form.append('files', file, file.name); });
+      const response = await fetch('/api/upload-opa-image', { method:'POST', body:form });
+      const result = await response.json().catch(function() { return {}; });
+      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las imágenes de guía.');
+      return result;
+    }
+
+    function _crearOPAPreviewGuia(input) {
+      const wrap = document.getElementById('crear-opa-GE-preview');
+      if (!wrap) return;
+      (window.__crearOPAObjectUrls || []).forEach(function(url) { try { URL.revokeObjectURL(url); } catch(_) {} });
+      window.__crearOPAObjectUrls = [];
+      const files = Array.from(input && input.files || []).slice(0, 6);
+      if (input && input.files && input.files.length > 6) _crearOPAStatus('Solo se permiten 6 imágenes de guía por registro.', true);
+      wrap.innerHTML = files.map(function(file) {
+        const url = URL.createObjectURL(file);
+        window.__crearOPAObjectUrls.push(url);
+        return '<div title="' + escapeAttr(file.name) + '" style="width:72px;height:72px;border:1px solid #bfdbfe;border-radius:10px;overflow:hidden;background:#f8fafc;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(file.name) + '" style="width:100%;height:100%;object-fit:cover;"></div>';
+      }).join('');
+    }
+
     function _agregarRegistroCreadoLocal(hoja, campos, result) {
       const rowId = String(result && result.rowId || '');
       if (!rowId || !Array.isArray(datos)) return false;
       const registro = { H: String(hoja || ''), _id: rowId, _ctime: new Date().toISOString(), _mtime: new Date().toISOString() };
       Object.keys(campos || {}).forEach(function(key) {
         if (campos[key] == null || String(campos[key]).trim() === '') return;
-        registro[key] = (key === 'MR' || key === 'ME') ? Number(campos[key]) || 0 : String(campos[key]).trim();
+        if (key === 'GE' && Array.isArray(campos[key])) registro[key] = campos[key];
+        else registro[key] = (key === 'MR' || key === 'ME') ? Number(campos[key]) || 0 : String(campos[key]).trim();
       });
       if (!registro.E) {
         const latestStage = ['F8','F7','F6','F5','F4','F3','F2','F1'].find(function(key) { return registro[key]; });
