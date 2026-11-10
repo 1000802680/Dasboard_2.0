@@ -11769,17 +11769,15 @@
         if (!_authSesionActual || !_authSesionActual.token || !google || !google.script || !google.script.run) return;
         const targets = [];
         (resultados || []).forEach(function(row) {
-          const raw = row && row.todasLasFechas || {};
-          const add = function(columnKey, attachments) {
-            if (attachments == null || attachments === '') return;
-            if (typeof attachments === 'string' && columnKey === 'GE' && /^https?:\/\//i.test(attachments.trim())) return;
-            if (typeof attachments === 'string' && !attachments.trim()) return;
+          const add = function(columnKey) {
             const dataId = String(row._dataId || '');
             if (!dataId || !row.rowId || !row.hoja) return;
-            targets.push({ key: dataId + ':' + columnKey, dataId: dataId, columnKey: columnKey, hoja: row.hoja, rowId: row.rowId, attachments: attachments });
+            // No confiar en la copia local para decidir si hay fotos: otro
+            // usuario pudo adjuntarlas después de la última sincronización.
+            targets.push({ key: dataId + ':' + columnKey, dataId: dataId, columnKey: columnKey, hoja: row.hoja, rowId: row.rowId });
           };
-          add('LF', raw.LF);
-          add('GE', raw.GE);
+          add('LF');
+          add('GE');
         });
         if (!targets.length) return;
         google.script.run
@@ -12983,4 +12981,3 @@
 
 </body>
 </html>
-
