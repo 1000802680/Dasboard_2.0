@@ -458,7 +458,9 @@ export async function searchDashboardRecordsByOPA(env, query) {
   const pending = globalThis.__dashboardOpaSearchPending || (globalThis.__dashboardOpaSearchPending = new Map());
   if (pending.has(key)) return pending.get(key);
   const promise = searchDashboardRecordsByOPAUncached(env, query).then((records) => {
-    cache.set(key, { records, expiresAt: Date.now() + 8_000 });
+    // Cachear solo hallazgos positivos: una respuesta vacía puede quedar vieja
+    // inmediatamente si otro usuario acaba de crear esa OPA.
+    if (records.length) cache.set(key, { records, expiresAt: Date.now() + 8_000 });
     if (cache.size > 300) {
       for (const [cacheKey, entry] of cache) if (entry.expiresAt <= Date.now()) cache.delete(cacheKey);
       while (cache.size > 300) cache.delete(cache.keys().next().value);
@@ -482,13 +484,17 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     const snapshot = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
     if (snapshot) {
       globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, updatedAt: snapshot.updatedAt, expiresAt: Date.now() + 60_000 };
-      return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+      const snapshotMatches = snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+      // Positive cache hits are fast. A miss may mean another Cloudflare
+      // region has not received the newest row yet, so confirm against SeaTable.
+      if (snapshotMatches.length) return snapshotMatches;
     }
   }
   // Solo usar el snapshot local cuando no hay caché compartida que pueda
   // señalar una invalidación hecha por otro isolate.
   if (!sharedCache && local?.key === cacheKey && local.expiresAt > now) {
-    return local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    const localMatches = local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    if (localMatches.length) return localMatches;
   }
   // SQL no aplica vistas. En ese caso respetamos la vista solo si ya existe
   // una copia compartida; evitamos descargar miles de filas por una búsqueda.
@@ -505,7 +511,8 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
         const snapshot = await response.json();
         if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
           globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, updatedAt: snapshot.updatedAt, expiresAt: Date.now() + 60_000 };
-          return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+          const snapshotMatches = snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+          if (snapshotMatches.length) return snapshotMatches;
         }
       }
     } catch (_) {}
@@ -515,7 +522,8 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
   // is temporarily absent, serve the known copy instead of starting another
   // multi-table scan just to answer one exact OPA lookup.
   if (local?.key === cacheKey && Array.isArray(local.records)) {
-    return local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    const localMatches = local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    if (localMatches.length) return localMatches;
   }
 
   // Reutiliza los metadatos de las hojas ya consultados por el dashboard,
@@ -844,6 +852,7 @@ export async function refreshForNewTables(env, context = null) {
   const records = await loadDashboardRecords(env);
   return { records, updatedAt: Number(globalThis.__dashboardRowsCache?.updatedAt || Date.now()), refreshing: false };
 }
+
 
 
 
