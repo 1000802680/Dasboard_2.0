@@ -60,8 +60,9 @@ export async function onRequestPost(context) {
               hoja: r.H || "SeaTable", fila: "", rowId: r._id || "", numeroOPA: r.O || "", estadoPlataforma: r.E || "",
               proyecto: r.P || "", tipoProducto: r.T || "", territorio: r.TR || "",
               personaje: r.PJ || "", subOpa: r.SO || "", fechaUltima: latestDate(r),
-              imagenes: await Promise.all(normalizeImageAttachments(r.LF).map((item) => makeImagePreview(env, item))),
-              guiaImagenes: await Promise.all(normalizeGuideValue(r.GE).photos.map((item) => makeImagePreview(env, item))),
+              // Las imágenes se generan en una petición secundaria para no
+              // retrasar la aparición de las filas de búsqueda.
+              imagenes: [], guiaImagenes: [],
               guiaEnlace: normalizeGuideValue(r.GE).link,
               fechas: { F: r.F, F1: r.F1, F2: r.F2, F3: r.F3, F4: r.F4, F5: r.F5, F6: r.F6, F7: r.F7, F8: r.F8, FM: r.FM },
               headers: {
@@ -80,7 +81,7 @@ export async function onRequestPost(context) {
         const [sessionToken, targets] = args;
         const user = await getAuthenticatedUser(sessionToken, env);
         if (!user) return Response.json({ ok: false, error: "Inicia sesión para ver las fotos de producto." }, { status: 401, headers: { "Cache-Control": "no-store" } });
-        const requested = Array.isArray(targets) ? targets.slice(0, 30) : [];
+        const requested = Array.isArray(targets) ? targets.slice(0, 100) : [];
         const tableNames = await discoverTableNames(env);
         const allowedTables = new Set(tableNames);
         const imagenesPorFila = {};
@@ -89,16 +90,18 @@ export async function onRequestPost(context) {
           const table = String(target?.hoja || "").trim();
           const rowId = String(target?.rowId || "").trim();
           const key = String(target?.key || "");
+          const columnKey = String(target?.columnKey || "LF").toUpperCase() === "GE" ? "GE" : "LF";
           if (!key || !rowId || !allowedTables.has(table)) continue;
           // La lista de registros ya trae los adjuntos. Evita volver a descargar
           // todas las filas (miles) para mostrar fotos de una página visible.
           let attachments = target.attachments;
           if (attachments == null) {
             const row = await getDashboardRow(env, table, rowId);
-            const column = getDashboardColumnName(env, "LF");
-            attachments = row[column] ?? row.LF;
+            const column = getDashboardColumnName(env, columnKey);
+            attachments = row[column] ?? row[columnKey];
           }
-          work.push({ key, attachments: normalizeImageAttachments(attachments) });
+          const normalized = columnKey === "GE" ? normalizeGuideValue(attachments).photos : normalizeImageAttachments(attachments);
+          work.push({ key, attachments: normalized });
         }
         const previews = await mapWithConcurrency(work, 6, async (item) => ({
           key: item.key,
@@ -409,6 +412,7 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
+
 
 
 
