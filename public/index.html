@@ -5799,6 +5799,7 @@
       form.append('rowId', rowId);
       form.append('numeroOPA', numeroOPA);
       form.append('columnKey', 'GE');
+      form.append('newRow', '1');
       if (guideLink) form.append('guideLink', guideLink);
       files.forEach(function(file) { form.append('files', file, file.name); });
       const response = await fetch('/api/upload-opa-image', { method:'POST', body:form });
