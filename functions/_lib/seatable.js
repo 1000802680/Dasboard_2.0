@@ -352,14 +352,14 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         if (Number(shared.updatedAt || 0) < Number(lock.startedAt || 0)) {
           // La carga normal devuelve la copia existente de inmediato; el lease
           // indica que otro usuario ya está preparando la versión nueva.
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 60_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
           return shared.records;
         } else {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 60_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
           return shared.records;
         }
       } else {
-        globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, expiresAt: Date.now() + 60_000 };
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
         return shared.records;
       }
     }
@@ -376,7 +376,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       // brevemente a que el primer lector la publique, en vez de esperar 75 s.
       const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()), 24_000);
       if (refreshed) {
-        globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, expiresAt: Date.now() + 60_000 };
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, updatedAt: refreshed.updatedAt, expiresAt: Date.now() + 60_000 };
         return refreshed.records;
       }
       // La actualización del otro usuario falló o venció el lease; intentar una.
@@ -395,6 +395,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
   }
 
   const promise = (async () => {
+    const scanRevision = await readDashboardSnapshotRevision(sharedCache, env);
     const columnMap = getColumnMap(env);
     const schemaByTable = new Map();
     const latest = new Map();
@@ -420,10 +421,16 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     // Refresca los registros junto con el sondeo del dashboard, para que los
     // cambios en filas existentes no queden ocultos detrás de una caché larga.
     // La acción manual "Actualizar datos" sigue forzando una lectura inmediata.
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, expiresAt: Date.now() + 60_000 };
+    const revisionAfterScan = await readDashboardSnapshotRevision(sharedCache, env);
+    if (scanRevision !== revisionAfterScan) {
+      if (globalThis.__dashboardRowsCache?.key === cacheKey) globalThis.__dashboardRowsCache.expiresAt = 0;
+      return records;
+    }
+    const updatedAt = Date.now();
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, updatedAt, expiresAt: updatedAt + 60_000 };
     if (sharedCache) {
       try {
-        await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, tableNames: detectedTableNames, updatedAt: Date.now() }), {
+        await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, tableNames: detectedTableNames, updatedAt }), {
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=60" },
         }));
       } catch (_) {}
@@ -467,19 +474,24 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
   const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
   const now = Date.now();
   const local = globalThis.__dashboardRowsCache;
-  if (local?.key === cacheKey && local.expiresAt > now) {
-    return local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-  }
   // La API SQL consulta la tabla completa, no una vista concreta. Si el
   // dashboard está configurado con una vista, respetamos ese alcance existente.
   const sharedCache = getSharedDashboardCache(env);
+  if (sharedCache) {
+    const snapshot = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
+    if (snapshot) {
+      globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, updatedAt: snapshot.updatedAt, expiresAt: Date.now() + 60_000 };
+      return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    }
+  }
+  // Solo usar el snapshot local cuando no hay caché compartida que pueda
+  // señalar una invalidación hecha por otro isolate.
+  if (!sharedCache && local?.key === cacheKey && local.expiresAt > now) {
+    return local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+  }
   // SQL no aplica vistas. En ese caso respetamos la vista solo si ya existe
   // una copia compartida; evitamos descargar miles de filas por una búsqueda.
   if (env.SEATABLE_VIEW_NAME) {
-    if (sharedCache) {
-      const snapshot = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
-      if (snapshot) return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-    }
     const localView = globalThis.__dashboardRowsCache;
     if (localView?.key === cacheKey && localView.records) return localView.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
     throw new Error("La vista de SeaTable todavía no está cargada. Abre Dashboard o pulsa Actualizar datos y vuelve a buscar.");
@@ -491,7 +503,7 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
       if (response) {
         const snapshot = await response.json();
         if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, expiresAt: Date.now() + 60_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, updatedAt: snapshot.updatedAt, expiresAt: Date.now() + 60_000 };
           return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
         }
       }
@@ -597,6 +609,16 @@ async function readSharedDashboardSnapshot(cache, request) {
   } catch (_) { return null; }
 }
 
+async function readDashboardSnapshotRevision(cache, env) {
+  if (!cache) return "";
+  try {
+    const response = await cache.match(dashboardCacheRequest(env, "revision"));
+    if (!response) return "";
+    const value = await response.json();
+    return String(value.revision || "");
+  } catch (_) { return ""; }
+}
+
 async function waitForSharedDashboardRefresh(cache, snapshotRequest, lockRequest, startedAt, maxWaitMs = 12_000) {
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
@@ -658,11 +680,25 @@ export async function createDashboardRow(env, tableName, values) {
 }
 
 async function invalidateDashboardSnapshot(env) {
-  // No borrar el snapshot por cada edición: con varios usuarios escribiendo
-  // seguido, eso causaba un escaneo completo de todas las hojas por cada cambio.
-  // El editor actualiza su copia local al instante; los demás reciben la nueva
-  // versión al vencer el TTL (60 s) o al usar "Actualizar datos" (forzado).
-  void env;
+  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const local = globalThis.__dashboardRowsCache;
+  if (local?.key === cacheKey) local.expiresAt = 0;
+
+  const searchCache = globalThis.__dashboardOpaSearchCache;
+  const searchPrefix = cacheKey + "|";
+  if (searchCache) for (const key of searchCache.keys()) if (key.startsWith(searchPrefix)) searchCache.delete(key);
+
+  const sharedCache = getSharedDashboardCache(env);
+  if (!sharedCache) return;
+  // El marcador evita que una lectura iniciada antes de esta escritura vuelva
+  // a publicar un snapshot obsoleto al terminar.
+  const revision = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    await sharedCache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision }), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+    }));
+    await sharedCache.delete(dashboardCacheRequest(env));
+  } catch (_) {}
 }
 
 async function resolveTableColumnNames(env, tableName, values, skipMissing = false) {
@@ -761,13 +797,29 @@ export async function getDashboardFileDownloadLink(env, path) {
 
 export async function refreshForNewTables(env) {
   const cached = globalThis.__dashboardRowsCache;
-  if (!cached || cached.expiresAt <= Date.now()) return loadDashboardRecords(env);
-  const token = await getBaseToken(env);
-  const currentNames = await discoverTableNames(env, token);
-  const previous = [...(cached.tableNames || [])].sort().join("\u0000");
-  const current = [...currentNames].sort().join("\u0000");
-  if (previous === current) return cached.records;
-  return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
+  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const sharedCache = getSharedDashboardCache(env);
+  const shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
+
+  if (shared) {
+    // El snapshot compartido es la referencia entre distintos isolates.
+    if (cached?.key === cacheKey && cached.expiresAt > Date.now() && Number(cached.updatedAt || 0) >= Number(shared.updatedAt || 0)) {
+      const currentNames = await discoverTableNames(env);
+      const previous = [...(shared.tableNames || [])].sort().join("\u0000");
+      const current = [...currentNames].sort().join("\u0000");
+      if (previous === current) return cached.records;
+      cached.expiresAt = 0;
+      return loadDashboardRecords(env, { tableNames: currentNames });
+    }
+    globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
+    return shared.records;
+  }
+
+  // Si una escritura eliminó el snapshot, no continuar usando la copia vieja
+  // de este isolate. loadDashboardRecords coordina el nuevo escaneo entre
+  // solicitudes simultáneas con el lease compartido.
+  if (cached?.key === cacheKey) cached.expiresAt = 0;
+  return loadDashboardRecords(env);
 }
 
 
