@@ -420,9 +420,31 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
   finally { if (globalThis.__dashboardRowsLoading?.promise === promise) globalThis.__dashboardRowsLoading = null; }
 }
 
+// Reutiliza por unos segundos las búsquedas repetidas y comparte solicitudes
+// simultáneas del mismo número dentro del mismo isolate.
+export async function searchDashboardRecordsByOPA(env, query) {
+  const key = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default", query].join("|");
+  const now = Date.now();
+  const cache = globalThis.__dashboardOpaSearchCache || (globalThis.__dashboardOpaSearchCache = new Map());
+  const cached = cache.get(key);
+  if (cached?.expiresAt > now) return cached.records;
+  const pending = globalThis.__dashboardOpaSearchPending || (globalThis.__dashboardOpaSearchPending = new Map());
+  if (pending.has(key)) return pending.get(key);
+  const promise = searchDashboardRecordsByOPAUncached(env, query).then((records) => {
+    cache.set(key, { records, expiresAt: Date.now() + 8_000 });
+    if (cache.size > 300) {
+      for (const [cacheKey, entry] of cache) if (entry.expiresAt <= Date.now()) cache.delete(cacheKey);
+      while (cache.size > 300) cache.delete(cache.keys().next().value);
+    }
+    return records;
+  }).finally(() => pending.delete(key));
+  pending.set(key, promise);
+  return promise;
+}
+
 // Busca una OPA exacta directamente en SeaTable cuando no hay un snapshot
 // reciente. Evita descargar miles de filas solo para mostrar uno o pocos matches.
-export async function searchDashboardRecordsByOPA(env, query) {
+async function searchDashboardRecordsByOPAUncached(env, query) {
   const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
   const now = Date.now();
   const local = globalThis.__dashboardRowsCache;
@@ -461,17 +483,25 @@ export async function searchDashboardRecordsByOPA(env, query) {
   const searchable = tables.map((table) => ({
     name: table.name,
     opaColumn: (table.columns || []).find((column) => normalizeHeader(column.name) === opaColumnName)?.name,
+    columns: table.columns || [],
   })).filter((table) => table.opaColumn);
   const columnMap = getColumnMap(env);
   const resultsByTable = new Map();
   let next = 0;
   async function searchTable(table) {
     const quote = (identifier) => `\`${String(identifier).replace(/`/g, "``")}\``;
+    const selectedColumns = new Set(["_id"]);
+    const availableByNormalized = new Map(table.columns.map((column) => [normalizeHeader(column.name), column.name]));
+    for (const configuredName of Object.values(columnMap)) {
+      const actualName = availableByNormalized.get(normalizeHeader(configuredName));
+      if (actualName) selectedColumns.add(actualName);
+    }
+    const projection = [...selectedColumns].map(quote).join(", ");
     const response = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({
-        sql: `SELECT * FROM ${quote(table.name)} WHERE ${quote(table.opaColumn)} = ? LIMIT 10000`,
+        sql: `SELECT ${projection} FROM ${quote(table.name)} WHERE ${quote(table.opaColumn)} = ? LIMIT 10000`,
         parameters: [query],
         convert_keys: true,
       }),
@@ -489,7 +519,7 @@ export async function searchDashboardRecordsByOPA(env, query) {
     }
     resultsByTable.set(table.name, records);
   }
-  const concurrency = Math.min(4, searchable.length);
+  const concurrency = Math.min(8, searchable.length);
   async function worker() {
     while (next < searchable.length) await searchTable(searchable[next++]);
   }
@@ -695,7 +725,6 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
-
 
 
 
