@@ -613,11 +613,11 @@ export async function updateDashboardRow(env, tableName, rowId, values) {
   const canonicalValues = await resolveTableColumnNames(env, tableName, values);
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
   const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${baseId}/rows/`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ table_name: tableName, updates: [{ row_id: rowId, row: canonicalValues }] }),
-  });
+  }, 15_000);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
@@ -666,7 +666,7 @@ async function resolveTableColumnNames(env, tableName, values, skipMissing = fal
   if (!cached || cached.key !== cacheKey || cached.expiresAt <= now) {
     const token = await getBaseToken(env);
     const url = `${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(cacheKey)}/metadata/`;
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+    const response = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }, 10_000);
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`No se pudo verificar los nombres de columnas en SeaTable (HTTP ${response.status}).`);
     const tables = body.metadata?.tables || body.tables || [];
@@ -712,7 +712,7 @@ export async function getDashboardRow(env, tableName, rowId) {
   const url = new URL(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api-gateway/api/v2/dtables/${encodeURIComponent(env.SEATABLE_BASE_UUID)}/rows/${encodeURIComponent(rowId)}/`);
   url.searchParams.set("table_name", tableName);
   url.searchParams.set("convert_keys", "true");
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+  const response = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }, 10_000);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`No se pudo leer la fila seleccionada en SeaTable (HTTP ${response.status}).`);
   return body.row || body;
@@ -763,6 +763,7 @@ export async function refreshForNewTables(env) {
   if (previous === current) return cached.records;
   return loadDashboardRecords(env, { forceRefresh: true, tableNames: currentNames });
 }
+
 
 
 
