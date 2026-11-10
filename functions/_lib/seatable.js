@@ -421,11 +421,10 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     // Refresca los registros junto con el sondeo del dashboard, para que los
     // cambios en filas existentes no queden ocultos detrás de una caché larga.
     // La acción manual "Actualizar datos" sigue forzando una lectura inmediata.
-    const revisionAfterScan = await readDashboardSnapshotRevision(sharedCache, env);
-    if (scanRevision !== revisionAfterScan) {
-      if (globalThis.__dashboardRowsCache?.key === cacheKey) globalThis.__dashboardRowsCache.expiresAt = 0;
-      return records;
-    }
+    // Publish a completed scan even if a write happened during it. Keep the
+    // older scanRevision on the snapshot so the next quiet-window refresh knows
+    // it must catch up; discarding every scan during active work can starve the
+    // shared cache forever when several people are editing at once.
     const updatedAt = Date.now();
     globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, revision: scanRevision, updatedAt, expiresAt: updatedAt + 60_000 };
     if (sharedCache) {
@@ -510,6 +509,13 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
         }
       }
     } catch (_) {}
+  }
+
+  // If this isolate has a recent full read but the regional Cache API entry
+  // is temporarily absent, serve the known copy instead of starting another
+  // multi-table scan just to answer one exact OPA lookup.
+  if (local?.key === cacheKey && Array.isArray(local.records)) {
+    return local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
   }
 
   // Reutiliza los metadatos de las hojas ya consultados por el dashboard,
@@ -694,9 +700,10 @@ async function invalidateDashboardSnapshot(env) {
   if (!sharedCache) return;
   // Mark the snapshot stale without deleting it: all clients can keep reading
   // the last usable copy while one request rebuilds it in the background.
-  const revision = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const updatedAt = Date.now();
+  const revision = `${updatedAt}-${Math.random().toString(36).slice(2)}`;
   try {
-    await sharedCache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision }), {
+    await sharedCache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision, updatedAt }), {
       headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
     }));
   } catch (_) {}
@@ -808,8 +815,15 @@ export async function refreshForNewTables(env, context = null) {
 
     // Mutations and periodic refreshes only mark the snapshot stale. Return it
     // now, then let Pages finish the full SeaTable scan after the response.
-    const isStale = String(shared.revision || "") !== revision || Date.now() - Number(shared.updatedAt || 0) >= 60_000;
-    if (isStale && context && typeof context.waitUntil === "function") {
+    const ageMs = Date.now() - Number(shared.updatedAt || 0);
+    const changedWhileEditing = String(shared.revision || "") !== revision;
+    // Bound refresh frequency independently of the number of writes. This lets
+    // the snapshot advance during continuous team activity without launching a
+    // full-table scan for each individual save; direct SeaTable edits are still
+    // caught by the 60 second periodic refresh.
+    const isStale = ageMs >= 60_000 || (changedWhileEditing && ageMs >= 30_000);
+    const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
+    if (isStale && !lock && context && typeof context.waitUntil === "function") {
       const pending = globalThis.__dashboardBackgroundRefresh;
       if (pending?.key === cacheKey) context.waitUntil(pending.promise);
       else {
@@ -830,7 +844,6 @@ export async function refreshForNewTables(env, context = null) {
   const records = await loadDashboardRecords(env);
   return { records, updatedAt: Number(globalThis.__dashboardRowsCache?.updatedAt || Date.now()), refreshing: false };
 }
-
 
 
 
