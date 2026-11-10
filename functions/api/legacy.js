@@ -221,13 +221,13 @@ export async function onRequestPost(context) {
           if (latestStage) row[statusColumn] = ESTADOS[Number(latestStage.slice(1)) - 1];
         }
         const result = await createDashboardRow(env, table, row);
-        const rowId = String(result.row_id || result._id || result.id || "");
+        const rowId = String(result.row_id || result.rowId || result._id || result.id || result.inserted_row_id || result.row_ids?.[0] || result.rows?.[0]?.row_id || result.rows?.[0]?._id || result.rows?.[0]?.id || result.inserted_rows?.[0]?.row_id || result.inserted_rows?.[0]?._id || "");
         try {
           await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
         } catch (auditError) {
           console.warn("No se pudo guardar la auditoría del nuevo registro:", auditError);
         }
-        value = { ok: true, hoja: table, rowId, numeroOPA: String(p.campos.O), mensaje: "Registro guardado en SeaTable." };
+        value = { ok: true, hoja: table, rowId, numeroOPA: String(p.campos.O), mensaje: "OPA guardada correctamente en SeaTable." };
         break;
       }
       default:
