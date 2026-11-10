@@ -14,19 +14,28 @@
         "obtenerMisActividades", "adminGuardarActividadesUsuario",
       ]);
       const endpoint = authFunctions.has(String(property)) ? "/api/auth" : "/api/legacy";
-      return (...args) => fetch(endpoint, {
+      return (...args) => {
+        const controller = new AbortController();
+        const timeoutMs = String(property) === "searchOPAByNumber" ? 18_000 : 30_000;
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        return fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ functionName: String(property), args }),
+        signal: controller.signal,
       }).then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error || `Error del servidor (${response.status})`);
         if (typeof success === "function") success(body);
         return body;
       }).catch((error) => {
-        if (typeof failure === "function") failure({ message: error.message || String(error) });
+        const message = error.name === "AbortError"
+          ? `La solicitud tardó demasiado (${Math.round(timeoutMs / 1000)} s). Intenta de nuevo; si se repite, pulsa Actualizar datos.`
+          : (error.message || String(error));
+        if (typeof failure === "function") failure({ message });
         else console.error("Error de API:", error);
-      });
+      }).finally(() => clearTimeout(timeout));
+      };
     },
   });
   window.google = window.google || {};
