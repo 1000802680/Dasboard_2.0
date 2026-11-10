@@ -4634,7 +4634,7 @@
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 60000;  // Revisa cambios cada minuto para evitar escanear miles de filas cada 30 s.
+    const POLL_INTERVAL_MS      = 15000;  // La revisión usa el snapshot compartido y detecta invalidaciones de escrituras.
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
