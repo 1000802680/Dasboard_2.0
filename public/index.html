@@ -4267,6 +4267,10 @@
             <input type="text" id="ec-input-valor"
               style="width:100%;padding:11px 12px 11px 38px;border-radius:12px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:14px;outline:none;box-sizing:border-box;" />
           </div>
+          <select id="ec-select-opciones" onchange="_ecElegirOpcion(this.value)" style="display:none;width:100%;margin-top:9px;padding:10px 12px;border-radius:11px;border:1px solid #bfdbfe;background:#f8fbff;color:#1e3a8a;font-weight:650;font-size:13px;box-sizing:border-box;">
+            <option value="">Selecciona un valor existente…</option>
+          </select>
+          <div id="ec-ayuda-opciones" style="display:none;margin-top:5px;color:#64748b;font-size:11px;">Puedes elegir un valor de la columna o escribir uno nuevo.</div>
         </div>
 
         <div style="display:flex;gap:10px;">
@@ -11415,11 +11419,11 @@
                     const headerRaw = String(headers[e.headerKey] || '').trim();
                     const nomCol = headerRaw ? headerRaw : (FALLBACK_NOMBRES_ETAPAS[e.clave] || e.headerKey);
                     const hayFecha = !!colFecha;
-                    const bg = hayFecha ? 'linear-gradient(135deg,#eff6ff,#dbeafe)' : '#f8fafc';
-                    const bd = hayFecha ? '#bfdbfe' : '#e2e8f0';
-                    const fgNum = hayFecha ? '#1d4ed8' : '#94a3b8';
-                    const fgNom = hayFecha ? '#0f172a' : '#64748b';
-                    const fgFecha = hayFecha ? '#172554' : '#cbd5e1';
+                    const bg = hayFecha ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : '#fff7f7';
+                    const bd = hayFecha ? '#86efac' : '#fecaca';
+                    const fgNum = hayFecha ? '#15803d' : '#b91c1c';
+                    const fgNom = hayFecha ? '#166534' : '#991b1b';
+                    const fgFecha = hayFecha ? '#166534' : '#b91c1c';
                     const wd = e.clave === 'FM' ? 'auto' : '12.5%';
                     const lapizEtapa = window.CLOUD_READ_ONLY || !haySesion || !puedeCambiar ? '' :
                       '<span title="Editar fecha · ' + escapeAttr(nomCol) + '" onclick="event.stopPropagation();_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(e.clave) + '\',\'' + escapeAttr(nomCol + ' (fecha)') + '\',\'📅\')" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9999px;margin-left:4px;cursor:pointer;color:#1e40af;background:#fff;border:1px solid #bfdbfe;font-size:9.5px;font-weight:900;user-select:none;transition:transform .1s ease,background .1s ease;flex-shrink:0;" onmouseover="this.style.transform=\'scale(1.15)\';this.style.background=\'#dbeafe\';" onmouseout="this.style.transform=\'scale(1)\';this.style.background=\'#fff\';">✏️</span>';
@@ -11432,7 +11436,7 @@
                           '</div>' +
                           lapizEtapa +
                         '</div>' +
-                        '<div data-opa-date-field="' + escapeAttr(dataId + ':' + e.clave) + '" style="font-size:12.5px;color:' + fgFecha + ';font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;margin-top:2px;">' + (hayFecha ? escapeHTML(colFecha) : '<span style="color:#cbd5e1;font-weight:700;">—</span>') + '</div>' +
+                        '<div data-opa-date-field="' + escapeAttr(dataId + ':' + e.clave) + '" style="font-size:12.5px;color:' + fgFecha + ';font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;margin-top:2px;">' + (hayFecha ? escapeHTML(colFecha) : '<span style="font-weight:800;">Pendiente</span>') + '</div>' +
                       '</div>';
                   }
                   const filaExpandir =
@@ -11451,14 +11455,14 @@
                   html += '<tr>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-flex;padding:3px 9px;border-radius:9999px;background:#0f172a;color:#f8fafc;font-weight:800;font-size:11.5px;">' + escapeHTML(String(rw.hoja || '')) + '</span></td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-weight:600;">' + escapeHTML(String(rw.fila || '')) + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(String(rw.numeroOPA || '')) + '</span>' + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 10px;border-radius:9999px;background:' + estadoColor.bg + ';color:' + estadoColor.fg + ';border:1px solid ' + estadoColor.bd + ';font-weight:800;font-size:12px;">' + escapeHTML(estadoCol || 'Sin estado') + '</span></td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:600;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(String(rw.proyecto || '')) + '</span>' + funcionLapiz(dataId, 'P', 'Proyecto', '📁') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(String(rw.tipoProducto || '')) + '</span>' + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':TR') + '">' + escapeHTML(String(rw.territorio || '')) + '</span>' + funcionLapiz(dataId, 'TR', 'Territorio', '🌎') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':PJ') + '">' + escapeHTML(String(rw.personaje || '')) + '</span>' + funcionLapiz(dataId, 'PJ', 'Personaje', '🧍') + '</td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + _opaValorVisual(rw.numeroOPA) + '</span>' + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + '</td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;"><span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:5px 11px;border-radius:9999px;background:' + (estadoCol ? estadoColor.bg : '#fef2f2') + ';color:' + (estadoCol ? estadoColor.fg : '#b91c1c') + ';border:1px solid ' + (estadoCol ? estadoColor.bd : '#fecaca') + ';font-weight:800;font-size:12px;">' + escapeHTML(estadoCol || 'Sin registrar') + '</span></td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:600;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + _opaValorVisual(rw.proyecto) + '</span>' + funcionLapiz(dataId, 'P', 'Proyecto', '📁') + '</td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + _opaValorVisual(rw.tipoProducto) + '</span>' + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':TR') + '">' + _opaValorVisual(rw.territorio) + '</span>' + funcionLapiz(dataId, 'TR', 'Territorio', '🌎') + '</td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':PJ') + '">' + _opaValorVisual(rw.personaje) + '</span>' + funcionLapiz(dataId, 'PJ', 'Personaje', '🧍') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':SO') + '">' + _opaSubOpaChips(String(rw.subOpa || '')) + '</span>' + funcionLapiz(dataId, 'SO', 'Sub-OPAs (máximo 10)', '➗') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#172554;font-weight:700;white-space:nowrap;"><span data-opa-last-date="' + escapeAttr(dataId) + '">' + escapeHTML(ultimaFecha || '—') + '</span>' + funcionLapiz(dataId, 'F', 'Última Fecha Etapa', '📅') + '</td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#172554;font-weight:700;white-space:nowrap;"><span data-opa-last-date="' + escapeAttr(dataId) + '">' + _opaValorVisual(ultimaFecha, 'Sin registrar') + '</span>' + funcionLapiz(dataId, 'F', 'Última Fecha Etapa', '📅') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">' +
                       '<button type="button" data-id="' + escapeAttr(dataId) + '" ' + onclickBtn +
                       ' style="padding:7px 12px;border-radius:9999px;font-weight:700;font-size:11.5px;cursor:pointer;' + btnStyle + 'white-space:nowrap;">' +
@@ -11495,12 +11499,21 @@
 
     function _opaSubOpaChips(value) {
       const items = _opaSubOpaItems(value);
-      if (!items.length) return '<span style="color:#94a3b8;">Sin registrar</span>';
-      return '<span style="display:flex;flex-wrap:wrap;gap:5px;">' + items.slice(0, 10).map(function(item, index) { return '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:11px;font-weight:800;"><span style="color:#64748b;font-size:9px;">' + String(index + 1).padStart(2, '0') + '</span>' + escapeHTML(item) + '</span>'; }).join('') + '</span>';
+      if (!items.length) return _opaValorVisual('', 'Sin registrar');
+      return '<span style="display:flex;flex-wrap:wrap;gap:5px;max-width:150px;">' + items.slice(0, 10).map(function(item, index) { return '<span title="Sub-OPA ' + String(index + 1).padStart(2, '0') + ': ' + escapeAttr(item) + '" style="display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:4px 7px;border-radius:9px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:10.5px;font-weight:800;white-space:normal;overflow-wrap:anywhere;line-height:1.2;"><span style="color:#15803d;font-size:9px;flex:0 0 auto;">' + String(index + 1).padStart(2, '0') + '</span><span style="overflow-wrap:anywhere;">' + escapeHTML(item) + '</span></span>'; }).join('') + '</span>';
+    }
+
+    function _opaValorVisual(value, emptyLabel) {
+      const text = Array.isArray(value) ? value.map(function(item){ return item && (item.name || item.url) || item; }).join(', ').trim() : String(value == null ? '' : value).trim();
+      const missing = !text || /^(?:—|-|N\/A|NA|N\.A\.|SIN REGISTRAR|PENDIENTE)$/i.test(text);
+      if (missing) return '<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;background:#fff1f2;border:1px solid #fecdd3;color:#be123c;font-size:11px;font-weight:800;white-space:nowrap;"><span aria-hidden="true">!</span>' + escapeHTML(emptyLabel || 'Sin registrar') + '</span>';
+      return escapeHTML(text);
     }
 
     function _opaSubOpaItems(value) {
-      return String(value == null ? '' : value).split(/[,;|\n\r]+/).map(function(item) { return item.trim(); }).filter(function(item, index, all) { return item && !/^(N\/A|NA|N\.A\.|-|SIN REGISTRAR)$/i.test(item) && all.findIndex(function(other) { return other.toLocaleLowerCase() === item.toLocaleLowerCase(); }) === index; });
+      const raw = String(value == null ? '' : value).trim();
+      const parts = /^(?:\d+)(?:-\d+){2,9}$/.test(raw) ? raw.split('-') : raw.split(/[,;|\n\r]+/);
+      return parts.map(function(item) { return item.trim(); }).filter(function(item, index, all) { return item && !/^(N\/A|NA|N\.A\.|-|SIN REGISTRAR)$/i.test(item) && all.findIndex(function(other) { return other.toLocaleLowerCase() === item.toLocaleLowerCase(); }) === index; }).slice(0, 10);
     }
 
     function _opaReadGuideLink(value) {
@@ -11539,9 +11552,9 @@
         const info = fields.map(function(def) {
           const raw = def[2](row);
           const value = raw == null || raw === '' ? 'Sin registrar' : Array.isArray(raw) ? raw.map(x=>x && (x.name||x.url) || x).join(', ') : String(raw);
-          const empty = value === 'Sin registrar' || value === 'N/A' || value === 'NA';
-          const shown = def[1] === 'SO' && !empty ? _opaSubOpaChips(value) : escapeHTML(value);
-          return '<div style="padding:11px 13px;border:1px solid ' + (empty ? '#edf1f6' : '#dbe3ef') + ';border-radius:12px;background:' + (empty ? '#fafbfd' : '#fff') + ';min-width:0;"><div style="color:#64748b;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">' + escapeHTML(def[0]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[1]) + '" style="margin-top:6px;color:' + (empty ? '#94a3b8' : '#0f172a') + ';font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + shown + '</div></div>';
+          const empty = !String(value || '').trim() || /^(N\/A|NA|N\.A\.|—|-|SIN REGISTRAR|PENDIENTE)$/i.test(value);
+          const shown = def[1] === 'SO' && !empty ? _opaSubOpaChips(value) : empty ? _opaValorVisual('', 'Sin registrar') : escapeHTML(value);
+          return '<div style="position:relative;padding:12px 13px 13px;border:1px solid ' + (empty ? '#fecaca' : '#bbf7d0') + ';border-left:3px solid ' + (empty ? '#ef4444' : '#22c55e') + ';border-radius:12px;background:' + (empty ? 'linear-gradient(135deg,#fff7f7,#fff)' : 'linear-gradient(135deg,#f0fdf4,#fff)') + ';min-width:0;box-shadow:0 2px 8px rgba(15,23,42,.035);"><div style="display:flex;align-items:center;gap:6px;color:' + (empty ? '#991b1b' : '#166534') + ';font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.045em;"><span aria-hidden="true" style="display:inline-flex;width:17px;height:17px;align-items:center;justify-content:center;border-radius:50%;background:' + (empty ? '#fee2e2' : '#dcfce7') + ';font-size:10px;">' + (empty ? '!' : '✓') + '</span>' + escapeHTML(def[0]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[1]) + '" style="margin-top:8px;color:' + (empty ? '#b91c1c' : '#14532d') + ';font-size:13px;font-weight:750;overflow-wrap:anywhere;">' + shown + '</div></div>';
         }).join('');
         const dateCards = dates.map(function(def) {
           const value = row.fechas?.[def[0]] || '';
@@ -11636,11 +11649,11 @@
       }).join('');
       const picker = canUpload ? '<label for="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar foto</label>' +
         '<input id="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this,\'' + escapeAttr(columnKey) + '\')" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />' : '';
-      return '<div style="padding:12px 14px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;">' +
+      return '<div style="padding:14px 15px;border:1px solid ' + (images.length ? '#dbeafe' : '#fecaca') + ';border-radius:15px;background:linear-gradient(135deg,#fff 0%,#f8fbff 100%);box-shadow:0 3px 12px rgba(15,23,42,.035);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
           '<div><div style="font-size:12px;font-weight:900;color:#0f172a;">🖼️ ' + escapeHTML(heading) + '</div><div style="font-size:11px;color:#64748b;margin-top:2px;">' + images.length + ' adjunta' + (images.length === 1 ? '' : 's') + ' · se guardan en ' + escapeHTML(columnKey === 'GE' ? 'ENLACE GUÍA DE ENVÍO' : 'LINK O FOTO PRODUCTO') + '</div>' + (guideLink ? '<a href="' + escapeAttr(guideLink) + '" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:6px;color:#1d4ed8;font-size:11px;font-weight:800;text-decoration:none;">Abrir enlace de guía ↗</a>' : '') + '</div>' + picker +
         '</div>' +
-        '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' + (cards || '<span style="font-size:12px;color:#94a3b8;padding:8px 2px;">Todavía no hay fotos para esta OPA.</span>') + '</div>' +
+        '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' + (cards || '<span style="display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;font-size:12px;color:#b91c1c;font-weight:700;">Sin fotos registradas todavía.</span>') + '</div>' +
         '<div data-opa-upload-status="' + escapeAttr(dataId + ':' + columnKey) + '" style="display:none;margin-top:10px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;"></div>' +
       '</div>';
     }
@@ -11659,10 +11672,12 @@
         const key = field[0];
         const value = key === 'GE' ? (row.guiaEnlace || row.enlaceGuia || _opaReadGuideLink(source.GE)) : (field.length > 2 && field[2] != null && field[2] !== '' ? field[2] : source[key]);
         const display = value == null || value === '' ? 'Sin registrar' : Array.isArray(value) ? value.map(function(item){return item && (item.name || item.url) || item;}).join(', ') : String(value);
+        const missing = !String(display).trim() || /^(?:—|-|N\/A|NA|N\.A\.|SIN REGISTRAR|PENDIENTE)$/i.test(String(display).trim());
         const pencil = editable ? '<button type="button" aria-label="Editar ' + escapeAttr(field[1]) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(key) + '\',\'' + escapeAttr(field[1]) + '\',\'✏️\')" style="width:28px;height:28px;flex:0 0 28px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;cursor:pointer;">✏️</button>' : '';
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:11px 13px;border:1px solid #dbe3ef;border-radius:12px;background:#fff;box-shadow:0 2px 5px rgba(15,23,42,.03);"><div style="min-width:0;"><div style="margin-bottom:5px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;">' + escapeHTML(field[1]) + '</div><div data-opa-field="' + escapeAttr(dataId + ':' + key) + '" style="color:#0f172a;font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + escapeHTML(display) + '</div></div>' + pencil + '</div>';
+        const shown = key === 'SO' && !missing ? _opaSubOpaChips(display) : _opaValorVisual(display, 'Sin registrar');
+        return '<div data-opa-product-card="1" style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:12px 13px;border:1px solid ' + (missing ? '#fecaca' : '#dbeafe') + ';border-left:3px solid ' + (missing ? '#ef4444' : '#3b82f6') + ';border-radius:12px;background:' + (missing ? 'linear-gradient(135deg,#fff7f7,#fff)' : 'linear-gradient(135deg,#fff,#f8fbff)') + ';box-shadow:0 3px 9px rgba(15,23,42,.04);transition:transform .15s ease,box-shadow .15s ease;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 7px 16px rgba(15,23,42,.08)\';" onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 3px 9px rgba(15,23,42,.04)\';"><div style="min-width:0;"><div style="margin-bottom:7px;color:' + (missing ? '#991b1b' : '#52657f') + ';font-size:10px;font-weight:850;letter-spacing:.045em;text-transform:uppercase;">' + escapeHTML(field[1]) + '</div><div data-opa-field="' + escapeAttr(dataId + ':' + key) + '" style="color:' + (missing ? '#b91c1c' : '#10213d') + ';font-size:13px;font-weight:750;overflow-wrap:anywhere;">' + shown + '</div></div>' + pencil + '</div>';
       }).join('');
-      return '<section style="padding:14px;border:1px solid #dbe3ef;border-radius:14px;background:#f8fafc;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:11px;"><div><h4 style="margin:0;color:#0f172a;font-size:13px;font-weight:900;">Detalles del producto</h4><div style="margin-top:3px;color:#64748b;font-size:11px;">' + (editable ? 'Edita cada campo con el lápiz; los cambios se guardan en la columna correspondiente de SeaTable.' : 'Información del producto registrada para esta OPA.') + '</div></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;">' + cards + '</div></section>';
+      return '<section style="padding:16px;border:1px solid #dbe5f1;border-radius:16px;background:linear-gradient(135deg,#f8fafc 0%,#f3f7fc 100%);"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:13px;"><div><h4 style="margin:0;color:#10213d;font-size:14px;font-weight:900;">Detalles del producto</h4><div style="margin-top:4px;color:#64748b;font-size:11px;">' + (editable ? 'Edita cada campo con el lápiz; los cambios se guardan en SeaTable.' : 'Información registrada para esta OPA.') + '</div></div><span style="display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid #dbeafe;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:800;">' + fields.length + ' campos</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:9px;">' + cards + '</div></section>';
     }
 
     async function _subirImagenesOPA(dataId, input, columnKey) {
@@ -11935,8 +11950,8 @@
           // Refleja el avance local solo cuando la fecha corresponde a una etapa posterior.
           if (!row.estadoPlataforma || (indiceActual >= 0 && nuevoIndice > indiceActual)) {
             row.estadoPlataforma = etapas[nuevoIndice] || row.estadoPlataforma;
-            const estado = document.querySelector('[data-opa-field="' + dataId + ':E"]');
-            if (estado) estado.textContent = row.estadoPlataforma;
+          const estado = document.querySelector('[data-opa-field="' + dataId + ':E"]');
+            if (estado) { estado.textContent = row.estadoPlataforma; estado.style.background = '#dcfce7'; estado.style.color = '#166534'; estado.style.borderColor = '#86efac'; }
           }
         }
         if (!row.todasLasFechas) row.todasLasFechas = {};
@@ -11945,14 +11960,30 @@
           row.fechas[campoClave] = value;
           row.todasLasFechas[campoClave] = value;
           const fecha = document.querySelector('[data-opa-date-field="' + dataId + ':' + campoClave + '"]');
-          if (fecha) fecha.textContent = value || '—';
+          if (fecha) {
+            fecha.innerHTML = _opaValorVisual(value, 'Pendiente');
+            const card = fecha.parentElement;
+            if (card && card.style) { card.style.background = value ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : '#fff7f7'; card.style.borderColor = value ? '#86efac' : '#fecaca'; }
+          }
           const fechas = Object.keys(row.fechas).map(function(k){ return String(row.fechas[k] || '').trim(); }).filter(Boolean).sort();
           row.fechaUltima = fechas.length ? fechas[fechas.length - 1] : '';
           const ultima = document.querySelector('[data-opa-last-date="' + dataId + '"]');
-          if (ultima) ultima.textContent = row.fechaUltima || '—';
+          if (ultima) ultima.innerHTML = _opaValorVisual(row.fechaUltima, 'Sin registrar');
         }
-        document.querySelectorAll('[data-opa-field="' + dataId + ':' + campoClave + '"]').forEach(function(field) { field.textContent = value || '—'; });
-        document.querySelectorAll('[data-preview-field="' + dataId + ':' + campoClave + '"]').forEach(function(previewField) { previewField.textContent = value || 'Sin registrar'; });
+        document.querySelectorAll('[data-opa-field="' + dataId + ':' + campoClave + '"]').forEach(function(field) {
+          if (campoClave === 'SO') field.innerHTML = _opaSubOpaChips(value);
+          else field.innerHTML = _opaValorVisual(value, 'Sin registrar');
+          if (campoClave === 'E') { const empty = !String(value || '').trim(); field.style.background = empty ? '#fef2f2' : '#dcfce7'; field.style.color = empty ? '#b91c1c' : '#166534'; field.style.borderColor = empty ? '#fecaca' : '#86efac'; }
+          const card = field.closest('[data-opa-product-card]');
+          if (card) { const missing = !String(value || '').trim() || /^(?:—|-|N\/A|NA|N\.A\.|SIN REGISTRAR|PENDIENTE)$/i.test(String(value).trim()); card.style.borderColor = missing ? '#fecaca' : '#dbeafe'; card.style.borderLeftColor = missing ? '#ef4444' : '#3b82f6'; card.style.background = missing ? 'linear-gradient(135deg,#fff7f7,#fff)' : 'linear-gradient(135deg,#fff,#f8fbff)'; field.style.color = missing ? '#b91c1c' : '#10213d'; }
+        });
+        document.querySelectorAll('[data-preview-field="' + dataId + ':' + campoClave + '"]').forEach(function(previewField) {
+          const missing = !String(value || '').trim() || /^(?:—|-|N\/A|NA|N\.A\.|SIN REGISTRAR|PENDIENTE)$/i.test(String(value).trim());
+          previewField.innerHTML = campoClave === 'SO' && !missing ? _opaSubOpaChips(value) : _opaValorVisual(value, 'Sin registrar');
+          previewField.style.color = missing ? '#b91c1c' : '#14532d';
+          const card = previewField.parentElement;
+          if (card && card.style) { card.style.borderColor = missing ? '#fecaca' : '#bbf7d0'; card.style.borderLeftColor = missing ? '#ef4444' : '#22c55e'; card.style.background = missing ? 'linear-gradient(135deg,#fff7f7,#fff)' : 'linear-gradient(135deg,#f0fdf4,#fff)'; }
+        });
       } catch(_) {}
     }
 
