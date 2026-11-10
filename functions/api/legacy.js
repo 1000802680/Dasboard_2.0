@@ -120,7 +120,7 @@ export async function onRequestPost(context) {
         if (!EDITABLE_FIELDS.has(key)) return Response.json({ ok: false, error: "Este campo no se puede editar desde la búsqueda." }, { status: 400, headers: { "Cache-Control": "no-store" } });
         await assertEditableTable(env, table);
         let newValue;
-        if (isDateField(key)) newValue = normalizeInputDate(rawValue);
+        if (isDateField(key)) newValue = await formatDateForSeaTable(env, String(table), key, rawValue);
         else if (NUMERIC_FIELDS.has(key)) {
           const numericText = String(rawValue ?? "").trim();
           if (!numericText) newValue = "";
@@ -183,12 +183,12 @@ export async function onRequestPost(context) {
         await assertEditableTable(env, table);
         const updates = { [getDashboardColumnName(env, "E")]: state };
         const stageIndex = ESTADOS.findIndex((item) => item.toLocaleLowerCase() === state.toLocaleLowerCase());
-        if (stageIndex >= 0 && stageIndex < 8 && p.fechaElegida) {
-          updates[getDashboardColumnName(env, `F${stageIndex + 1}`)] = normalizeInputDate(p.fechaElegida);
-        }
+        const stageKey = stageIndex >= 0 && stageIndex < 8 ? `F${stageIndex + 1}` : "";
+        const fechaEscrita = stageKey && p.fechaElegida ? await formatDateForSeaTable(env, table, stageKey, p.fechaElegida) : "";
+        if (fechaEscrita) updates[getDashboardColumnName(env, stageKey)] = fechaEscrita;
         await updateDashboardRow(env, table, rowId, updates);
         await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
-        value = { ok: true, hoja: table, fila: rowId, estado: state, fechaCampo: stageIndex >= 0 && stageIndex < 8 && p.fechaElegida ? `F${stageIndex + 1}` : "", fechaEscrita: p.fechaElegida ? normalizeInputDate(p.fechaElegida) : "" };
+        value = { ok: true, hoja: table, fila: rowId, estado: state, fechaCampo: stageKey && fechaEscrita ? stageKey : "", fechaEscrita };
         break;
       }
       case "crearRegistroOPA": {
@@ -205,7 +205,7 @@ export async function onRequestPost(context) {
           const raw = p.campos?.[key];
           if (raw == null || String(raw).trim() === "") continue;
           let value = String(raw).trim();
-          if (isDateField(key)) value = normalizeInputDate(value);
+          if (isDateField(key)) value = await formatDateForSeaTable(env, table, key, value);
           if (key === "SO") {
             try { value = normalizeSubOpa(value); }
             catch (error) { return Response.json({ ok: false, error: error.message }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
@@ -224,7 +224,7 @@ export async function onRequestPost(context) {
           if (latestStage) row[statusColumn] = ESTADOS[Number(latestStage.slice(1)) - 1];
         }
         const result = await createDashboardRow(env, table, row);
-        const rowId = String(result.row_id || result.rowId || result._id || result.id || result.inserted_row_id || result.row_ids?.[0] || result.rows?.[0]?.row_id || result.rows?.[0]?._id || result.rows?.[0]?.id || result.inserted_rows?.[0]?.row_id || result.inserted_rows?.[0]?._id || "");
+        const rowId = String(result.row_id || result.rowId || result._id || result.id || result.inserted_row_id || result.row?.row_id || result.row?._id || result.row?.id || result.row_ids?.[0] || result.rows?.[0]?.row_id || result.rows?.[0]?._id || result.rows?.[0]?.id || result.inserted_rows?.[0]?.row_id || result.inserted_rows?.[0]?._id || result.inserted_rows?.[0]?.id || "");
         try {
           await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
         } catch (auditError) {
@@ -286,6 +286,18 @@ function normalizeInputDate(value) {
     throw new Error("La fecha ingresada no es válida.");
   }
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+async function formatDateForSeaTable(env, table, key, value) {
+  const iso = normalizeInputDate(value);
+  if (!iso) return "";
+  const columnName = getDashboardColumnName(env, key);
+  const columnType = String(await getDashboardColumnType(env, table, columnName)).toLowerCase().replace(/[\s_-]/g, "");
+  // Las columnas de fecha nativas deben recibir ISO; las columnas de texto
+  // guardan DD/MM/AAAA para que las fechas nuevas no queden mezcladas con ISO.
+  if (columnType === "date" || columnType === "datetime") return iso;
+  const [year, month, day] = iso.split("-");
+  return `${day}/${month}/${year}`;
 }
 
 function latestDate(r) {
@@ -412,7 +424,6 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
-
 
 
 
