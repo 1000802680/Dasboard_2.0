@@ -11539,6 +11539,34 @@
       return { bg:'#e2e8f0', fg:'#334155', bd:'#cbd5e1' };
     }
 
+    // Lookup exacto local para responder sin esperar una consulta remota a
+    // todas las pestañas cuando la OPA ya está en la copia cargada.
+    window.__dashboardSearchOPA = function(query) {
+      const q = String(query == null ? '' : query).trim().toLocaleLowerCase();
+      if (!q || !Array.isArray(datos) || !datos.length) return null;
+      const matches = datos.filter(function(row) {
+        return String(row && row.O || '').trim().toLocaleLowerCase() === q;
+      });
+      const headers = {
+        F1:'Concepto Enviado', F2:'Concepto Aprobado', F3:'Pre-Producción Enviada',
+        F4:'Pre-Producción Aprobada', F5:'Fotos de Producción Enviada',
+        F6:'Fotos de Producción Aprobada', F7:'Muestras Finales Enviadas',
+        F8:'Aprobada / Cerrada', FM:'Fecha Envío de Muestras'
+      };
+      const resultados = matches.map(function(row) {
+        const fechas = { F:row.F, F1:row.F1, F2:row.F2, F3:row.F3, F4:row.F4, F5:row.F5, F6:row.F6, F7:row.F7, F8:row.F8, FM:row.FM };
+        const ultimoCampo = ['F8','F7','F6','F5','F4','F3','F2','F1','FM','F'].find(function(key) { return fechas[key] && String(fechas[key]).trim(); });
+        return {
+          hoja:row.H || 'SeaTable', fila:'', rowId:row._id || '', numeroOPA:row.O || '',
+          estadoPlataforma:row.E || '', proyecto:row.P || '', tipoProducto:row.T || '',
+          territorio:row.TR || '', personaje:row.PJ || '', subOpa:row.SO || '',
+          fechaUltima:ultimoCampo ? fechas[ultimoCampo] : '', imagenes:[], guiaImagenes:[],
+          guiaEnlace:'', fechas:fechas, headers:headers, todasLasFechas:row
+        };
+      });
+      return { ok:true, resultados:resultados, desdeCopiaLocal:true };
+    };
+
     function _buscarOPA() {
       try {
         const inp = document.getElementById('inp-busca-opa');
@@ -12492,7 +12520,9 @@
       if (_pollingCorriendo) return;
       _pollingCorriendo = true;
       try { _ultimoEtag = localStorage.getItem(ETAG_STORAGE_KEY) || ''; } catch(_){}
-      _pollingTick();
+      // Stagger the first poll across browsers so a room of users opening the
+      // dashboard together does not hit Pages Functions in one burst.
+      setTimeout(function(){ if (_pollingCorriendo) _pollingTick(); }, Math.floor(Math.random() * 5000));
       _pollingTimer = setInterval(_pollingTick, POLL_INTERVAL_MS);
     }
 
@@ -12574,7 +12604,13 @@
         .withFailureHandler(function(err){
           try { clearTimeout(tiempo); } catch(_){}
           onDone();
-          try { actualizarSyncStatus('Sin respuesta · reintento en ' + (POLL_INTERVAL_MS/1000) + 's', true); } catch(_){}
+          const detalle = String(err && err.message || '');
+          const estado = /404|no encontró \/api/i.test(detalle)
+            ? 'API de Pages no publicada · revisa Functions'
+            : (/tardó|timeout|demasiado/i.test(detalle)
+              ? 'Servidor o SeaTable lento · se conserva la copia local'
+              : 'Sin respuesta del servidor · reintento en ' + (POLL_INTERVAL_MS/1000) + 's');
+          try { actualizarSyncStatus(estado, true); } catch(_){}
         })
         .obtenerChecksumDashboard();
     }
