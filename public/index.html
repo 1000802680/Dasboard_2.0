@@ -11509,6 +11509,7 @@
                   try { if (!window._busqOpaCache) window._busqOpaCache = {}; window._busqOpaCache[dataId] = rw; } catch(_) {}
                 }
                 tbody.innerHTML = html;
+                _opaCargarFotosBusqueda(resultados, idBusqueda);
               }
               if (wrap) wrap.style.display = 'block';
             } catch(e) { _buscarOPA_setStatus('❌ Error al pintar resultados: ' + String(e && e.message || e), 'error'); }
@@ -11523,6 +11524,44 @@
           })
           .searchOPAByNumber(q, _authSesionActual.token);
       } catch(err) { _buscarOPA_setStatus('Error: ' + String(err && err.message || err), 'error'); }
+    }
+
+    function _opaCargarFotosBusqueda(resultados, idBusqueda) {
+      try {
+        if (!_authSesionActual || !_authSesionActual.token || !google || !google.script || !google.script.run) return;
+        const targets = [];
+        (resultados || []).forEach(function(row) {
+          const raw = row && row.todasLasFechas || {};
+          const add = function(columnKey, attachments) {
+            if (attachments == null || attachments === '') return;
+            if (typeof attachments === 'string' && columnKey === 'GE' && /^https?:\/\//i.test(attachments.trim())) return;
+            if (typeof attachments === 'string' && !attachments.trim()) return;
+            const dataId = String(row._dataId || '');
+            if (!dataId || !row.rowId || !row.hoja) return;
+            targets.push({ key: dataId + ':' + columnKey, dataId: dataId, columnKey: columnKey, hoja: row.hoja, rowId: row.rowId, attachments: attachments });
+          };
+          add('LF', raw.LF);
+          add('GE', raw.GE);
+        });
+        if (!targets.length) return;
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (idBusqueda !== _ultimaBusqueda || !result || !result.ok) return;
+            const cache = window._busqOpaCache || {};
+            const canUpload = !!(_authSesionActual && _authSesionActual.logueado && (!_authSesionActual.permisos || _authSesionActual.permisos.cambiar_estado !== false));
+            targets.forEach(function(target) {
+              const row = cache[target.dataId];
+              const images = result.imagenesPorFila && result.imagenesPorFila[target.key];
+              if (!row || !Array.isArray(images)) return;
+              if (target.columnKey === 'GE') row.guiaImagenes = images;
+              else row.imagenes = images;
+              const gallery = document.querySelector('[data-opa-gallery="' + target.key + '"]');
+              if (gallery) gallery.innerHTML = _opaRenderGaleria(target.dataId, row, canUpload, target.columnKey);
+            });
+          })
+          .withFailureHandler(function(error) { try { console.warn('No se pudieron cargar las imágenes de la OPA:', error && error.message || error); } catch(_) {} })
+          .getOPAImagesForRows(_authSesionActual.token, targets);
+      } catch(error) { try { console.warn('Carga diferida de imágenes omitida:', error && error.message || error); } catch(_) {} }
     }
 
     function escapeAttr(s) {
