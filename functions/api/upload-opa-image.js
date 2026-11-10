@@ -16,6 +16,7 @@ export async function onRequestPost(context) {
     const tableName = String(form.get("table") || "").trim();
     const rowId = String(form.get("rowId") || "").trim();
     const columnKey = String(form.get("columnKey") || "LF").trim().toUpperCase();
+    const isNewRow = String(form.get("newRow") || "") === "1";
     if (!["LF", "GE"].includes(columnKey)) return json({ ok: false, error: "Solo puedes adjuntar fotos del producto o de la guía de envío." }, 400);
     if (!tableName || !rowId) return json({ ok: false, error: "Falta identificar la hoja y la fila de la OPA." }, 400);
     if (!(await discoverTableNames(env)).includes(tableName)) return json({ ok: false, error: "La hoja indicada no pertenece a las hojas de datos del dashboard." }, 400);
@@ -36,7 +37,7 @@ export async function onRequestPost(context) {
     const columnName = getDashboardColumnName(env, columnKey);
     const [columnType, currentRow] = await Promise.all([
       getDashboardColumnType(env, tableName, columnName),
-      getDashboardRow(env, tableName, rowId),
+      isNewRow ? Promise.resolve({}) : getDashboardRow(env, tableName, rowId),
     ]);
     const normalizedColumnType = columnType.replace(/[\s_-]/g, "");
     const fileType = columnType === "image" ? "image" : columnType === "file" ? "file" : columnKey === "GE" && ["text", "longtext"].includes(normalizedColumnType) ? "text" : "";
