@@ -30,10 +30,17 @@ export async function onRequestPost(context) {
         break;
       }
       case "obtenerChecksumDashboard": {
-        // El polling revisa metadatos una vez por minuto para detectar pestañas nuevas
-        // sin releer todas las filas. Si aparece una tabla, sí reconstruye el dataset.
-        const registros = await refreshForNewTables(env);
-        value = { etag: fastEtag(registros), totalRegistros: registros.length, totalFilas: registros.length, fechaActualizacion: new Date().toISOString() };
+        // Responde con el último snapshot disponible y reconstruye una copia
+        // vencida en segundo plano para no bloquear a todos los usuarios.
+        const snapshot = await refreshForNewTables(env, context);
+        const registros = snapshot.records;
+        value = {
+          etag: fastEtag(registros),
+          totalRegistros: registros.length,
+          totalFilas: registros.length,
+          fechaActualizacion: new Date(snapshot.updatedAt || Date.now()).toISOString(),
+          actualizandoEnSegundoPlano: snapshot.refreshing,
+        };
         break;
       }
       case "obtenerEstadosDashboard":
@@ -424,6 +431,4 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
-
-
 
