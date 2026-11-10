@@ -30,7 +30,8 @@
           } catch (_) {}
         }
         const timeoutMs = functionName === "searchOPAByNumber" ? 18_000
-          : (functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 80_000 : 30_000);
+          : (functionName === "obtenerChecksumDashboard" ? 12_000
+            : (functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 80_000 : 30_000));
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
         return fetch(endpoint, {
         method: "POST",
@@ -65,8 +66,6 @@
   window.google.script = window.google.script || {};
   window.google.script.run = makeRunner(null, null);
 })();
-
-
 
 
 
