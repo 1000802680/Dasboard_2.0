@@ -31,6 +31,19 @@ const DEFAULT_COLUMNS = {
 
 const EMPTY_OPA = new Set(["", "N/A", "NA", "N.A.", "-", "SIN OPA", "NINGUNO", "NINGUNA"]);
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error("Tiempo de espera agotado")), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`SeaTable tardó más de ${Math.round(timeoutMs / 1000)} segundos en responder.`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function normalizeHeader(value) {
   return String(value ?? "")
     .normalize("NFD")
@@ -59,9 +72,9 @@ async function getBaseToken(env, apiToken = env.SEATABLE_API_TOKEN) {
   const cached = globalThis.__seatableToken;
   if (cached?.key === apiToken && cached.expiresAt > now + 60_000) return cached.value;
 
-  const response = await fetch(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-access-token/`, {
+  const response = await fetchWithTimeout(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-access-token/`, {
     headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" },
-  });
+  }, 10_000);
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.access_token) {
     throw new Error(`SeaTable no entregó un token de base (HTTP ${response.status}). Revisa URL y API token.`);
@@ -103,7 +116,7 @@ export async function discoverTableNames(env, token = null) {
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
   token = token || await getBaseToken(env);
   const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
-  const metadataResponse = await fetch(metadataUrl, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+  const metadataResponse = await fetchWithTimeout(metadataUrl, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }, 10_000);
   const metadataBody = await metadataResponse.json().catch(() => ({}));
   if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de pestañas de SeaTable (HTTP ${metadataResponse.status}).`);
   const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
@@ -453,12 +466,19 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
   }
   // La API SQL consulta la tabla completa, no una vista concreta. Si el
   // dashboard está configurado con una vista, respetamos ese alcance existente.
+  const sharedCache = getSharedDashboardCache(env);
+  // SQL no aplica vistas. En ese caso respetamos la vista solo si ya existe
+  // una copia compartida; evitamos descargar miles de filas por una búsqueda.
   if (env.SEATABLE_VIEW_NAME) {
-    const records = await loadDashboardRecords(env);
-    return records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    if (sharedCache) {
+      const snapshot = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
+      if (snapshot) return snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    }
+    const localView = globalThis.__dashboardRowsCache;
+    if (localView?.key === cacheKey && localView.records) return localView.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    throw new Error("La vista de SeaTable todavía no está cargada. Abre Dashboard o pulsa Actualizar datos y vuelve a buscar.");
   }
 
-  const sharedCache = getSharedDashboardCache(env);
   if (sharedCache) {
     try {
       const response = await sharedCache.match(dashboardCacheRequest(env));
@@ -488,6 +508,8 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
   const columnMap = getColumnMap(env);
   const resultsByTable = new Map();
   let next = 0;
+  const controller = new AbortController();
+  let deadlineTimer;
   async function searchTable(table) {
     const quote = (identifier) => `\`${String(identifier).replace(/`/g, "``")}\``;
     const selectedColumns = new Set(["_id"]);
@@ -505,6 +527,7 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
         parameters: [query],
         convert_keys: true,
       }),
+      signal: controller.signal,
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`SeaTable no pudo buscar la OPA en "${table.name}" (HTTP ${response.status}).`);
@@ -519,17 +542,32 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     }
     resultsByTable.set(table.name, records);
   }
-  const concurrency = Math.min(8, searchable.length);
+  const concurrency = Math.min(10, searchable.length);
   async function worker() {
     while (next < searchable.length) await searchTable(searchable[next++]);
   }
   try {
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  } catch (_) {
-    // Si la instalación de SeaTable no tiene habilitado SQL API, conservar
-    // compatibilidad usando el método de lectura existente.
-    const records = await loadDashboardRecords(env);
-    return records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    // Un límite global evita que la búsqueda quede girando mientras se espera
+    // a una hoja lenta. La búsqueda directa reemplaza el fallback de escanear
+    // todas las filas (que podía tardar 50 s o más).
+    await Promise.race([
+      Promise.all(Array.from({ length: concurrency }, () => worker())),
+      new Promise((_, reject) => { deadlineTimer = setTimeout(() => { controller.abort(); reject(new Error("La búsqueda en SeaTable superó 10 segundos. Revisa la conexión o intenta de nuevo.")); }, 10_000); }),
+    ]);
+  } catch (error) {
+    controller.abort();
+    // Si hay una copia previa, mostrarla en lugar de dejar la consulta colgada.
+    const localStale = globalThis.__dashboardRowsCache;
+    if (localStale?.key === cacheKey && Array.isArray(localStale.records)) {
+      return localStale.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    }
+    if (sharedCache) {
+      const stale = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
+      if (stale) return stale.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+    }
+    throw error;
+  } finally {
+    clearTimeout(deadlineTimer);
   }
   return searchable.flatMap((table) => resultsByTable.get(table.name) || []).sort((a, b) => activityTime(b).localeCompare(activityTime(a)));
 }
