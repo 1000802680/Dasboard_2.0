@@ -11547,6 +11547,9 @@
       const matches = datos.filter(function(row) {
         return String(row && row.O || '').trim().toLocaleLowerCase() === q;
       });
+      // A miss in this device's snapshot is not authoritative: another user
+      // may have added the OPA since this browser last synchronized.
+      if (!matches.length) return null;
       const headers = {
         F1:'Concepto Enviado', F2:'Concepto Aprobado', F3:'Pre-Producción Enviada',
         F4:'Pre-Producción Aprobada', F5:'Fotos de Producción Enviada',
@@ -12544,13 +12547,15 @@
         _estaSincronizando = false;
       };
 
-      // Timeout 5s: Apps Script a veces se cuelga
+      // El bridge cancela la petición de checksum a los 12 s. Esperamos 13 s
+      // antes de liberar el candado del sondeo para no iniciar otra petición
+      // mientras el fetch anterior aún está vivo.
       const tiempo = setTimeout(function(){
         if (!terminado.valor) {
           onDone();
-          try { actualizarSyncStatus('Revisión rápida · reintento en ' + (POLL_INTERVAL_MS/1000) + 's', false); } catch(_){}
+          try { actualizarSyncStatus('Revisión lenta · se conserva la copia local', true); } catch(_){}
         }
-      }, 5000);
+      }, 13000);
 
       google.script.run
         .withSuccessHandler(function(resp){
@@ -12978,3 +12983,4 @@
 
 </body>
 </html>
+
