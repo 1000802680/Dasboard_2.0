@@ -8,7 +8,7 @@
       if (property === "withUserObject") return () => makeRunner(success, failure);
       if (property === "then") return undefined;
       const authFunctions = new Set([
-        "registerUser", "loginUser", "getCurrentUser", "logoutUser",
+        "authSetupStatus", "registerUser", "loginUser", "getCurrentUser", "logoutUser", "adminRestablecerContrasena",
         "adminListarPermisos", "adminGuardarPermisos", "adminListarUsuarios",
         "adminListarHistorial", "adminObtenerHistorialYEstadisticas",
         "obtenerMisActividades", "adminGuardarActividadesUsuario",
@@ -35,6 +35,7 @@
   window.google.script = window.google.script || {};
   window.google.script.run = makeRunner(null, null);
 })();
+
 
 
 
