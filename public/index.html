@@ -4152,7 +4152,7 @@
           <label style="font-size:12px;font-weight:800;color:#334155;">Marca<input id="crear-opa-M" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Territorio<input id="crear-opa-TR" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Personaje<input id="crear-opa-PJ" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Sub-OPA<input id="crear-opa-SO" maxlength="120" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Sub-OPAs (máximo 10)<input id="crear-opa-SO" maxlength="500" placeholder="Ej.: 01, 02, 03" title="Escribe hasta 10 sub-OPAs separadas por coma, punto y coma o barra vertical" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Sepáralas con coma. El sistema guarda hasta 10 en el mismo número de OPA.</span></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Estado de plataforma<select id="crear-opa-E" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;"><option value="">Sin estado</option><option>Concepto Enviado</option><option>Concepto Aprobado</option><option>Pre-Producción Enviada</option><option>Pre-Producción Aprobada</option><option>Fotos de Producción Enviada</option><option>Fotos de Producción Aprobada</option><option>Muestras Finales Enviadas</option><option>Aprobada / Cerrada</option><option>Cancelado</option></select></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Fecha<input id="crear-opa-F" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Concepto enviado<input id="crear-opa-F1" type="date" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
@@ -4169,7 +4169,7 @@
           <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2C<input id="crear-opa-B2C" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras recibidas<input id="crear-opa-MR" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras enviadas<input id="crear-opa-ME" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <label style="font-size:12px;font-weight:800;color:#334155;">Enlace guía de envío<input id="crear-opa-GE" type="url" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
+          <label style="font-size:12px;font-weight:800;color:#334155;">Enlace guía de envío<input id="crear-opa-GE" type="url" maxlength="500" placeholder="https://…" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Después de guardar, busca la OPA y usa “Adjuntar foto” para guardar imágenes de la guía en esta columna.</span></label>
           <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Descripción ERP<input id="crear-opa-D" maxlength="1000" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Nombre del producto en OPA<input id="crear-opa-NP" maxlength="500" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
         </div>
@@ -4319,13 +4319,13 @@
       <!-- Body LOGIN -->
       <div id="auth-tab-login" style="padding:18px 20px 22px 20px;overflow:auto;min-height:280px;">
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Nombre de usuario</label>
-        <input type="text" id="auth-login-username" autocomplete="username"
+        <input type="text" id="auth-login-username" name="dashboard-login-id" autocomplete="new-password" autocapitalize="none" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:14px;"
           placeholder="Tu usuario"
           onfocus="this.style.borderColor='#1e40af';this.style.boxShadow='0 0 0 3px rgba(30,64,175,.10)';"
           onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none';" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Contraseña</label>
-        <input type="password" id="auth-login-password" autocomplete="current-password"
+        <input type="password" id="auth-login-password" name="dashboard-login-secret" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:18px;"
           placeholder="••••••••"
           onfocus="this.style.borderColor='#1e40af';this.style.boxShadow='0 0 0 3px rgba(30,64,175,.10)';"
@@ -4333,30 +4333,40 @@
         <button class="btn-primary" onclick="_loginSubmit()" style="width:100%;justify-content:center;">
           Iniciar sesión
         </button>
-        <div style="margin-top:14px;padding:10px 13px;border-radius:11px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;font-size:12px;font-weight:600;line-height:1.45;">
-          💡 La primera cuenta será administradora y requiere la clave inicial configurada en Cloudflare. Después podrás crear las cuentas del equipo.
+        <button type="button" onclick="_authOlvidoContrasena()" style="display:block;margin:12px 0 0 auto;border:0;background:transparent;color:#1d4ed8;font-weight:700;font-size:12px;cursor:pointer;">
+          ¿Olvidaste tu contraseña?
+        </button>
+        <div style="margin-top:10px;padding:10px 13px;border-radius:11px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;font-size:12px;font-weight:600;line-height:1.45;">
+          Cada persona inicia sesión con su propia cuenta en cada dispositivo. Si olvidas tu contraseña, el administrador puede restablecerla.
         </div>
       </div>
 
       <!-- Body REGISTRO -->
-      <div id="auth-tab-registro" style="display:none;padding:18px 20px 22px 20px;overflow:auto;min-height:280px;">
+      <div id="auth-tab-registro" style="display:none;padding:18px 20px 22px 20px;overflow:auto;min-height:280px;" autocomplete="off">
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Nombre de usuario</label>
-        <input type="text" id="auth-reg-user" placeholder="Ej: maria12 (mínimo 3 caracteres)"
+        <input type="text" id="auth-reg-user" name="new-dashboard-user" autocomplete="off" placeholder="Ej: maria12 (mínimo 3 caracteres)"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Nombre completo</label>
         <input type="text" id="auth-reg-nombre" placeholder="Tu nombre (opcional, recomendado)"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Correo electrónico</label>
-        <input type="email" id="auth-reg-correo" placeholder="tu.correo@ejemplo.com (opcional)"
+        <input type="email" id="auth-reg-correo" name="new-dashboard-email" autocomplete="off" placeholder="tu.correo@ejemplo.com (opcional)"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
-        <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Clave inicial de administrador (solo para crear la primera cuenta)</label>
-        <input type="password" id="auth-reg-bootstrap-key" autocomplete="off" placeholder="La clave configurada en Cloudflare"
-          style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
+        <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Empresa</label>
+        <select id="auth-reg-empresa" name="dashboard-company" autocomplete="off" style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;box-sizing:border-box;margin-bottom:12px;">
+          <option value="">Selecciona la empresa</option><option value="Primavera">Primavera</option><option value="Conceptos Gráficos">Conceptos Gráficos</option>
+        </select>
+        <div id="auth-bootstrap-setup" style="display:none;margin:0 0 14px;padding:12px;border:1px solid #fcd34d;border-radius:12px;background:#fffbeb;">
+          <div style="font-size:12px;color:#92400e;font-weight:800;margin-bottom:5px;">Configuración inicial del administrador</div>
+          <div style="font-size:11.5px;color:#78350f;margin-bottom:8px;">Solo aparece mientras no exista una cuenta administradora. Ingresa aquí la clave de un solo uso configurada en Cloudflare.</div>
+          <input type="password" id="auth-reg-bootstrap-key" name="initial-setup-code" autocomplete="new-password" placeholder="Clave inicial de Cloudflare"
+            style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #fcd34d;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;box-sizing:border-box;" />
+        </div>
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Contraseña</label>
-        <input type="password" id="auth-reg-pass1" placeholder="Mínimo 6 caracteres"
+        <input type="password" id="auth-reg-pass1" name="new-dashboard-password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:12px;" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Confirmar contraseña</label>
-        <input type="password" id="auth-reg-pass2" placeholder="Repite la contraseña"
+        <input type="password" id="auth-reg-pass2" name="confirm-dashboard-password" autocomplete="new-password" placeholder="Repite la contraseña"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:18px;" />
         <button class="btn-primary" onclick="_registroSubmit()" style="width:100%;justify-content:center;">
           Crear mi usuario
@@ -5561,6 +5571,7 @@
       const hoja = String(document.getElementById('crear-opa-hoja').value || '').trim();
       if (!hoja) { _crearOPAStatus('Selecciona la hoja / marca donde se guardará el registro.', true); return; }
       if (!campos.O) { _crearOPAStatus('El número de OPA es obligatorio.', true); return; }
+      if (_opaSubOpaItems(campos.SO || '').length > 10) { _crearOPAStatus('Puedes asociar máximo 10 sub-OPAs al mismo número de OPA.', true); return; }
       _crearOPAStatus('Guardando el registro en SeaTable…', false);
       if (button) button.disabled = true;
       google.script.run
@@ -9653,6 +9664,7 @@
       try {
         const m = document.getElementById('auth-modal');
         if (m) m.style.display = 'flex';
+        _authActualizarSetupInicial();
         if (_authSesionActual && _authSesionActual.logueado) {
           _authPintarPerfil();
           _authCambiarTab('perfil');
@@ -9666,10 +9678,27 @@
       } catch(_) {}
     }
 
+    function _authActualizarSetupInicial() {
+      try {
+        google.script.run.withSuccessHandler(function(r) {
+          const box = document.getElementById('auth-bootstrap-setup');
+          const key = document.getElementById('auth-reg-bootstrap-key');
+          if (box) box.style.display = r && r.ok && r.requierePrimerAdministrador ? 'block' : 'none';
+          if (key && (!r || !r.requierePrimerAdministrador)) key.value = '';
+        }).authSetupStatus();
+      } catch (_) {}
+    }
+
+    function _authOlvidoContrasena() {
+      _authSetStatus('Por seguridad no se puede consultar la contraseña actual. Solicita al administrador que restablezca tu contraseña y te comparta una temporal por un canal seguro.', 'info');
+    }
+
     function _authCerrarModal() {
       try {
         const m = document.getElementById('auth-modal');
         if (m) m.style.display = 'none';
+        const password = document.getElementById('auth-login-password');
+        if (password) password.value = '';
       } catch(_) {}
     }
 
@@ -9736,7 +9765,7 @@
           try { if (titulo) titulo.textContent = txtTitle; } catch(_) {}
         }
         if (tab === 'login') _act(tLogin, btnL, 'Iniciar sesión');
-        if (tab === 'registro') _act(tReg, btnR, 'Crear un usuario nuevo');
+        if (tab === 'registro') { _act(tReg, btnR, 'Crear un usuario nuevo'); _authActualizarSetupInicial(); }
         if (tab === 'perfil') _act(tPerf, btnP, 'Mi cuenta · Perfil');
         _authSetStatus(null);
       } catch(err) { try { console.warn('_authCambiarTab err', err.message || err); } catch(_) {} }
@@ -9825,6 +9854,7 @@
                 _authPintarPerfil();
                 try { _aplicarPermisosUI(); } catch(_) {}
                 _authSetStatus('✅ Sesión iniciada correctamente. Bienvenido/a ' + String(r.username || '') + '.', 'ok');
+                try { if (p) p.value = ''; } catch(_) {}
                 setTimeout(function(){ try { _authCerrarModal(); } catch(_){} }, 900);
               } catch(e) { _authSetStatus((e && e.message) || 'Error interno al procesar login.', 'error'); }
             })
@@ -9844,14 +9874,19 @@
         const p1 = document.getElementById('auth-reg-pass1');
         const p2 = document.getElementById('auth-reg-pass2');
         const bootstrap = document.getElementById('auth-reg-bootstrap-key');
+        const empresa = document.getElementById('auth-reg-empresa');
         const username = String(u ? u.value : '').trim();
         const nombre   = String(n ? n.value : '').trim();
         const correo   = String(c ? c.value : '').trim();
         const pass1    = String(p1 ? p1.value : '');
         const pass2    = String(p2 ? p2.value : '');
+        const empresaValue = String(empresa ? empresa.value : '');
         if (!username || username.length < 3) return _authSetStatus('Nombre de usuario inválido (mínimo 3 caracteres).', 'error');
         if (!pass1 || pass1.length < 6) return _authSetStatus('Contraseña demasiado corta (mínimo 6 caracteres).', 'error');
         if (pass1 !== pass2) return _authSetStatus('Las contraseñas no coinciden.', 'error');
+        if (!empresaValue) return _authSetStatus('Selecciona la empresa del usuario.', 'error');
+        const setupBox = document.getElementById('auth-bootstrap-setup');
+        if (setupBox && setupBox.style.display !== 'none' && !(bootstrap && bootstrap.value.trim())) return _authSetStatus('Ingresa la clave inicial de Cloudflare para crear el primer administrador.', 'error');
         _authSetStatus('⌛ Creando usuario...', 'info');
         _authCalcularHashCliente(pass1).then(function(hashPwd){
           if (!google || !google.script || !google.script.run) {
@@ -9866,7 +9901,7 @@
                   return;
                 }
                 const msg = (r.mensaje || 'Usuario creado correctamente. Ya puedes iniciar sesión.');
-                try { [u,n,c,p1,p2,bootstrap].forEach(function(x){ try { if (x) x.value=''; } catch(_){} }); } catch(_) {}
+                try { [u,n,c,p1,p2,bootstrap,empresa].forEach(function(x){ try { if (x) x.value=''; } catch(_){} }); } catch(_) {}
                 _authSetStatus('✅ ' + String(msg) + ' Inicia sesión para continuar.', 'ok');
                 setTimeout(function(){ _authCambiarTab('login'); try { const ul = document.getElementById('auth-login-username'); if(ul) ul.value=username; ul && ul.focus(); } catch(_){} }, 900);
               } catch(e) { _authSetStatus((e && e.message) || 'Error al procesar el registro.', 'error'); }
@@ -9874,7 +9909,7 @@
             .withFailureHandler(function(err){
               _authSetStatus('❌ Error en registro: ' + (err && err.message ? err.message : err), 'error');
             })
-            .registerUser({ username: username, nombreCompleto: nombre, correo: correo, hashPwd: hashPwd, bootstrapKey: bootstrap ? bootstrap.value : '' });
+            .registerUser({ username: username, nombreCompleto: nombre, correo: correo, empresa: empresaValue, hashPwd: hashPwd, bootstrapKey: bootstrap ? bootstrap.value : '' });
         });
       } catch(err) { _authSetStatus('Error: ' + String(err && err.message || err), 'error'); }
     }
@@ -10397,9 +10432,11 @@
               let html = '<table style="width:100%;border-collapse:collapse;font-size:11.5px;"><thead><tr style="text-align:left;color:#0f172a;">' +
                 '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Usuario</th>' +
                 '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Nombre</th>' +
+                '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Empresa</th>' +
                 '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Rol</th>' +
                 '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Registro</th>' +
                 '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Último acceso</th>' +
+                '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Seguridad</th>' +
                 '</tr></thead><tbody>';
               for (let i=0;i<list.length;i++) {
                 const u = list[i];
@@ -10407,9 +10444,11 @@
                 html += '<tr>' +
                   '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;font-weight:800;color:#0f172a;">' + escapeHTML(String(u.username || '')) + '</td>' +
                   '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#334155;">' + escapeHTML(String(u.nombreCompleto || '')) + '</td>' +
+                  '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#334155;">' + escapeHTML(String(u.empresa || '—')) + '</td>' +
                   '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;"><span style="padding:2px 7px;border-radius:9999px;background:' + (esAdmin ? '#fef3c7' : '#e0f2fe') + ';color:' + (esAdmin ? '#92400e' : '#075985') + ';font-weight:800;">' + escapeHTML(String(u.rol || 'USUARIO')) + '</span></td>' +
                   '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#64748b;">' + escapeHTML(String(u.fechaRegistro || '').slice(0, 19).replace('T', ' ')) + '</td>' +
                   '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#64748b;">' + escapeHTML(String(u.ultimoAcceso || '—').slice(0, 19).replace('T', ' ')) + '</td>' +
+                  '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;white-space:nowrap;"><button type="button" class="btn-secondary" style="margin:0;padding:5px 8px;font-size:10.5px;" data-username="' + escapeAttr(String(u.username || '')) + '" onclick="_adminRestablecerContrasena(this.dataset.username)">Restablecer contraseña</button></td>' +
                   '</tr>';
               }
               html += '</tbody></table>';
@@ -10419,6 +10458,31 @@
           .withFailureHandler(function(err){ if (wrap) wrap.innerHTML = '<div style="color:#b91c1c;font-weight:600;">❌ Error: ' + escapeHTML(String(err && err.message || err)) + '</div>'; })
           .adminListarUsuarios(_authSesionActual.token);
       } catch(err) { try { const w = document.getElementById('auth-perfil-admin-resultado'); if(w) w.innerHTML = '<div style="color:#b91c1c;font-weight:600;">❌ Error: ' + escapeHTML(String(err && err.message || err)) + '</div>'; } catch(_) {} }
+    }
+
+    function _adminRestablecerContrasena(username) {
+      const target = String(username || '').trim();
+      if (!_authSesionActual || !_authSesionActual.token || !_authSesionActual.permisos || !_authSesionActual.permisos.panel_admin) {
+        _authSetStatus('Solo el administrador puede restablecer contraseñas.', 'error'); return;
+      }
+      let temporaryPassword = window.prompt('Escribe una contraseña temporal nueva (mínimo 6 caracteres) para ' + target + '. Compártela con esa persona por un canal seguro.');
+      if (temporaryPassword === null) return;
+      temporaryPassword = String(temporaryPassword);
+      if (temporaryPassword.length < 6) { _authSetStatus('La contraseña temporal debe tener al menos 6 caracteres.', 'error'); return; }
+      const confirmation = window.prompt('Confirma la contraseña temporal nueva.');
+      if (confirmation === null) return;
+      if (temporaryPassword !== String(confirmation)) { _authSetStatus('Las contraseñas temporales no coinciden.', 'error'); return; }
+      _authSetStatus('⌛ Restableciendo contraseña…', 'info');
+      _authCalcularHashCliente(temporaryPassword).then(function(hashPwd) {
+        temporaryPassword = ''; 
+        google.script.run.withSuccessHandler(function(r) {
+          if (!r || !r.ok) { _authSetStatus(r && r.error || 'No se pudo restablecer la contraseña.', 'error'); return; }
+          _authSetStatus('✅ ' + String(r.mensaje || 'Contraseña restablecida.'), 'ok');
+          _adminListarUsuarios();
+        }).withFailureHandler(function(error) {
+          _authSetStatus('Error al restablecer: ' + String(error && error.message || error), 'error');
+        }).adminRestablecerContrasena(_authSesionActual.token, target, hashPwd);
+      }).catch(function() { temporaryPassword = ''; _authSetStatus('No se pudo preparar la contraseña. Intenta de nuevo.', 'error'); });
     }
 
     function _adminListarHistorial() {
@@ -11308,7 +11372,8 @@
                           '<div style="height:1px;background:#e2e8f0;flex:1;"></div>' +
                         '</div>' +
                         '<div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;">' + tarjetas + '</div>' +
-                        '<div data-opa-gallery="' + escapeAttr(dataId) + '" style="margin-top:16px;">' + _opaRenderGaleria(dataId, rw, haySesion && puedeCambiar) + '</div>' +
+                        '<div data-opa-gallery="' + escapeAttr(dataId + ':LF') + '" style="margin-top:14px;">' + _opaRenderGaleria(dataId, rw, haySesion && puedeCambiar, 'LF') + '</div>' +
+                        '<div data-opa-gallery="' + escapeAttr(dataId + ':GE') + '" style="margin-top:10px;">' + _opaRenderGaleria(dataId, rw, haySesion && puedeCambiar, 'GE') + '</div>' +
                         '<div data-opa-product-fields="' + escapeAttr(dataId) + '" style="margin-top:14px;">' + _opaRenderCamposProducto(dataId, rw, haySesion && puedeCambiar) + '</div>' +
                       '</td>' +
                     '</tr>';
@@ -11321,7 +11386,7 @@
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(String(rw.tipoProducto || '')) + '</span>' + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':TR') + '">' + escapeHTML(String(rw.territorio || '')) + '</span>' + funcionLapiz(dataId, 'TR', 'Territorio', '🌎') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':PJ') + '">' + escapeHTML(String(rw.personaje || '')) + '</span>' + funcionLapiz(dataId, 'PJ', 'Personaje', '🧍') + '</td>' +
-                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':SO') + '">' + escapeHTML(String(rw.subOpa || '')) + '</span>' + funcionLapiz(dataId, 'SO', 'Sub-OPA', '➗') + '</td>' +
+                    '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#475569;"><span data-opa-field="' + escapeAttr(dataId + ':SO') + '">' + _opaSubOpaChips(String(rw.subOpa || '')) + '</span>' + funcionLapiz(dataId, 'SO', 'Sub-OPAs (máximo 10)', '➗') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#172554;font-weight:700;white-space:nowrap;"><span data-opa-last-date="' + escapeAttr(dataId) + '">' + escapeHTML(ultimaFecha || '—') + '</span>' + funcionLapiz(dataId, 'F', 'Última Fecha Etapa', '📅') + '</td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">' +
                       '<button type="button" data-id="' + escapeAttr(dataId) + '" ' + onclickBtn +
@@ -11357,6 +11422,23 @@
       } catch(_) { return ''; }
     }
 
+    function _opaSubOpaChips(value) {
+      const items = _opaSubOpaItems(value);
+      if (!items.length) return '<span style="color:#94a3b8;">Sin registrar</span>';
+      return '<span style="display:flex;flex-wrap:wrap;gap:5px;">' + items.slice(0, 10).map(function(item, index) { return '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:11px;font-weight:800;"><span style="color:#64748b;font-size:9px;">' + String(index + 1).padStart(2, '0') + '</span>' + escapeHTML(item) + '</span>'; }).join('') + '</span>';
+    }
+
+    function _opaSubOpaItems(value) {
+      return String(value == null ? '' : value).split(/[,;|\n\r]+/).map(function(item) { return item.trim(); }).filter(function(item, index, all) { return item && !/^(N\/A|NA|N\.A\.|-|SIN REGISTRAR)$/i.test(item) && all.findIndex(function(other) { return other.toLocaleLowerCase() === item.toLocaleLowerCase(); }) === index; });
+    }
+
+    function _opaReadGuideLink(value) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) return String(value.link || value.enlace || '');
+      const text = String(value == null ? '' : value).trim();
+      if (/^https?:\/\//i.test(text)) return text;
+      try { const parsed = JSON.parse(text); return parsed && !Array.isArray(parsed) ? String(parsed.link || parsed.enlace || '') : ''; } catch (_) { return ''; }
+    }
+
     function _opaSetVistaPreviaDisponible(disponible) {
       const button = document.getElementById('btn-vista-previa-opa');
       if (!button) return;
@@ -11378,7 +11460,7 @@
         ['Portafolio','PO',r=>r.todasLasFechas?.PO], ['Item / SKU B2B','B2B',r=>r.todasLasFechas?.B2B], ['Item / SKU B2C','B2C',r=>r.todasLasFechas?.B2C],
         ['Nombre de producto en OPA','NP',r=>r.todasLasFechas?.NP], ['Descripción del producto ERP','D',r=>r.todasLasFechas?.D],
         ['Personaje','PJ',r=>r.personaje], ['Sub-OPA','SO',r=>r.subOpa], ['Cantidad de muestras recibidas','MR',r=>r.todasLasFechas?.MR],
-        ['Cantidad de muestras enviadas','ME',r=>r.todasLasFechas?.ME], ['Enlace guía de envío','GE',r=>r.todasLasFechas?.GE]
+        ['Cantidad de muestras enviadas','ME',r=>r.todasLasFechas?.ME]
       ];
       const dates = [['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],['F4','Pre-producción aprobada'],['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],['F8','Aprobada / cerrada'],['FM','Fecha de envío de muestras']];
       content.innerHTML = _opaResultadosActuales.map(function(row) {
@@ -11386,7 +11468,9 @@
         const info = fields.map(function(def) {
           const raw = def[2](row);
           const value = raw == null || raw === '' ? 'Sin registrar' : Array.isArray(raw) ? raw.map(x=>x && (x.name||x.url) || x).join(', ') : String(raw);
-          return '<div style="padding:12px 14px;border:1px solid #dbe3ef;border-radius:12px;background:#fff;min-width:0;"><div style="color:#64748b;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">' + escapeHTML(def[0]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[1]) + '" style="margin-top:6px;color:#0f172a;font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + escapeHTML(value) + '</div></div>';
+          const empty = value === 'Sin registrar' || value === 'N/A' || value === 'NA';
+          const shown = def[1] === 'SO' && !empty ? _opaSubOpaChips(value) : escapeHTML(value);
+          return '<div style="padding:11px 13px;border:1px solid ' + (empty ? '#edf1f6' : '#dbe3ef') + ';border-radius:12px;background:' + (empty ? '#fafbfd' : '#fff') + ';min-width:0;"><div style="color:#64748b;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">' + escapeHTML(def[0]) + '</div><div data-preview-field="' + escapeAttr(dataId + ':' + def[1]) + '" style="margin-top:6px;color:' + (empty ? '#94a3b8' : '#0f172a') + ';font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + shown + '</div></div>';
         }).join('');
         const dateCards = dates.map(function(def) {
           const value = row.fechas?.[def[0]] || '';
@@ -11397,7 +11481,15 @@
           const name = String(img && img.name || 'Foto del producto');
           return url ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" style="padding:0;border:0;background:none;cursor:zoom-in;text-align:left;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:120px;height:100px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;"><span style="display:block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;">' + escapeHTML(name) + '</span></button>' : '';
         }).join('');
-        return '<article style="margin-bottom:14px;overflow:hidden;border:1px solid #dbe3ef;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.08);"><header style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;background:linear-gradient(120deg,#f8fafc,#eff6ff);border-bottom:1px solid #e2e8f0;"><div><div style="color:#64748b;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Ficha de producto</div><strong style="display:block;margin-top:3px;color:#1e40af;font-size:20px;">OPA ' + escapeHTML(String(row.numeroOPA || '—')) + ' · ' + escapeHTML(String(row.hoja || '')) + '</strong></div><span data-preview-field="' + escapeAttr(dataId + ':E') + '" style="padding:7px 12px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800;">' + escapeHTML(String(row.estadoPlataforma || 'Sin estado')) + '</span></header><div style="padding:18px;display:grid;gap:18px;"><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">INFORMACIÓN DEL PRODUCTO</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">' + info + '</div></section><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">FECHAS DE ETAPAS</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">' + dateCards + '</div></section><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">FOTOS DEL PRODUCTO · LINK O FOTO PRODUCTO</h4><div style="display:flex;gap:10px;flex-wrap:wrap;">' + (photos || '<span style="color:#94a3b8;font-size:12px;">No hay fotos adjuntas.</span>') + '</div></section></div></article>';
+        const guidePhotos = (row.guiaImagenes || []).map(function(img) {
+          const url = _opaSafeImageUrl(img && img.url);
+          const name = String(img && img.name || 'Foto de guía de envío');
+          return url ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" style="padding:0;border:0;background:none;cursor:zoom-in;text-align:left;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:100px;height:78px;object-fit:cover;border-radius:9px;border:1px solid #cbd5e1;"><span style="display:block;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;">' + escapeHTML(name) + '</span></button>' : '';
+        }).join('');
+        const guideRaw = row.todasLasFechas && row.todasLasFechas.GE;
+        const guideUrl = _opaSafeImageUrl(row.guiaEnlace || row.enlaceGuia || _opaReadGuideLink(guideRaw));
+        const guideInfo = guideUrl ? '<a href="' + escapeAttr(guideUrl) + '" target="_blank" rel="noopener noreferrer" style="display:inline-flex;padding:7px 10px;border-radius:9px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:800;text-decoration:none;">Abrir enlace de guía ↗</a>' : '';
+        return '<article style="margin-bottom:14px;overflow:hidden;border:1px solid #dbe3ef;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.07);"><header style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:15px 19px;background:linear-gradient(120deg,#f8fafc,#eff6ff);border-bottom:1px solid #e2e8f0;"><div><div style="color:#64748b;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Ficha de producto</div><strong style="display:block;margin-top:3px;color:#1e40af;font-size:20px;">OPA ' + escapeHTML(String(row.numeroOPA || '—')) + ' · ' + escapeHTML(String(row.hoja || '')) + '</strong></div><span data-preview-field="' + escapeAttr(dataId + ':E') + '" style="padding:7px 12px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800;">' + escapeHTML(String(row.estadoPlataforma || 'Sin estado')) + '</span></header><div style="padding:16px;display:grid;gap:15px;"><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">INFORMACIÓN DEL PRODUCTO</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:8px;">' + info + '</div></section><section><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">FECHAS DE ETAPAS</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:8px;">' + dateCards + '</div></section><section style="padding:12px;border:1px solid #e2e8f0;border-radius:13px;background:#fbfdff;"><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">FOTOS DEL PRODUCTO</h4><div style="display:flex;gap:10px;flex-wrap:wrap;">' + (photos || '<span style="color:#94a3b8;font-size:12px;">No hay fotos adjuntas.</span>') + '</div></section><section style="padding:12px;border:1px solid #dbeafe;border-radius:13px;background:#f7faff;"><h4 style="margin:0 0 9px;color:#334155;font-size:12px;font-weight:900;">GUÍA DE ENVÍO · ENLACE GUÍA DE ENVÍO</h4><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' + guideInfo + (guidePhotos || '<span style="color:#94a3b8;font-size:12px;">Sin fotos adjuntas.</span>') + '</div></section></div></article>';
       }).join('');
       modal.style.display = 'flex';
       document.addEventListener('keydown', _opaVistaPreviaKeyDown);
@@ -11458,8 +11550,11 @@
       document.addEventListener('keydown', onKeyDown);
     }
 
-    function _opaRenderGaleria(dataId, row, canUpload) {
-      const images = Array.isArray(row && row.imagenes) ? row.imagenes : [];
+    function _opaRenderGaleria(dataId, row, canUpload, columnKey, heading) {
+      columnKey = columnKey || 'LF';
+      heading = heading || (columnKey === 'GE' ? 'Fotos de la guía de envío' : 'Fotos del producto');
+      const images = Array.isArray(row && (columnKey === 'GE' ? row.guiaImagenes : row.imagenes)) ? (columnKey === 'GE' ? row.guiaImagenes : row.imagenes) : [];
+      const guideLink = columnKey === 'GE' ? _opaSafeImageUrl(row && (row.guiaEnlace || row.enlaceGuia || _opaReadGuideLink(row.todasLasFechas && row.todasLasFechas.GE))) : '';
       const cards = images.map(function(image) {
         const url = _opaSafeImageUrl(image && image.url);
         const name = String(image && image.name || 'Imagen del producto');
@@ -11468,14 +11563,14 @@
           '<img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:118px;height:92px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;display:block;" onerror="this.style.display=\'none\';" />' +
           '<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:700;margin-top:5px;">' + escapeHTML(name) + '</span></button>';
       }).join('');
-      const picker = canUpload ? '<label for="opa-files-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar imágenes</label>' +
-        '<input id="opa-files-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />' : '';
+      const picker = canUpload ? '<label for="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar foto</label>' +
+        '<input id="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this,\'' + escapeAttr(columnKey) + '\')" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />' : '';
       return '<div style="padding:12px 14px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
-          '<div><div style="font-size:12px;font-weight:900;color:#0f172a;">🖼️ Fotos del producto</div><div style="font-size:11px;color:#64748b;margin-top:2px;">' + images.length + ' adjunta' + (images.length === 1 ? '' : 's') + ' · se guardan en LINK O FOTO PRODUCTO</div></div>' + picker +
+          '<div><div style="font-size:12px;font-weight:900;color:#0f172a;">🖼️ ' + escapeHTML(heading) + '</div><div style="font-size:11px;color:#64748b;margin-top:2px;">' + images.length + ' adjunta' + (images.length === 1 ? '' : 's') + ' · se guardan en ' + escapeHTML(columnKey === 'GE' ? 'ENLACE GUÍA DE ENVÍO' : 'LINK O FOTO PRODUCTO') + '</div>' + (guideLink ? '<a href="' + escapeAttr(guideLink) + '" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:6px;color:#1d4ed8;font-size:11px;font-weight:800;text-decoration:none;">Abrir enlace de guía ↗</a>' : '') + '</div>' + picker +
         '</div>' +
         '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' + (cards || '<span style="font-size:12px;color:#94a3b8;padding:8px 2px;">Todavía no hay fotos para esta OPA.</span>') + '</div>' +
-        '<div data-opa-upload-status="' + escapeAttr(dataId) + '" style="display:none;margin-top:10px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;"></div>' +
+        '<div data-opa-upload-status="' + escapeAttr(dataId + ':' + columnKey) + '" style="display:none;margin-top:10px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;"></div>' +
       '</div>';
     }
 
@@ -11491,7 +11586,7 @@
       const editable = canEdit && !window.CLOUD_READ_ONLY;
       const cards = fields.map(function(field) {
         const key = field[0];
-        const value = field.length > 2 && field[2] != null && field[2] !== '' ? field[2] : source[key];
+        const value = key === 'GE' ? (row.guiaEnlace || row.enlaceGuia || _opaReadGuideLink(source.GE)) : (field.length > 2 && field[2] != null && field[2] !== '' ? field[2] : source[key]);
         const display = value == null || value === '' ? 'Sin registrar' : Array.isArray(value) ? value.map(function(item){return item && (item.name || item.url) || item;}).join(', ') : String(value);
         const pencil = editable ? '<button type="button" aria-label="Editar ' + escapeAttr(field[1]) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + escapeAttr(key) + '\',\'' + escapeAttr(field[1]) + '\',\'✏️\')" style="width:28px;height:28px;flex:0 0 28px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;cursor:pointer;">✏️</button>' : '';
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:11px 13px;border:1px solid #dbe3ef;border-radius:12px;background:#fff;box-shadow:0 2px 5px rgba(15,23,42,.03);"><div style="min-width:0;"><div style="margin-bottom:5px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;">' + escapeHTML(field[1]) + '</div><div data-opa-field="' + escapeAttr(dataId + ':' + key) + '" style="color:#0f172a;font-size:13px;font-weight:700;overflow-wrap:anywhere;">' + escapeHTML(display) + '</div></div>' + pencil + '</div>';
@@ -11499,12 +11594,13 @@
       return '<section style="padding:14px;border:1px solid #dbe3ef;border-radius:14px;background:#f8fafc;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:11px;"><div><h4 style="margin:0;color:#0f172a;font-size:13px;font-weight:900;">Detalles del producto</h4><div style="margin-top:3px;color:#64748b;font-size:11px;">' + (editable ? 'Edita cada campo con el lápiz; los cambios se guardan en la columna correspondiente de SeaTable.' : 'Información del producto registrada para esta OPA.') + '</div></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;">' + cards + '</div></section>';
     }
 
-    async function _subirImagenesOPA(dataId, input) {
+    async function _subirImagenesOPA(dataId, input, columnKey) {
+      columnKey = columnKey || 'LF';
       const row = window._busqOpaCache && window._busqOpaCache[dataId];
       const files = Array.from(input && input.files || []);
       if (!row || !files.length) return;
       if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
-      const status = document.querySelector('[data-opa-upload-status="' + dataId + '"]');
+      const status = document.querySelector('[data-opa-upload-status="' + dataId + ':' + columnKey + '"]');
       const setStatus = function(message, error) {
         if (!status) return;
         status.style.display = 'block';
@@ -11520,24 +11616,37 @@
       form.append('table', row.hoja || '');
       form.append('rowId', row.rowId || '');
       form.append('numeroOPA', row.numeroOPA || '');
+      form.append('columnKey', columnKey);
       files.forEach(function(file) { form.append('files', file, file.name); });
       setStatus('Subiendo ' + files.length + ' imagen' + (files.length === 1 ? '' : 'es') + ' a SeaTable…', false);
-      const button = document.querySelector('label[for="opa-files-' + dataId + '"]');
+      const button = document.querySelector('label[for="opa-files-' + columnKey + '-' + dataId + '"]');
       if (button) { button.style.opacity = '.55'; button.style.pointerEvents = 'none'; }
       try {
         const response = await fetch('/api/upload-opa-image', { method: 'POST', body: form });
         const result = await response.json().catch(function() { return {}; });
         if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las fotos.');
-        row.imagenes = Array.isArray(result.imagenes) ? result.imagenes : row.imagenes;
+        if (columnKey === 'GE') {
+          row.guiaImagenes = Array.isArray(result.imagenes) ? result.imagenes : row.guiaImagenes;
+          row.guiaEnlace = String(result.enlaceGuia || row.guiaEnlace || '');
+          if (!row.todasLasFechas) row.todasLasFechas = {};
+          row.todasLasFechas.GE = result.valorGuardado;
+        } else row.imagenes = Array.isArray(result.imagenes) ? result.imagenes : row.imagenes;
         try {
           const baseKey = String(row.hoja || '') + '::' + String(row.rowId || '');
           if (window._registrosImagenesCache) delete window._registrosImagenesCache[baseKey];
+          const mainRecord = Array.isArray(datos) ? datos.find(function(item) { return String(item.H || '') === String(row.hoja || '') && String(item._id || '') === String(row.rowId || ''); }) : null;
+          if (mainRecord) {
+            mainRecord[columnKey] = result.valorGuardado;
+            _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
+            _invalidateMemo();
+            actualizarDashboard();
+          }
           if (document.getElementById('tab-registros') && document.getElementById('tab-registros').classList.contains('active')) actualizarTablaRegistrosBase();
         } catch(_) {}
-        const gallery = document.querySelector('[data-opa-gallery="' + dataId + '"]');
-        if (gallery) gallery.innerHTML = _opaRenderGaleria(dataId, row, true);
+        const gallery = document.querySelector('[data-opa-gallery="' + dataId + ':' + columnKey + '"]');
+        if (gallery) gallery.innerHTML = _opaRenderGaleria(dataId, row, true, columnKey);
         _buscarOPA_setStatus('✅ ' + String(result.mensaje || 'Imágenes guardadas en SeaTable.'), 'ok');
-        const currentStatus = document.querySelector('[data-opa-upload-status="' + dataId + '"]');
+        const currentStatus = document.querySelector('[data-opa-upload-status="' + dataId + ':' + columnKey + '"]');
         if (currentStatus) {
           currentStatus.style.display = 'block';
           currentStatus.style.background = '#f0fdf4'; currentStatus.style.color = '#15803d'; currentStatus.style.border = '1px solid #bbf7d0';
@@ -11547,7 +11656,7 @@
         setStatus(error && error.message || 'Error al subir las imágenes.', true);
       } finally {
         if (input) input.value = '';
-        const currentButton = document.querySelector('label[for="opa-files-' + dataId + '"]');
+        const currentButton = document.querySelector('label[for="opa-files-' + columnKey + '-' + dataId + '"]');
         if (currentButton) { currentButton.style.opacity = '1'; currentButton.style.pointerEvents = 'auto'; }
       }
     }
@@ -11744,6 +11853,7 @@
         const value = String(valor == null ? '' : valor);
         const props = { O:'numeroOPA', P:'proyecto', T:'tipoProducto', TE:'tipoProductoEspecifico', M:'marca', TR:'territorio', PO:'portafolio', B2B:'skuB2B', B2C:'skuB2C', D:'descripcionProducto', NP:'nombreProductoOPA', PJ:'personaje', SO:'subOpa', MR:'muestrasRecibidas', ME:'muestrasEnviadas', GE:'enlaceGuia', E:'estadoPlataforma' };
         if (props[campoClave]) row[props[campoClave]] = value;
+        if (campoClave === 'GE') row.guiaEnlace = value;
         if (!row.todasLasFechas) row.todasLasFechas = {};
         row.todasLasFechas[campoClave] = value;
         if (!props[campoClave] && !/^F(?:[1-8])?$/.test(campoClave) && campoClave !== 'FM') row[campoClave] = value;
@@ -11857,11 +11967,13 @@
             '<div style="width:100%;"><span style="color:#64748b;font-weight:700;">Valor actual:</span> <b>' + escapeHTML(_ecActual.valorActual || '— (vacío)') + '</b></div>' +
             '</div>';
         }
-        if (lbl) lbl.textContent = 'Nuevo valor para ' + label + ' :';
+        if (lbl) lbl.textContent = campoClave === 'SO' ? 'Sub-OPAs (máximo 10; sepáralas por coma, punto y coma o barra):' : 'Nuevo valor para ' + label + ' :';
         if (ic) ic.textContent = icon;
         if (inp) {
           const esFecha = campoClave === 'F' || campoClave === 'FM' || /^F[1-8]$/.test(campoClave);
           inp.type = esFecha ? 'date' : 'text';
+          inp.maxLength = campoClave === 'SO' ? 500 : 2000;
+          inp.placeholder = campoClave === 'SO' ? 'Ej.: sub-OPA 1, sub-OPA 2, sub-OPA 3' : '';
           inp.value = esFecha && /^\d{4}-\d{2}-\d{2}$/.test(_ecActual.valorActual) ? _ecActual.valorActual : _ecActual.valorActual;
           try { inp.focus(); if(inp.select && !esFecha) inp.select(); } catch(_) {}
         }
@@ -11896,6 +12008,7 @@
         const inp = document.getElementById('ec-input-valor');
         const btn = document.getElementById('ec-btn-guardar');
         const nuevoValor = String(inp && inp.value !== undefined ? inp.value : '').trim();
+        if (_ecActual.campoClave === 'SO' && _opaSubOpaItems(nuevoValor).length > 10) return _ecSetStatus('Puedes asociar máximo 10 sub-OPAs al mismo número de OPA.', 'error');
         _ecSetStatus('⌛ Guardando ' + _ecActual.label + ' en SeaTable...', 'info');
         if (btn) btn.disabled = true;
         google.script.run
@@ -11905,6 +12018,13 @@
               if (!r || !r.ok) { _ecSetStatus('❌ ' + String(r && r.error || 'No se pudo guardar el campo.'), 'error'); return; }
               _ecSetStatus('✅ Campo guardado correctamente · ' + escapeHTML(String(r.campo || _ecActual.campoClave)) + ' → ' + escapeHTML(String(r.valorNuevo || '—')), 'ok');
               _opaAplicarEdicionLocal(_ecActual.dataId, _ecActual.campoClave, String(r.valorNuevo == null ? nuevoValor : r.valorNuevo));
+              if (_ecActual.campoClave === 'GE' && r.valorAlmacenado) {
+                const row = window._busqOpaCache && window._busqOpaCache[_ecActual.dataId];
+                if (row) {
+                  if (!row.todasLasFechas) row.todasLasFechas = {};
+                  row.todasLasFechas.GE = r.valorAlmacenado;
+                }
+              }
               if (r.estado) _opaAplicarEdicionLocal(_ecActual.dataId, 'E', String(r.estado));
               _opaRefrescarDashboardLocal(_ecActual.dataId);
               setTimeout(function(){ try { _ecCerrar(); } catch(_) {} }, 800);
@@ -12392,4 +12512,3 @@
 
 </body>
 </html>
-
