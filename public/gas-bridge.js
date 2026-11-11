@@ -48,9 +48,14 @@
           if (!response.ok) {
             if (response.status === 404) throw new Error(`Cloudflare no encontró ${endpoint} (HTTP 404). El proyecto debe desplegarse como Pages con la carpeta functions/; revisa que no esté usando "wrangler deploy" de Workers.`);
             const ray = response.headers.get("cf-ray");
-            const detail = String(body.error || responseText || "").replace(/\s+/g, " ").trim().slice(0, 220);
             const trace = ray ? ` · Ray ID ${ray}` : "";
-            throw new Error(`${body.error || `Error del servidor (${response.status})`}${trace}${detail && !body.error ? ` · ${detail}` : ""}`);
+            const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+            const isHtml = contentType.includes("text/html") || /^\s*<!doctype html|^\s*<html/i.test(responseText);
+            const detail = String(body.error || (!isHtml ? responseText : "")).replace(/\s+/g, " ").trim().slice(0, 220);
+            const message = isHtml && response.status === 503
+              ? "Cloudflare no pudo atender la función de búsqueda (HTTP 503). Revisa el registro de Pages Functions usando el Ray ID."
+              : (body.error || `Error del servidor (${response.status})`);
+            throw new Error(`${message}${trace}${detail && !body.error && !isHtml ? ` · ${detail}` : ""}`);
           }
         if (typeof success === "function") success(body);
         return body;
