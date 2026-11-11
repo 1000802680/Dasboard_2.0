@@ -272,6 +272,7 @@ export async function onRequestPost(context) {
     }
     return Response.json(value, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    console.error("Error en /api/legacy:", error?.message || error);
     return Response.json({ ok: false, error: error.message || "Error procesando la solicitud." }, { status: 502 });
   }
 }
