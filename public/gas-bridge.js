@@ -17,18 +17,8 @@
       return (...args) => {
         const controller = new AbortController();
         const functionName = String(property);
-        // OPA search is an exact lookup over data already delivered to this
-        // browser. Use that copy immediately when it contains a match; this
-        // avoids a slow round trip across every SeaTable table for common hits.
-        if (functionName === "searchOPAByNumber" && typeof window.__dashboardSearchOPA === "function") {
-          try {
-            const localResult = window.__dashboardSearchOPA(args[0]);
-            if (localResult && localResult.ok) {
-              if (typeof success === "function") queueMicrotask(() => success(localResult));
-              return Promise.resolve(localResult);
-            }
-          } catch (_) {}
-        }
+        // La búsqueda se confirma contra SeaTable para incluir cambios hechos
+        // desde otros dispositivos, incluso si el navegador tiene caché antigua.
         // La búsqueda puede necesitar un token + metadatos + consulta SQL en
         // una región fría. No cortar al segundo 18 una consulta que el backend
         // limita a 10 s solo en su fase SQL.
@@ -79,7 +69,4 @@
   window.google.script = window.google.script || {};
   window.google.script.run = makeRunner(null, null);
 })();
-
-
-
 
