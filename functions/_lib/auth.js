@@ -20,6 +20,7 @@ const DEFAULT_PERMISSIONS = {
 const ITERATIONS = 100_000;
 const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 const AUTH_USER_CACHE_TTL_MS = 20_000;
+const AUTH_USERS_ROWS_CACHE_TTL_MS = 15_000;
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 8_000) {
   const controller = new AbortController();
@@ -86,17 +87,28 @@ async function requestTable(env, table, { method = "GET", start = 0, rows, updat
     url.searchParams.set("limit", "1000");
     url.searchParams.set("convert_keys", "true");
   }
-  const response = await fetchWithTimeout(url, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(method === "GET" ? {} : { "Content-Type": "application/json" }) },
-    ...(method === "GET" ? {} : { body: JSON.stringify(method === "POST" ? { table_name: table, rows } : { table_name: table, updates }) }),
-  });
+  let response;
+  for (let attempt = 0; ; attempt++) {
+    response = await fetchWithTimeout(url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(method === "GET" ? {} : { "Content-Type": "application/json" }) },
+      ...(method === "GET" ? {} : { body: JSON.stringify(method === "POST" ? { table_name: table, rows } : { table_name: table, updates }) }),
+    });
+    // Reintento corto solo para lecturas: repetir escrituras tras un 429 puede
+    // duplicar registros y empeorar el límite de solicitudes.
+    if (method !== "GET" || response.status !== 429 || attempt >= 1) break;
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 1_200) : 500;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     const reason = detail ? ` Detalle de SeaTable: ${detail}` : "";
+    if (response.status === 429) throw new Error(`SeaTable está limitando las solicitudes de la tabla ${table} (HTTP 429). La base recibió demasiadas consultas simultáneas; espera unos segundos y vuelve a intentar.${reason}`);
     throw new Error(`No se pudo acceder a la tabla ${table} (HTTP ${response.status}). Verifica que el UUID y el token correspondan a la misma base, que la tabla exista y que el token tenga permiso de lectura y escritura.${reason}`);
   }
+  if (table === USERS_TABLE && method !== "GET") invalidateAuthUsersRowsCache(env);
   return body;
 }
 
@@ -109,6 +121,32 @@ async function allRows(env, table) {
     if (rows.length < 1000) return result;
     if (result.length >= 20_000) throw new Error(`La tabla ${table} supera el límite de seguridad de 20.000 filas.`);
   }
+}
+
+function authUsersRowsCacheKey(env) {
+  return `${env.SEATABLE_SERVER_URL || ""}|${env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID || ""}`;
+}
+
+function invalidateAuthUsersRowsCache(env) {
+  const key = authUsersRowsCacheKey(env);
+  globalThis.__dashboardAuthUsersRowsCache?.delete(key);
+  globalThis.__dashboardAuthUsersRowsPending?.delete(key);
+}
+
+async function authUsersRows(env) {
+  const key = authUsersRowsCacheKey(env);
+  const now = Date.now();
+  const cache = globalThis.__dashboardAuthUsersRowsCache || (globalThis.__dashboardAuthUsersRowsCache = new Map());
+  const cached = cache.get(key);
+  if (cached?.expiresAt > now) return cached.rows;
+  const pending = globalThis.__dashboardAuthUsersRowsPending || (globalThis.__dashboardAuthUsersRowsPending = new Map());
+  if (pending.has(key)) return pending.get(key);
+  const promise = allRows(env, USERS_TABLE).then((rows) => {
+    cache.set(key, { rows, expiresAt: Date.now() + AUTH_USERS_ROWS_CACHE_TTL_MS });
+    return rows;
+  }).finally(() => pending.delete(key));
+  pending.set(key, promise);
+  return promise;
 }
 
 function normalizeUser(row) {
@@ -151,7 +189,7 @@ function normalizeAssignments(value) {
 async function findUser(env, username) {
   const target = String(username || "").trim().toLocaleLowerCase();
   if (!target) return null;
-  const rows = await allRows(env, USERS_TABLE);
+  const rows = await authUsersRows(env);
   const row = rows.find((item) => String(item.USERNAME || "").trim().toLocaleLowerCase() === target);
   return row ? normalizeUser(row) : null;
 }
@@ -195,7 +233,7 @@ async function authenticatedUser(token, env) {
   const userCache = globalThis.__dashboardAuthUserCache || (globalThis.__dashboardAuthUserCache = new Map());
   const cachedUser = userCache.get(cacheKey);
   if (cachedUser && cachedUser.expiresAt > now) return claims.pwdv !== cachedUser.user.salt ? null : cachedUser.user;
-  const rows = await allRows(env, USERS_TABLE);
+  const rows = await authUsersRows(env);
   const row = rows.find((item) => String(item.ID_USUARIO || item._id || "") === String(claims.sub));
   if (!row) return null;
   const user = normalizeUser(row);
@@ -314,7 +352,11 @@ export async function handleAuthRequest(functionName, args, env) {
       }
       const token = await makeSession(user, env);
       const updatedAt = new Date().toISOString();
-      await requestTable(env, USERS_TABLE, { method: "PUT", updates: [{ row_id: user.rowId, row: { ULTIMO_ACCESO_ISO: updatedAt } }] });
+      // El inicio de sesión ya fue validado. Si SeaTable limita solo la
+      // actualización estadística de último acceso, no bloqueamos el ingreso.
+      try {
+        await requestTable(env, USERS_TABLE, { method: "PUT", updates: [{ row_id: user.rowId, row: { ULTIMO_ACCESO_ISO: updatedAt } }] });
+      } catch (error) { console.warn("No se pudo actualizar el último acceso:", error.message); }
       await addAudit(env, { username: user.username, role: user.rol, action: "LOGIN_OK" });
       return { ok: true, token, username: user.username, nombreCompleto: user.nombreCompleto, rol: user.rol, correo: user.correo, permisos: user.permisos };
     }
@@ -436,4 +478,3 @@ function toAuditRecord(row) {
 }
 
 export const AUTH_TABLE_COLUMNS = { users: USER_COLUMNS, audit: AUDIT_COLUMNS };
-
