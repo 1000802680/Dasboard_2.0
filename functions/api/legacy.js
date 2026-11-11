@@ -18,6 +18,23 @@ export async function onRequestPost(context) {
     const { functionName, args = [] } = await request.json();
     let value;
     switch (functionName) {
+      case "adminRecuperarDashboard": {
+        const user = await getAuthenticatedUser(args[0], env);
+        if (!user) return Response.json({ ok: false, error: "Inicia sesión como administrador para recuperar la sincronización." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+        const isAdmin = String(user.rol || "").toUpperCase() === "ADMINISTRADOR" || user.permisos?.panel_admin === true;
+        if (!isAdmin) return Response.json({ ok: false, error: "Esta acción está disponible solo para administradores." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+        // Acción manual y explícita: valida la sesión contra la base y fuerza
+        // una lectura fresca. No reinicia Cloudflare ni borra la caché de otros POP.
+        const registros = await loadDashboardRecords(env, { forceRefresh: true });
+        value = {
+          ok: true,
+          registros,
+          totalRegistros: registros.length,
+          etag: fastEtag(registros),
+          fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
+        };
+        break;
+      }
       case "obtenerDatosDashboard":
       case "actualizarDashboardDatos": {
         const registros = await loadDashboardRecords(env, { forceRefresh: functionName === "actualizarDashboardDatos" });
@@ -441,4 +458,5 @@ function fastEtag(records) {
   }
   return `${records.length}-${(hash >>> 0).toString(16)}`;
 }
+
 
