@@ -88,6 +88,7 @@ async function requestTable(env, table, { method = "GET", start = 0, rows, updat
     url.searchParams.set("convert_keys", "true");
   }
   let response;
+  let retryAfterSeconds = 0;
   for (let attempt = 0; ; attempt++) {
     response = await fetchWithTimeout(url, {
       method,
@@ -97,19 +98,47 @@ async function requestTable(env, table, { method = "GET", start = 0, rows, updat
     // Reintento corto solo para lecturas: repetir escrituras tras un 429 puede
     // duplicar registros y empeorar el límite de solicitudes.
     if (method !== "GET" || response.status !== 429 || attempt >= 1) break;
-    const retryAfter = Number(response.headers.get("Retry-After"));
-    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 1_200) : 500;
+    const retryAfterHeader = response.headers.get("Retry-After");
+    const retryAfterNumber = Number(retryAfterHeader);
+    retryAfterSeconds = Number.isFinite(retryAfterNumber) && retryAfterNumber > 0
+      ? retryAfterNumber
+      : (retryAfterHeader && Number.isNaN(retryAfterNumber)
+        ? Math.max(0, (Date.parse(retryAfterHeader) - Date.now()) / 1000)
+        : 0);
+    // Respeta Retry-After cuando es corto. Si SeaTable pide esperar más,
+    // no reintentamos antes de tiempo: devolvemos el 429 y evitamos agravar
+    // la saturación con una ráfaga de reintentos sincronizados.
+    if (retryAfterSeconds > 8) break;
+    const delayMs = retryAfterSeconds > 0
+      ? Math.ceil(retryAfterSeconds * 1000) + Math.floor(Math.random() * 250)
+      : 1_000 + Math.floor(Math.random() * 750);
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     const reason = detail ? ` Detalle de SeaTable: ${detail}` : "";
-    if (response.status === 429) throw new Error(`SeaTable está limitando las solicitudes de la tabla ${table} (HTTP 429). La base recibió demasiadas consultas simultáneas; espera unos segundos y vuelve a intentar.${reason}`);
+    if (response.status === 429) {
+      const waitHint = retryAfterSeconds > 0 ? ` SeaTable indicó esperar ${Math.ceil(retryAfterSeconds)} s.` : " Espera unos segundos antes de volver a intentar.";
+      throw new Error(`SeaTable está limitando las solicitudes de la tabla ${table} (HTTP 429). Esto no indica que el token esté desconectado; la API está aplicando un límite temporal.${waitHint}${reason}`);
+    }
     throw new Error(`No se pudo acceder a la tabla ${table} (HTTP ${response.status}). Verifica que el UUID y el token correspondan a la misma base, que la tabla exista y que el token tenga permiso de lectura y escritura.${reason}`);
   }
-  if (table === USERS_TABLE && method !== "GET") invalidateAuthUsersRowsCache(env);
+  // Guardar la hora del último acceso no cambia credenciales ni permisos. Si
+  // invalidamos la caché por esa escritura, cada login vacía la copia que
+  // acaba de leer y los siguientes usuarios vuelven a consultar SeaTable.
+  // Solo invalidamos cuando cambia información que afecta autenticación.
+  if (table === USERS_TABLE && changesAuthenticationData(method, updates)) {
+    invalidateAuthUsersRowsCache(env);
+  }
   return body;
+}
+
+function changesAuthenticationData(method, updates) {
+  if (method === "POST") return true;
+  if (method !== "PUT" || !Array.isArray(updates)) return false;
+  const authFields = new Set(["ID_USUARIO", "USERNAME", "HASH_PWD", "SALT", "ROL", "PERMISOS_JSON"]);
+  return updates.some((update) => Object.keys(update?.row || {}).some((field) => authFields.has(field)));
 }
 
 async function allRows(env, table) {
@@ -131,6 +160,13 @@ function invalidateAuthUsersRowsCache(env) {
   const key = authUsersRowsCacheKey(env);
   globalThis.__dashboardAuthUsersRowsCache?.delete(key);
   globalThis.__dashboardAuthUsersRowsPending?.delete(key);
+  const userPrefix = `${env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID || ""}|`;
+  const userCache = globalThis.__dashboardAuthUserCache;
+  if (userCache) {
+    for (const cachedUserKey of userCache.keys()) {
+      if (cachedUserKey.startsWith(userPrefix)) userCache.delete(cachedUserKey);
+    }
+  }
 }
 
 async function authUsersRows(env) {
@@ -300,7 +336,7 @@ export async function handleAuthRequest(functionName, args, env) {
   authConfig(env);
   switch (functionName) {
     case "authSetupStatus": {
-      const currentUsers = await allRows(env, USERS_TABLE);
+      const currentUsers = await authUsersRows(env);
       return { ok: true, requierePrimerAdministrador: !currentUsers.some((row) => String(row.ROL || "").toUpperCase() === "ADMINISTRADOR") };
     }
     case "registerUser": {
@@ -310,7 +346,7 @@ export async function handleAuthRequest(functionName, args, env) {
       if (username.length < 3 || !passwordInput) return { ok: false, error: "Ingresa usuario (mínimo 3 caracteres) y contraseña." };
       if (passwordInput.length < 20) return { ok: false, error: "Contraseña inválida. Intenta nuevamente." };
       if (await findUser(env, username)) return { ok: false, error: "Ese usuario ya existe." };
-      const currentUsers = await allRows(env, USERS_TABLE);
+      const currentUsers = await authUsersRows(env);
       const adminExists = currentUsers.some((row) => String(row.ROL || "").toUpperCase() === "ADMINISTRADOR");
       let role = "USUARIO";
       if (!adminExists) {
@@ -370,14 +406,14 @@ export async function handleAuthRequest(functionName, args, env) {
     case "adminListarPermisos": {
       const admin = await requireAdmin(args[0], env);
       if (admin.error) return { ok: false, error: admin.error };
-      const users = (await allRows(env, USERS_TABLE)).map(normalizeUser).filter((user) => user.username);
+      const users = (await authUsersRows(env)).map(normalizeUser).filter((user) => user.username);
       return { ok: true, listado: users.map(publicUser) };
     }
     case "adminGuardarPermisos": {
       const admin = await requireAdmin(args[0], env);
       if (admin.error) return { ok: false, error: admin.error };
       const target = String(args[1] || "").trim().toLocaleLowerCase();
-      const users = await allRows(env, USERS_TABLE);
+      const users = await authUsersRows(env);
       const row = users.find((item) => String(item.USERNAME || "").trim().toLocaleLowerCase() === target);
       if (!row) return { ok: false, error: "Usuario no encontrado." };
       const role = String(row.ROL || "USUARIO").toUpperCase();
@@ -399,7 +435,7 @@ export async function handleAuthRequest(functionName, args, env) {
       const target = String(args[1] || "").trim().toLocaleLowerCase();
       const passwordInput = String(args[2] || "");
       if (passwordInput.length < 20) return { ok: false, error: "La contraseña temporal no es válida; vuelve a escribirla." };
-      const rows = await allRows(env, USERS_TABLE);
+      const rows = await authUsersRows(env);
       const row = rows.find((item) => String(item.USERNAME || "").trim().toLocaleLowerCase() === target);
       if (!row) return { ok: false, error: "Usuario no encontrado." };
       const salt = toBase64Url(crypto.getRandomValues(new Uint8Array(18)));
@@ -419,7 +455,7 @@ export async function handleAuthRequest(functionName, args, env) {
       const admin = await requireAdmin(args[0], env);
       if (admin.error) return { ok: false, error: admin.error };
       const target = String(args[1] || "").trim().toLocaleLowerCase();
-      const users = await allRows(env, USERS_TABLE);
+      const users = await authUsersRows(env);
       const row = users.find((item) => String(item.USERNAME || "").trim().toLocaleLowerCase() === target);
       if (!row) return { ok: false, error: "Usuario no encontrado." };
       const assignments = normalizeAssignments(args[2]);
@@ -441,7 +477,7 @@ export async function handleAuthRequest(functionName, args, env) {
     case "adminObtenerHistorialYEstadisticas": {
       const admin = await requireAdmin(args[0], env);
       if (admin.error) return { ok: false, error: admin.error };
-      const users = (await allRows(env, USERS_TABLE)).map(normalizeUser).filter((user) => user.username);
+      const users = (await authUsersRows(env)).map(normalizeUser).filter((user) => user.username);
       const audit = (await allRows(env, AUDIT_TABLE)).slice(-3000).reverse().map(toAuditRecord);
       const stats = new Map();
       for (const user of users) stats.set(user.username, { username: user.username, nombreCompleto: user.nombreCompleto, rol: user.rol, correo: user.correo, fechaRegistro: user.fechaRegistro, ultimoAcceso: user.ultimoAcceso, totalAcciones: 0, cambioEstado: 0, editarCampo: 0, loginOk: 0, loginFallido: 0, cambioPermisos: 0, registroUsuario: 0, otras: 0, opas: new Set() });
