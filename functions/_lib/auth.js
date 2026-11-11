@@ -21,6 +21,19 @@ const ITERATIONS = 100_000;
 const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 const AUTH_USER_CACHE_TTL_MS = 20_000;
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`SeaTable no respondió en ${Math.round(timeoutMs / 1000)} segundos.`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function authConfig(env) {
   // Por defecto, los usuarios viven en la misma base del dashboard y pueden
   // usar el token existente. Un token de autenticación separado sigue siendo
@@ -39,14 +52,27 @@ function authConfig(env) {
 
 async function getAuthBaseToken(env) {
   const cfg = authConfig(env);
+  const now = Date.now();
+  const shared = globalThis.__seatableToken;
+  const authBase = env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID;
+  const sameDashboardBase = authBase === env.SEATABLE_BASE_UUID;
+  if (sameDashboardBase && shared?.key === cfg.token && shared.expiresAt > now + 60_000) {
+    globalThis.__authBaseToken = { key: cfg.token, value: shared.value, expiresAt: shared.expiresAt };
+    return shared.value;
+  }
   const cache = globalThis.__authBaseToken;
-  if (cache?.key === cfg.token && cache.expiresAt > Date.now() + 60_000) return cache.value;
-  const response = await fetch(`${cfg.server}/api/v2.1/dtable/app-access-token/`, {
+  if (cache?.key === cfg.token && cache.expiresAt > now + 60_000) return cache.value;
+  const response = await fetchWithTimeout(`${cfg.server}/api/v2.1/dtable/app-access-token/`, {
     headers: { Authorization: `Bearer ${cfg.token}`, Accept: "application/json" },
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.access_token) throw new Error(`SeaTable rechazó el token de autenticación (HTTP ${response.status}).`);
-  globalThis.__authBaseToken = { key: cfg.token, value: body.access_token, expiresAt: Date.now() + 2 * 24 * 60 * 60 * 1000 };
+  const expiresAt = Date.now() + 2 * 24 * 60 * 60 * 1000;
+  globalThis.__authBaseToken = { key: cfg.token, value: body.access_token, expiresAt };
+  // El token de autenticación y el del dashboard son el mismo cuando ambos
+  // usan el token de la misma base. Compártelo dentro del isolate para evitar
+  // una segunda ida a SeaTable al buscar una OPA justo después del login.
+  if (sameDashboardBase) globalThis.__seatableToken = { key: cfg.token, value: body.access_token, workspaceId: "", expiresAt };
   return body.access_token;
 }
 
@@ -60,7 +86,7 @@ async function requestTable(env, table, { method = "GET", start = 0, rows, updat
     url.searchParams.set("limit", "1000");
     url.searchParams.set("convert_keys", "true");
   }
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(method === "GET" ? {} : { "Content-Type": "application/json" }) },
     ...(method === "GET" ? {} : { body: JSON.stringify(method === "POST" ? { table_name: table, rows } : { table_name: table, updates }) }),
@@ -410,3 +436,4 @@ function toAuditRecord(row) {
 }
 
 export const AUTH_TABLE_COLUMNS = { users: USER_COLUMNS, audit: AUDIT_COLUMNS };
+
