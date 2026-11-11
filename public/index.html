@@ -3357,6 +3357,14 @@
         </svg>
         Actualizar datos
       </button>
+
+      <button id="btnAdminRecuperarConexion" class="btn-secondary" style="display:none" onclick="recuperarConexionAdmin()" title="Comprueba la sesión y vuelve a leer los datos de SeaTable">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path>
+          <path d="M5.6 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.4-3"></path>
+        </svg>
+        Reconectar (admin)
+      </button>
     </div>
 
     <!-- =========================
@@ -8606,13 +8614,17 @@
 
     function recargarDatos(alFinalizar) {
 
+      const adminRecovery = arguments.length > 1 && arguments[1] === true;
+
       if (_dashboardManualRefreshInFlight) {
         if (typeof alFinalizar === 'function') alFinalizar(false, new Error('Ya hay una actualización en curso.'));
         return;
       }
       _dashboardManualRefreshInFlight = true;
       const refreshButton = document.getElementById('btnActualizarDatos');
+      const recoveryButton = document.getElementById('btnAdminRecuperarConexion');
       if (refreshButton) { refreshButton.disabled = true; refreshButton.setAttribute('aria-busy','true'); }
+      if (adminRecovery && recoveryButton) { recoveryButton.disabled = true; recoveryButton.setAttribute('aria-busy','true'); }
       let refreshFinished = false;
       const finishRefresh = function(ok, value) {
         if (refreshFinished) return;
@@ -8620,6 +8632,7 @@
         _dashboardManualRefreshInFlight = false;
         clearTimeout(refreshTimeout);
         if (refreshButton) { refreshButton.disabled = false; refreshButton.removeAttribute('aria-busy'); }
+        if (recoveryButton) { recoveryButton.disabled = false; recoveryButton.removeAttribute('aria-busy'); }
         if (typeof alFinalizar === 'function') alFinalizar(ok, value);
       };
       const refreshTimeout = setTimeout(function() {
@@ -8634,7 +8647,7 @@
       if (!Array.isArray(datos) || !datos.length) { try { mostrarLoading(); } catch(_) {} }
       try { actualizarSyncStatus('Actualizando desde SeaTable...', false); } catch(_) {}
 
-      google.script.run
+      const runner = google.script.run
         .withSuccessHandler(function(respuesta) {
           try {
             if (!respuesta || !Array.isArray(respuesta.registros)) {
@@ -8693,9 +8706,25 @@
           );
           finishRefresh(false, error);
 
-        })
-        .actualizarDashboardDatos();
+        });
+      if (adminRecovery) runner.adminRecuperarDashboard(_authSesionActual && _authSesionActual.token || '');
+      else runner.actualizarDashboardDatos();
 
+    }
+
+    function recuperarConexionAdmin() {
+      const user = _authSesionActual;
+      const isAdmin = !!(user && user.logueado && (String(user.rol || '').toUpperCase() === 'ADMINISTRADOR' || user.permisos && user.permisos.panel_admin === true));
+      if (!isAdmin) {
+        mostrarError('La recuperación manual está disponible solo para administradores.');
+        return;
+      }
+      try { actualizarSyncStatus('Comprobando sesión y releyendo SeaTable...', false); } catch (_) {}
+      recargarDatos(function(ok) {
+        if (ok) {
+          try { actualizarSyncStatus('Conexión comprobada · copia actualizada en este servidor', false); } catch (_) {}
+        }
+      }, true);
     }
 
 
@@ -10539,6 +10568,8 @@
         const p = (_authSesionActual && _authSesionActual.permisos) ? _authSesionActual.permisos : null;
         const haySesion = !!( _authSesionActual && _authSesionActual.logueado);
         const esAdmin = haySesion && (String(_authSesionActual.rol || '') === 'ADMINISTRADOR' || (p && p.panel_admin === true));
+        const recoveryButton = document.getElementById('btnAdminRecuperarConexion');
+        if (recoveryButton) recoveryButton.style.display = esAdmin ? '' : 'none';
 
         // REGLAS TABS (segun peticion usuario):
         //   Dashboard + Analisis por Dias: SIEMPRE visibles (incluso invitados sin login)
