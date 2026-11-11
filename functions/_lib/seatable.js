@@ -466,22 +466,11 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
 // simultáneas del mismo número dentro del mismo isolate.
 export async function searchDashboardRecordsByOPA(env, query) {
   const key = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default", query].join("|");
-  const now = Date.now();
-  const cache = globalThis.__dashboardOpaSearchCache || (globalThis.__dashboardOpaSearchCache = new Map());
-  const cached = cache.get(key);
-  if (cached?.expiresAt > now) return cached.records;
+  // La búsqueda confirmada consulta SeaTable directamente para reflejar altas
+  // hechas desde otros dispositivos. Solo se comparte una petición en curso.
   const pending = globalThis.__dashboardOpaSearchPending || (globalThis.__dashboardOpaSearchPending = new Map());
   if (pending.has(key)) return pending.get(key);
-  const promise = searchDashboardRecordsByOPAUncached(env, query).then((records) => {
-    // Cachear solo hallazgos positivos: una respuesta vacía puede quedar vieja
-    // inmediatamente si otro usuario acaba de crear esa OPA.
-    if (records.length) cache.set(key, { records, expiresAt: Date.now() + 8_000 });
-    if (cache.size > 300) {
-      for (const [cacheKey, entry] of cache) if (entry.expiresAt <= Date.now()) cache.delete(cacheKey);
-      while (cache.size > 300) cache.delete(cache.keys().next().value);
-    }
-    return records;
-  }).finally(() => pending.delete(key));
+  const promise = searchDashboardRecordsByOPAUncached(env, query).finally(() => pending.delete(key));
   pending.set(key, promise);
   return promise;
 }
@@ -490,7 +479,6 @@ export async function searchDashboardRecordsByOPA(env, query) {
 // reciente. Evita descargar miles de filas solo para mostrar uno o pocos matches.
 async function searchDashboardRecordsByOPAUncached(env, query) {
   const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
-  const now = Date.now();
   const local = globalThis.__dashboardRowsCache;
   // La API SQL consulta la tabla completa, no una vista concreta. Si el
   // dashboard está configurado con una vista, respetamos ese alcance existente.
@@ -499,17 +487,9 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     const snapshot = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
     if (snapshot) {
       globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, updatedAt: snapshot.updatedAt, expiresAt: Date.now() + 60_000 };
-      const snapshotMatches = snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-      // Positive cache hits are fast. A miss may mean another Cloudflare
-      // region has not received the newest row yet, so confirm against SeaTable.
-      if (snapshotMatches.length) return snapshotMatches;
+      // La copia regional solo sirve como respaldo si la consulta directa falla;
+      // nunca confirma resultados porque podría estar atrasada frente a otra región.
     }
-  }
-  // Solo usar el snapshot local cuando no hay caché compartida que pueda
-  // señalar una invalidación hecha por otro isolate.
-  if (!sharedCache && local?.key === cacheKey && local.expiresAt > now) {
-    const localMatches = local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-    if (localMatches.length) return localMatches;
   }
   // SQL no aplica vistas. En ese caso respetamos la vista solo si ya existe
   // una copia compartida; evitamos descargar miles de filas por una búsqueda.
@@ -517,28 +497,6 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     const localView = globalThis.__dashboardRowsCache;
     if (localView?.key === cacheKey && localView.records) return localView.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
     throw new Error("La vista de SeaTable todavía no está cargada. Abre Dashboard o pulsa Actualizar datos y vuelve a buscar.");
-  }
-
-  if (sharedCache) {
-    try {
-      const response = await sharedCache.match(dashboardCacheRequest(env));
-      if (response) {
-        const snapshot = await response.json();
-        if (Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames)) {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, updatedAt: snapshot.updatedAt, expiresAt: Date.now() + 60_000 };
-          const snapshotMatches = snapshot.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-          if (snapshotMatches.length) return snapshotMatches;
-        }
-      }
-    } catch (_) {}
-  }
-
-  // If this isolate has a recent full read but the regional Cache API entry
-  // is temporarily absent, serve the known copy instead of starting another
-  // multi-table scan just to answer one exact OPA lookup.
-  if (local?.key === cacheKey && Array.isArray(local.records)) {
-    const localMatches = local.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-    if (localMatches.length) return localMatches;
   }
 
   // Limita el tiempo total del fallback, incluyendo token, metadata y consultas
@@ -638,17 +596,8 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     ]);
   } catch (error) {
     controller.abort();
-    // Si hay una copia previa, mostrarla en lugar de dejar la consulta colgada.
-    const localStale = globalThis.__dashboardRowsCache;
-    if (localStale?.key === cacheKey && Array.isArray(localStale.records)) {
-      const matches = localStale.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-      if (matches.length) return matches;
-    }
-    if (sharedCache) {
-      const stale = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
-      const matches = stale?.records?.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query) || [];
-      if (matches.length) return matches;
-    }
+    // No reportar como actual un resultado de caché si la consulta en vivo
+    // falló: distinguir disponibilidad del servidor de una OPA inexistente.
     throw error;
   } finally {
     clearTimeout(deadlineTimer);
