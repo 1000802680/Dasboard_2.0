@@ -33,14 +33,19 @@ const EMPTY_OPA = new Set(["", "N/A", "NA", "N.A.", "-", "SIN OPA", "NINGUNO", "
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 10_000) {
   const controller = new AbortController();
+  const externalSignal = options.signal;
+  const abortFromExternal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromExternal();
+  else externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
   const timer = setTimeout(() => controller.abort(new Error("Tiempo de espera agotado")), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+    return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
     if (controller.signal.aborted) throw new Error(`SeaTable tardó más de ${Math.round(timeoutMs / 1000)} segundos en responder.`);
     throw error;
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abortFromExternal);
   }
 }
 
@@ -67,14 +72,15 @@ export function getDashboardColumnName(env, internalKey) {
   return columnName;
 }
 
-async function getBaseToken(env, apiToken = env.SEATABLE_API_TOKEN) {
+async function getBaseToken(env, apiToken = env.SEATABLE_API_TOKEN, options = {}) {
   const now = Date.now();
   const cached = globalThis.__seatableToken;
   if (cached?.key === apiToken && cached.expiresAt > now + 60_000) return cached.value;
 
   const response = await fetchWithTimeout(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-access-token/`, {
     headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" },
-  }, 10_000);
+    signal: options.signal,
+  }, options.timeoutMs || 10_000);
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.access_token) {
     throw new Error(`SeaTable no entregó un token de base (HTTP ${response.status}). Revisa URL y API token.`);
@@ -106,22 +112,31 @@ function assertConfig(env) {
   if (missing.length) throw new Error(`Falta configurar: ${missing.join(", ")}.`);
 }
 
-export async function discoverTableNames(env, token = null) {
+export async function discoverTableNames(env, token = null, options = {}) {
   const metadataCacheKey = String(env.SEATABLE_BASE_UUID || "");
   const cachedMetadata = globalThis.__seatableMetadataCache;
   if (cachedMetadata?.key === metadataCacheKey && cachedMetadata.expiresAt > Date.now() && Array.isArray(cachedMetadata.tables)) {
     return dashboardDataTableNames(cachedMetadata.tables);
   }
+  const pending = globalThis.__seatableMetadataPending || (globalThis.__seatableMetadataPending = new Map());
+  if (pending.has(metadataCacheKey)) return pending.get(metadataCacheKey).then(dashboardDataTableNames);
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
-  token = token || await getBaseToken(env);
-  const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
-  const metadataResponse = await fetchWithTimeout(metadataUrl, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }, 10_000);
-  const metadataBody = await metadataResponse.json().catch(() => ({}));
-  if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de pestañas de SeaTable (HTTP ${metadataResponse.status}).`);
-  const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
-  globalThis.__seatableMetadataCache = { key: metadataCacheKey, tables, expiresAt: Date.now() + 60_000 };
-  return dashboardDataTableNames(tables);
+  const promise = (async () => {
+    const accessToken = token || await getBaseToken(env);
+    const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
+    const metadataResponse = await fetchWithTimeout(metadataUrl, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      signal: options.signal,
+    }, options.timeoutMs || 10_000);
+    const metadataBody = await metadataResponse.json().catch(() => ({}));
+    if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de pestañas de SeaTable (HTTP ${metadataResponse.status}).`);
+    const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
+    globalThis.__seatableMetadataCache = { key: metadataCacheKey, tables, expiresAt: Date.now() + 60_000 };
+    return tables;
+  })().finally(() => pending.delete(metadataCacheKey));
+  pending.set(metadataCacheKey, promise);
+  return dashboardDataTableNames(await promise);
 }
 
 function dashboardDataTableNames(tables) {
@@ -526,11 +541,32 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     if (localMatches.length) return localMatches;
   }
 
-  // Reutiliza los metadatos de las hojas ya consultados por el dashboard,
-  // evitando otra petición de esquema cada vez que se busca una OPA.
-  const tableNames = new Set(await discoverTableNames(env));
+  // Limita el tiempo total del fallback, incluyendo token, metadata y consultas
+  // SQL. Antes cada fase podía esperar hasta 10 s por separado y acercarse al
+  // límite del navegador/Pages antes de llegar a la búsqueda.
+  const searchDeadlineAt = Date.now() + 18_000;
+  const controller = new AbortController();
+  let rejectSearchDeadline;
+  const searchDeadlinePromise = new Promise((_, reject) => { rejectSearchDeadline = reject; });
+  let deadlineTimer = setTimeout(() => {
+    controller.abort();
+    rejectSearchDeadline(new Error("La búsqueda en SeaTable superó el tiempo máximo de 18 segundos. Intenta de nuevo en unos segundos."));
+  }, 18_000);
+  const remainingTimeout = () => Math.max(1, Math.min(8_000, searchDeadlineAt - Date.now()));
+  const withinSearchDeadline = (promise) => Promise.race([promise, searchDeadlinePromise]);
+  let token;
+  let tableNames;
+  try {
+    // Auth y Dashboard comparten el token cuando apuntan a la misma base; esto
+    // evita repetir el intercambio de token en una solicitud fría.
+    token = await withinSearchDeadline(getBaseToken(env, env.SEATABLE_API_TOKEN, { signal: controller.signal, timeoutMs: remainingTimeout() }));
+    tableNames = new Set(await withinSearchDeadline(discoverTableNames(env, token, { signal: controller.signal, timeoutMs: remainingTimeout() })));
+  } catch (error) {
+    clearTimeout(deadlineTimer);
+    if (controller.signal.aborted) throw new Error("SeaTable no respondió a tiempo al preparar la búsqueda. Intenta de nuevo en unos segundos.");
+    throw error;
+  }
   const tables = (globalThis.__seatableMetadataCache?.tables || []).filter((table) => table.name && tableNames.has(table.name));
-  const token = await getBaseToken(env);
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
   const opaColumnName = normalizeHeader(getColumnMap(env).O);
@@ -541,9 +577,8 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
   })).filter((table) => table.opaColumn);
   const columnMap = getColumnMap(env);
   const resultsByTable = new Map();
+  const tableErrors = [];
   let next = 0;
-  const controller = new AbortController();
-  let deadlineTimer;
   async function searchTable(table) {
     const quote = (identifier) => `\`${String(identifier).replace(/`/g, "``")}\``;
     const selectedColumns = new Set(["_id"]);
@@ -553,7 +588,7 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
       if (actualName) selectedColumns.add(actualName);
     }
     const projection = [...selectedColumns].map(quote).join(", ");
-    const response = await fetch(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
+    const response = await fetchWithTimeout(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -562,7 +597,7 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
         convert_keys: true,
       }),
       signal: controller.signal,
-    });
+    }, remainingTimeout());
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`SeaTable no pudo buscar la OPA en "${table.name}" (HTTP ${response.status}).`);
     const rows = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
@@ -576,9 +611,22 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     }
     resultsByTable.set(table.name, records);
   }
-  const concurrency = Math.min(10, searchable.length);
+  // Evita que decenas de usuarios simultáneos multipliquen por 10 las llamadas
+  // a SeaTable y provoquen respuestas 503 por saturación.
+  const concurrency = Math.min(4, searchable.length);
   async function worker() {
-    while (next < searchable.length) await searchTable(searchable[next++]);
+    while (next < searchable.length) {
+      const table = searchable[next++];
+      try {
+        await searchTable(table);
+      } catch (error) {
+        // Una pestaña con una columna dañada o una respuesta 503 no debe
+        // cancelar las consultas de las demás marcas. Conservamos el error
+        // para reportar una búsqueda incompleta si no encontramos la OPA.
+        if (controller.signal.aborted) throw error;
+        tableErrors.push({ table: table.name, error });
+      }
+    }
   }
   try {
     // Un límite global evita que la búsqueda quede girando mientras se espera
@@ -586,24 +634,32 @@ async function searchDashboardRecordsByOPAUncached(env, query) {
     // todas las filas (que podía tardar 50 s o más).
     await Promise.race([
       Promise.all(Array.from({ length: concurrency }, () => worker())),
-      new Promise((_, reject) => { deadlineTimer = setTimeout(() => { controller.abort(); reject(new Error("La búsqueda en SeaTable superó 10 segundos. Revisa la conexión o intenta de nuevo.")); }, 10_000); }),
+      searchDeadlinePromise,
     ]);
   } catch (error) {
     controller.abort();
     // Si hay una copia previa, mostrarla en lugar de dejar la consulta colgada.
     const localStale = globalThis.__dashboardRowsCache;
     if (localStale?.key === cacheKey && Array.isArray(localStale.records)) {
-      return localStale.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+      const matches = localStale.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+      if (matches.length) return matches;
     }
     if (sharedCache) {
       const stale = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
-      if (stale) return stale.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
+      const matches = stale?.records?.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query) || [];
+      if (matches.length) return matches;
     }
     throw error;
   } finally {
     clearTimeout(deadlineTimer);
   }
-  return searchable.flatMap((table) => resultsByTable.get(table.name) || []).sort((a, b) => activityTime(b).localeCompare(activityTime(a)));
+  const results = searchable.flatMap((table) => resultsByTable.get(table.name) || []).sort((a, b) => activityTime(b).localeCompare(activityTime(a)));
+  if (!results.length && tableErrors.length) {
+    const first = tableErrors[0];
+    const detail = first.error?.message || "error de conexión";
+    throw new Error(`No se pudo completar la búsqueda en ${tableErrors.length} hoja(s); la primera fue "${first.table}": ${detail}`);
+  }
+  return results;
 }
 
 function getSharedDashboardCache(env) {
@@ -852,7 +908,6 @@ export async function refreshForNewTables(env, context = null) {
   const records = await loadDashboardRecords(env);
   return { records, updatedAt: Number(globalThis.__dashboardRowsCache?.updatedAt || Date.now()), refreshing: false };
 }
-
 
 
 
