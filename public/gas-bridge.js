@@ -29,7 +29,10 @@
             }
           } catch (_) {}
         }
-        const timeoutMs = functionName === "searchOPAByNumber" ? 18_000
+        // La búsqueda puede necesitar un token + metadatos + consulta SQL en
+        // una región fría. No cortar al segundo 18 una consulta que el backend
+        // limita a 10 s solo en su fase SQL.
+        const timeoutMs = functionName === "searchOPAByNumber" ? 32_000
           : (functionName === "obtenerChecksumDashboard" ? 12_000
             : (functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 80_000 : 30_000));
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -38,11 +41,16 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ functionName: String(property), args }),
         signal: controller.signal,
-      }).then(async (response) => {
-        const body = await response.json().catch(() => ({}));
+        }).then(async (response) => {
+        const responseText = await response.text().catch(() => "");
+        let body = {};
+        try { body = responseText ? JSON.parse(responseText) : {}; } catch (_) {}
           if (!response.ok) {
             if (response.status === 404) throw new Error(`Cloudflare no encontró ${endpoint} (HTTP 404). El proyecto debe desplegarse como Pages con la carpeta functions/; revisa que no esté usando "wrangler deploy" de Workers.`);
-            throw new Error(body.error || `Error del servidor (${response.status})`);
+            const ray = response.headers.get("cf-ray");
+            const detail = String(body.error || responseText || "").replace(/\s+/g, " ").trim().slice(0, 220);
+            const trace = ray ? ` · Ray ID ${ray}` : "";
+            throw new Error(`${body.error || `Error del servidor (${response.status})`}${trace}${detail && !body.error ? ` · ${detail}` : ""}`);
           }
         if (typeof success === "function") success(body);
         return body;
