@@ -386,14 +386,14 @@ async function mapWithConcurrency(items, concurrency, mapper) {
 }
 
 async function makeImagePreview(env, attachment) {
-  const original = typeof attachment === "string" ? attachment : String(attachment?.url || "");
+  const original = typeof attachment === "string" ? attachment : String(attachment?.url || attachment?.path || "");
   const name = String(attachment?.name || original.split("/").pop() || "Imagen");
-  if (/^https?:\/\//i.test(original)) return { name, url: original };
+  if (/^https?:\/\//i.test(original)) return { name, url: original, attachmentKey: original };
   const match = original.match(/\/(images|files)\/([0-9]{4}-[0-9]{2})\/([^/?#]+)/i);
-  if (!match) return { name, url: "" };
+  if (!match) return { name, url: "", attachmentKey: original };
   const path = `/${match[1].toLowerCase()}/${match[2]}/${match[3]}`;
-  try { return { name, url: await getDashboardFileDownloadLink(env, path) }; }
-  catch (_) { return { name, url: "" }; }
+  try { return { name, url: await getDashboardFileDownloadLink(env, path), attachmentKey: original }; }
+  catch (_) { return { name, url: "", attachmentKey: original }; }
 }
 
 function buildAnalysis(records) {
