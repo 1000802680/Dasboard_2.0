@@ -1245,6 +1245,13 @@
       letter-spacing: 0;
     }
 
+    .avance-opas-detail{background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);border-color:#cbdcf5;box-shadow:0 8px 24px rgba(30,64,175,.08)}
+    .estado-opas-comparison-slot .avance-opas-detail{margin:12px 0 16px}
+    .avance-opas-col.current{border-color:#86efac;background:#fbfffc}
+    .avance-opas-col.missing{border-color:#fdba74;background:#fffdfa}
+    .avance-opas-col h4{min-height:48px;align-items:center}
+    .avance-opas-count{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:28px;padding:0 8px;border-radius:999px;background:#fff;font-size:13px;font-weight:900;box-shadow:0 1px 4px rgba(15,23,42,.1)}
+    .avance-opas-list li{background:rgba(255,255,255,.82)}
     .avance-opas-detail{margin:0 0 14px;padding:16px;border:1px solid #dbe5f1;border-radius:16px;background:#fff}
     .avance-opas-detail-head h3{margin:0;color:#15233d;font-size:16px}.avance-opas-detail-head p{margin:4px 0 12px;color:#64748b;font-size:12px}
     .avance-opas-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -3471,9 +3478,9 @@
       <!-- CINCO INDICADORES -->
       <div class="summary-status-cards">
         <div class="summary-status-card blue">
-          <div class="summary-status-title">Total Conceptos</div>
+          <div class="summary-status-title">OPAs activas</div>
           <div class="summary-status-value" id="totalConceptos">0</div>
-          <div class="summary-status-sub">En el filtro actual</div>
+          <div class="summary-status-sub">Con estado asignado, sin canceladas</div>
         </div>
 
         <div class="summary-status-card orange">
@@ -6869,39 +6876,28 @@
 
     function crearDetalleHTML(proyecto, paleta, projectIdx) {
 
-      const registros =
-        datosFiltrados.filter(function(x) {
+      const registros = datosFiltrados.filter(function(x) {
+        return (limpiarTexto(x.P) || 'Sin proyecto') === proyecto && esOPAValida(x.O);
+      });
 
-          return (
-            limpiarTexto(x.P) ||
-            'Sin proyecto'
-          ) === proyecto;
-
-        });
-
-      /* ======= O(N) 1-PASS ======= */
+      /* Usa el estado actual canónico de ESTADO PLATAFORMA (E), deduplicado
+         con la misma regla del resumen y la matriz. Conserva todos los productos. */
       const porOPA = new Map();
-
+      getOpasUnicasCache().forEach(function(unica) {
+        if ((limpiarTexto(unica.P) || 'Sin proyecto') !== proyecto || !esOPAValida(unica.O)) return;
+        porOPA.set(normalizarOPA(unica.O), {
+          opa: limpiarTexto(unica.O),
+          estadoKey: buscarEstadoCoincidencia(unica.E) || ESTADO_SIN_ASIGNAR,
+          productos: Object.create(null)
+        });
+      });
       for (let j = 0; j < registros.length; j++) {
         const r = registros[j];
-        const opaRaw = r.O;
-        if (!esOPAValida(opaRaw)) continue;
-        const opaKey = normalizarOPA(opaRaw);
-
-        let info = porOPA.get(opaKey);
-        if (!info) {
-          const valorE = limpiarTexto(r.E);
-          const keyE = buscarEstadoCoincidencia(valorE) || ESTADO_SIN_ASIGNAR;
-          info = { opa: limpiarTexto(opaRaw), estadoKey: keyE, productos: Object.create(null) };
-          porOPA.set(opaKey, info);
-        }
-        const keyE = info.estadoKey;
+        const info = porOPA.get(normalizarOPA(r.O));
+        if (!info) continue;
         const producto = limpiarTexto(r.T) || 'Sin tipo de producto';
-        const mapProd = info.productos;
-        if (!mapProd[keyE]) mapProd[keyE] = Object.create(null);
-        /* REGLA NÚCLEO: conteo por OPA ÚNICA, no por fila.
-           Si una OPA tiene 5 filas repetidas con el mismo producto, cuenta 1 sola vez. */
-        mapProd[keyE][producto] = true;
+        if (!info.productos[info.estadoKey]) info.productos[info.estadoKey] = Object.create(null);
+        info.productos[info.estadoKey][producto] = true;
       }
 
       /* ======= Acumular por estado ======= */
@@ -7123,7 +7119,7 @@
                     </div>
                     <div>
                       <div class="plataforma-estados-title">Estado de plataforma del proyecto</div>
-                      <div class="plataforma-estados-desc">Haz clic en un estado para ver productos y números de OPA.</div>
+                      <div class="plataforma-estados-desc">Haz clic en un estado para comparar las OPAs actuales y las que faltan por llegar.</div>
                     </div>
                   </div>
                   <div class="plataforma-estados-meta">
@@ -7212,6 +7208,7 @@
 
               <div class="estado-chip-body" id="body-${eid}" style="display:none;">
                 <div class="estado-chip-body-inner">
+                <div class="estado-opas-comparison-slot" id="estado-opas-${eid}"></div>
                 <div class="estado-chip-body-title">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
                     <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
@@ -7307,16 +7304,24 @@
     }
 
 
+    function _actualizarComparacionEstadoChip(card) {
+      if (!card) return;
+      const slot = card.querySelector('.estado-opas-comparison-slot');
+      const wrapper = card.closest('.proj-detail-wrapper');
+      if (!slot || !wrapper) return;
+      slot.innerHTML = _renderDetallePasoOpas(
+        wrapper.getAttribute('data-proyecto') || '',
+        card.getAttribute('data-estado') || ''
+      );
+    }
+
     function toggleProyectoEstadoDetalle(eid) {
       const body = document.getElementById('body-' + eid);
       const arrow = document.getElementById('arrow-' + eid);
       if (!body) return;
-
       const card = body.closest('.estado-chip-card');
       const grid = card ? card.parentElement : null;
       const estabaCerrado = body.style.display === 'none';
-
-      /* Mantener solo un estado abierto por vez para evitar una vista caótica. */
       if (grid) {
         const cards = grid.querySelectorAll('.estado-chip-card');
         for (let i = 0; i < cards.length; i++) {
@@ -7329,11 +7334,13 @@
           if (otherArrow) otherArrow.classList.remove('open');
         }
       }
-
       if (estabaCerrado) {
         body.style.display = 'block';
         if (arrow) arrow.classList.add('open');
-        if (card) card.classList.add('expanded');
+        if (card) {
+          card.classList.add('expanded');
+          _actualizarComparacionEstadoChip(card);
+        }
       } else {
         body.style.display = 'none';
         if (arrow) arrow.classList.remove('open');
@@ -7389,26 +7396,62 @@
         if(!card){try{const chip=document.querySelector('.paso-card[data-pid="'+pid+'"][data-estado="'+estado+'"]');if(chip){chip.classList.add('paso-card-flash-empty');setTimeout(()=>chip.classList.remove('paso-card-flash-empty'),1100)}}catch(_){} if(detail)detail.scrollIntoView({behavior:'smooth',block:'start'});return}
         try{wrapper.querySelectorAll('.estado-chip-body').forEach(x=>x.style.display='none');wrapper.querySelectorAll('.estado-chip-arrow').forEach(x=>x.classList.remove('open'))}catch(_){}
         const eid=card.getAttribute('data-eid'); if(eid){const body=document.getElementById('body-'+eid),arrow=document.getElementById('arrow-'+eid);if(body)body.style.display='block';if(arrow)arrow.classList.add('open')}
+        _actualizarComparacionEstadoChip(card);
         try{card.scrollIntoView({behavior:'smooth',block:'center',inline:'nearest'})}catch(_){}
         try{card.classList.remove('estado-chip-highlight');void card.offsetWidth;card.classList.add('estado-chip-highlight');setTimeout(()=>card.classList.remove('estado-chip-highlight'),2400)}catch(_){}
         try{const cnt=card.querySelector('.estado-chip-count');filtrarInlineSoloEstado(pid,estado,cnt?cnt.textContent.trim():'')}catch(_){}
       }catch(err){try{console.warn('abrirEstadoDesdePasoCard falló:',err&&err.message?err.message:err)}catch(_){}}
     }
 
-    function _renderDetallePasoOpas(proyecto,estado){
-      const objetivo=ESTADOS_ORDEN.indexOf(estado), mapa=new Map();
-      datosFiltrados.forEach(function(r){
-        if((limpiarTexto(r.P)||'Sin proyecto')!==proyecto||!esOPAValida(r.O))return;
-        const key=normalizarOPA(r.O);
-        if(!mapa.has(key))mapa.set(key,{opa:limpiarTexto(r.O),producto:limpiarTexto(r.T)||'Sin tipo de producto',estado:buscarEstadoCoincidencia(r.E)||ESTADO_SIN_ASIGNAR});
+    function _renderDetallePasoOpas(proyecto, estado) {
+      const objetivo = ESTADOS_ORDEN.indexOf(estado);
+      const opasProyecto = dedupeOPAs(Array.isArray(datosFiltrados) ? datosFiltrados : [])
+        .filter(function(r) {
+          return (limpiarTexto(r.P) || 'Sin proyecto') === proyecto && esOPAValida(r.O);
+        });
+      const enEstado = [], faltantes = [];
+      let avanzaron = 0, canceladas = 0;
+      opasProyecto.forEach(function(r) {
+        const actual = buscarEstadoCoincidencia(r.E) || ESTADO_SIN_ASIGNAR;
+        const indice = ESTADOS_ORDEN.indexOf(actual);
+        const info = {
+          opa: limpiarTexto(r.O),
+          producto: limpiarTexto(r.T) || 'Sin tipo de producto',
+          estado: actual
+        };
+        if (actual === estado) enEstado.push(info);
+        else if (actual === 'Cancelado') canceladas++;
+        else if (estado !== 'Cancelado' && objetivo >= 0 && (indice < 0 || indice < objetivo)) faltantes.push(info);
+        else if (estado !== 'Cancelado' && objetivo >= 0 && indice > objetivo) avanzaron++;
       });
-      const dentro=[],faltan=[];let avanzaron=0,canceladas=0;
-      mapa.forEach(function(x){const n=ESTADOS_ORDEN.indexOf(x.estado);if(x.estado===estado)dentro.push(x);else if(x.estado==='Cancelado')canceladas++;else if(objetivo>=0&&(n<0||n<objetivo))faltan.push(x);else if(objetivo>=0&&n>objetivo)avanzaron++});
-      const ordenar=(a,b)=>a.opa.localeCompare(b.opa,undefined,{numeric:true,sensitivity:'base'});dentro.sort(ordenar);faltan.sort(ordenar);
-      const lista=(arr,msg)=>arr.length?arr.map(x=>'<li><span class="avance-opas-number">OPA '+escapeHTML(x.opa)+'</span><span class="avance-opas-meta">'+escapeHTML(x.producto)+'<br>'+escapeHTML(x.estado)+'</span></li>').join(''):'<li class="avance-opas-empty">'+msg+'</li>';
-      const titulo=estado==='Cancelado'?'No aplica':'OPAs que faltan por llegar', vacio=estado==='Cancelado'?'Estado final.':'No hay OPAs pendientes de llegar a este paso.';
-      const nota=(avanzaron?avanzaron+' OPA(s) ya avanzaron a pasos posteriores. ':'')+(canceladas&&estado!=='Cancelado'?canceladas+' OPA(s) canceladas, excluidas de faltantes.':'');
-      return '<section class="avance-opas-detail"><div class="avance-opas-detail-head"><h3>Detalle de '+escapeHTML(estado)+'</h3><p>OPAs únicas del proyecto '+escapeHTML(proyecto)+'</p></div><div class="avance-opas-columns"><section class="avance-opas-col current"><h4><span>OPAs en este proceso</span><span>'+dentro.length+'</span></h4><ul class="avance-opas-list">'+lista(dentro,'No hay OPAs actualmente en este proceso.')+'</ul></section><section class="avance-opas-col missing"><h4><span>'+titulo+'</span><span>'+faltan.length+'</span></h4><ul class="avance-opas-list">'+lista(faltan,vacio)+'</ul></section></div>'+(nota?'<p class="avance-opas-note">'+escapeHTML(nota.trim())+'</p>':'')+'</section>';
+      const ordenar = function(a,b) {
+        return a.opa.localeCompare(b.opa, undefined, { numeric:true, sensitivity:'base' });
+      };
+      enEstado.sort(ordenar);
+      faltantes.sort(ordenar);
+      const lista = function(items, vacio) {
+        if (!items.length) return '<li class="avance-opas-empty">' + vacio + '</li>';
+        return items.map(function(x) {
+          return '<li><span class="avance-opas-number">OPA ' + escapeHTML(x.opa) +
+            '</span><span class="avance-opas-meta">' + escapeHTML(x.producto) +
+            '<br><span>' + escapeHTML(x.estado) + '</span></span></li>';
+        }).join('');
+      };
+      const tituloFaltantes = estado === 'Cancelado' ? 'No aplica' : 'OPAs que faltan por llegar';
+      const vacioFaltantes = estado === 'Cancelado' ? 'Estado terminal; no hay etapa pendiente.' : 'No hay OPAs pendientes de llegar a este estado.';
+      const nota = (avanzaron ? avanzaron + ' OPA(s) ya pasaron a estados posteriores. ' : '') +
+        (canceladas && estado !== 'Cancelado' ? canceladas + ' OPA(s) canceladas, excluidas de faltantes.' : '');
+      return '<section class="avance-opas-detail"><div class="avance-opas-detail-head"><h3>Detalle de ' +
+        escapeHTML(estado) + '</h3><p>Datos únicos por OPA tomados de Estado Plataforma.</p></div>' +
+        '<div class="avance-opas-columns">' +
+        '<section class="avance-opas-col current"><h4><span>OPAs actualmente en este estado</span><span class="avance-opas-count">' +
+        enEstado.length + '</span></h4><ul class="avance-opas-list">' +
+        lista(enEstado, 'No hay OPAs actualmente en este estado.') + '</ul></section>' +
+        '<section class="avance-opas-col missing"><h4><span>' + tituloFaltantes +
+        '</span><span class="avance-opas-count">' + faltantes.length +
+        '</span></h4><ul class="avance-opas-list">' + lista(faltantes, vacioFaltantes) +
+        '</ul></section></div>' + (nota ? '<p class="avance-opas-note">' +
+        escapeHTML(nota.trim()) + '</p>' : '') + '</section>';
     }
 
     function filtrarInlineSoloEstado(pid, estado, cantidadTexto) {
