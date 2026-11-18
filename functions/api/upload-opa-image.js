@@ -21,6 +21,10 @@ export async function onRequestPost(context) {
     if (!tableName || !rowId) return json({ ok: false, error: "Falta identificar la hoja y la fila de la OPA." }, 400);
     if (!(await discoverTableNames(env)).includes(tableName)) return json({ ok: false, error: "La hoja indicada no pertenece a las hojas de datos del dashboard." }, 400);
 
+    const action = String(form.get("action") || "upload").trim().toLowerCase();
+    if (action === "delete") return await removeAttachedImage(context, env, user, form, tableName, rowId, columnKey);
+    if (action !== "upload") return json({ ok: false, error: "La acción solicitada no está permitida." }, 400);
+
     const files = form.getAll("files").filter((item) => item && typeof item.arrayBuffer === "function" && item.size > 0);
     if (!files.length) return json({ ok: false, error: "Selecciona al menos una imagen." }, 400);
     if (files.length > MAX_IMAGES) return json({ ok: false, error: `Puedes subir hasta ${MAX_IMAGES} imágenes por vez.` }, 413);
@@ -95,15 +99,77 @@ export async function onRequestPost(context) {
     if (typeof context?.waitUntil === "function") context.waitUntil(auditTask);
     else await auditTask;
     const images = await Promise.all(merged.map(async (item) => {
-      const path = typeof item === "string" ? item : item.url;
-      const name = typeof item === "string" ? item.split("/").pop() : item.name;
-      try { return { name, url: await getDashboardFileDownloadLink(env, pathToImagePath(path)) }; }
-      catch (_) { return { name, url: "" }; }
+      const path = typeof item === "string" ? item : String(item.url || item.path || "");
+      const name = typeof item === "string" ? item.split("/").pop() : item.name || path.split("/").pop();
+      if (/^https?:\/\//i.test(path)) return { name, url: path, attachmentKey: path };
+      try { return { name, url: await getDashboardFileDownloadLink(env, pathToImagePath(path)), attachmentKey: path }; }
+      catch (_) { return { name, url: "", attachmentKey: path }; }
     }));
     return json({ ok: true, columna: columnKey, imagenes: images, cantidad: saved.length, valorGuardado: storedValue, enlaceGuia: requestedGuideLink || existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
   } catch (error) {
     return json({ ok: false, error: error.message || "No se pudieron subir las imágenes." }, 502);
   }
+}
+
+
+async function removeAttachedImage(context, env, user, form, tableName, rowId, columnKey) {
+  const targetKey = String(form.get("attachmentKey") || "").trim();
+  if (!targetKey) return json({ ok: false, error: "Selecciona la foto que quieres eliminar." }, 400);
+
+  const columnName = getDashboardColumnName(env, columnKey);
+  const [columnType, currentRow] = await Promise.all([
+    getDashboardColumnType(env, tableName, columnName),
+    getDashboardRow(env, tableName, rowId),
+  ]);
+  const normalizedColumnType = columnType.replace(/[\\s_-]/g, "");
+  const fileType = columnType === "image" ? "image" : columnType === "file" ? "file" : columnKey === "GE" && ["text", "longtext"].includes(normalizedColumnType) ? "text" : "";
+  if (!fileType) return json({ ok: false, error: "La columna no permite eliminar fotos desde esta vista." }, 400);
+
+  const existingValue = currentRow[columnName] ?? currentRow[columnKey];
+  const existingGuide = fileType === "text" ? normalizeTextGuide(existingValue) : null;
+  const attachments = fileType === "text" ? existingGuide.photos : normalizeExisting(existingValue, fileType);
+  const getAttachmentKey = (item) => typeof item === "string" ? item.trim() : String(item?.url || item?.path || "").trim();
+  const index = attachments.findIndex((item) => getAttachmentKey(item) === targetKey);
+  if (index < 0) return json({ ok: false, error: "La foto ya no está adjunta a esta OPA. Actualiza la búsqueda e intenta de nuevo." }, 409);
+
+  const removed = attachments[index];
+  const remaining = attachments.filter((_, attachmentIndex) => attachmentIndex !== index);
+  const storedValue = fileType === "text"
+    ? JSON.stringify({ version: 1, link: existingGuide.link, photos: remaining })
+    : remaining;
+  await updateDashboardRow(env, tableName, rowId, { [columnName]: storedValue });
+
+  const removedName = typeof removed === "string"
+    ? removed.split("/").pop()
+    : String(removed?.name || getAttachmentKey(removed).split("/").pop() || "foto");
+  const auditTask = recordBusinessAudit(env, {
+    username: user.username,
+    role: user.rol,
+    action: "ELIMINAR_FOTO_OPA",
+    detail: { columna: columnName, archivo: removedName },
+    opa: String(form.get("numeroOPA") || ""),
+    table: tableName,
+    row: rowId,
+  });
+  if (typeof context?.waitUntil === "function") context.waitUntil(auditTask);
+  else await auditTask;
+
+  const images = await Promise.all(remaining.map(async (item) => {
+    const path = getAttachmentKey(item);
+    const name = typeof item === "string" ? path.split("/").pop() : String(item?.name || path.split("/").pop());
+    if (/^https?:\/\//i.test(path)) return { name, url: path, attachmentKey: path };
+    try { return { name, url: await getDashboardFileDownloadLink(env, pathToImagePath(path)), attachmentKey: path }; }
+    catch (_) { return { name, url: "", attachmentKey: path }; }
+  }));
+  return json({
+    ok: true,
+    columna: columnKey,
+    imagenes: images,
+    cantidad: 1,
+    valorGuardado: storedValue,
+    enlaceGuia: existingGuide?.link || "",
+    mensaje: "La foto se eliminó de la OPA.",
+  });
 }
 
 function normalizeExisting(value, type) {
