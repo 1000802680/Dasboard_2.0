@@ -3249,6 +3249,19 @@
     .matriz-table thead tr:first-child th.matriz-total-head{background:#e2e8f0!important;color:#334155!important}
     .matriz-table thead tr:first-child th.matriz-cancel-head{background:#fee2e2!important;color:#b91c1c!important}
     .matriz-table thead tr:first-child th.matriz-unknown-head{background:#e2e8f0!important;color:#475569!important}
+    /* Resumen ejecutivo: diferenciación cromática suave y legible. */
+    .summary-project-card{background:linear-gradient(110deg,#fff 0%,#f0f9ff 100%);border-color:#cfe2f5;box-shadow:0 8px 22px rgba(30,64,175,.08)}
+    .summary-project-icon{background:#cffafe;color:#0e7490}
+    .summary-status-card{border-radius:17px;box-shadow:0 5px 15px rgba(15,23,42,.07)}
+    .summary-status-card.blue{background:linear-gradient(145deg,#eff6ff 0%,#fff 78%);border-color:#bfdbfe}
+    .summary-status-card.orange{background:linear-gradient(145deg,#fff7ed 0%,#fff 78%);border-color:#fed7aa}
+    .summary-status-card.process{background:linear-gradient(145deg,#eef2ff 0%,#fff 78%);border-color:#c7d2fe}
+    .summary-status-card.green{background:linear-gradient(145deg,#ecfdf5 0%,#fff 78%);border-color:#bbf7d0}
+    .summary-status-card.red{background:linear-gradient(145deg,#fff1f2 0%,#fff 78%);border-color:#fecdd3}
+    .summary-status-title{color:#475569}
+    .summary-status-sub{color:#64748b}
+    @media(max-width:900px){.summary-status-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:520px){.summary-status-cards{grid-template-columns:1fr}}
   </style>
 </head>
 
@@ -3498,13 +3511,13 @@
         <div class="summary-status-card blue">
           <div class="summary-status-title">OPAs activas</div>
           <div class="summary-status-value" id="totalConceptos">0</div>
-          <div class="summary-status-sub">Con estado asignado, sin canceladas</div>
+          <div class="summary-status-sub">Según filtros activos · sin canceladas</div>
         </div>
 
         <div class="summary-status-card orange">
-          <div class="summary-status-title">Pendientes por aprobar</div>
+          <div class="summary-status-title">Pendientes de aprobación final</div>
           <div class="summary-status-value" id="totalPendientes">0</div>
-          <div class="summary-status-sub">Conceptos enviados</div>
+          <div class="summary-status-sub">Activas que aún no están aprobadas o cerradas</div>
         </div>
 
         <div class="summary-status-card process">
@@ -3516,7 +3529,7 @@
         <div class="summary-status-card green">
           <div class="summary-status-title">Aprobación final / cerrados</div>
           <div class="summary-status-value" id="totalFinalizados">0</div>
-          <div class="summary-status-sub">OPAs aprobadas o cerradas</div>
+          <div class="summary-status-sub">OPAs que ya llegaron a aprobación final</div>
         </div>
 
         <div class="summary-status-card red">
@@ -6238,7 +6251,6 @@
       const opasUnicas = getOpasUnicasCache();
 
       let totalConceptos = 0;
-      let totalPendientes = 0;
       let totalEnProceso = 0;
       let totalFinalizados = 0;
       let totalCancelados = 0;
@@ -6260,7 +6272,6 @@
         }
 
         if (idx >= 0) totalConceptos++;
-        if (idx === 0) totalPendientes++;
         if (idx >= 1 && idx <= 6) totalEnProceso++;
         if (idx === 7) totalFinalizados++;
       }
@@ -6280,7 +6291,8 @@
       };
 
       pintar('totalConceptos', totalConceptos);
-      pintar('totalPendientes', totalPendientes);
+      const totalPendientesAprobacionFinal = Math.max(0, totalConceptos - totalFinalizados);
+      pintar('totalPendientes', totalPendientesAprobacionFinal);
       pintar('totalEnProceso', totalEnProceso);
       pintar('totalFinalizados', totalFinalizados);
       pintar('totalCancelados', totalCancelados);
