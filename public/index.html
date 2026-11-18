@@ -3087,6 +3087,7 @@
     .dashboard-ai-widget:not(.is-open) { width: min(250px, calc(100vw - 36px)); border: 0; background: transparent; box-shadow: none; overflow: visible; }
     .dashboard-ai-widget:not(.is-open) .dashboard-ai-launcher { display: flex; }
     .dashboard-ai-widget:not(.is-open) .dashboard-ai-panel { display: none; }
+    .dashboard-ai-panel[hidden] { display: none !important; }
     .dashboard-ai-panel { display: flex; flex-direction: column; }
     .dashboard-ai-header {
       display: flex;
@@ -3480,9 +3481,9 @@
 
     </div>
 
-    <section id="dashboard-consulta" class="dashboard-ai-widget is-open" aria-labelledby="dashboard-consulta-title">
+    <section id="dashboard-consulta" class="dashboard-ai-widget" aria-labelledby="dashboard-consulta-title">
       <button id="dashboard-ia-launcher" class="dashboard-ai-launcher" type="button" onclick="toggleDashboardIA(true)" aria-expanded="false">✦ Preguntar a la mini IA</button>
-      <div id="dashboard-ia-panel" class="dashboard-ai-panel">
+      <div id="dashboard-ia-panel" class="dashboard-ai-panel" hidden>
         <div class="dashboard-ai-header">
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">
             <div style="display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:12px;background:#dbeafe;color:#1d4ed8;font-size:20px;">✦</div>
@@ -5393,11 +5394,49 @@
     function toggleDashboardIA(open) {
       const widget = document.getElementById('dashboard-consulta');
       const launcher = document.getElementById('dashboard-ia-launcher');
+      const panel = document.getElementById('dashboard-ia-panel');
       if (!widget) return;
       const shouldOpen = Boolean(open);
       widget.classList.toggle('is-open', shouldOpen);
+      if (panel) panel.hidden = !shouldOpen;
       if (launcher) launcher.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
       if (shouldOpen) setTimeout(function(){ const input=document.getElementById('dashboard-consulta-input'); if(input)input.focus(); }, 80);
+    }
+
+    async function _copiarOPADesdeBoton(event, button) {
+      if (event) { event.preventDefault(); event.stopPropagation(); }
+      if (!button) return;
+      const numero = String(button.getAttribute('data-opa-number') || '').trim();
+      if (!numero) return;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(numero);
+        } else {
+          const temporal = document.createElement('textarea');
+          temporal.value = numero;
+          temporal.setAttribute('readonly', '');
+          temporal.style.position = 'fixed';
+          temporal.style.opacity = '0';
+          document.body.appendChild(temporal);
+          temporal.select();
+          const copiado = document.execCommand('copy');
+          temporal.remove();
+          if (!copiado) throw new Error('El navegador no permitió copiar el número.');
+        }
+        const original = button.innerHTML;
+        button.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+        button.title = 'Número OPA copiado';
+        button.setAttribute('aria-label', 'Número OPA copiado');
+        setTimeout(function() {
+          if (!button.isConnected) return;
+          button.innerHTML = original;
+          button.title = 'Copiar número OPA';
+          button.setAttribute('aria-label', 'Copiar número OPA');
+        }, 1400);
+      } catch (error) {
+        console.warn('No se pudo copiar el número de OPA:', error);
+        button.title = 'No se pudo copiar; intenta seleccionar el número';
+      }
     }
 
     function _dashboardPreguntaEjemplo(question) {
@@ -6008,7 +6047,7 @@
         const estado = '<span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 9px;border-radius:999px;background:' + color.bg + ';color:' + color.fg + ';border:1px solid ' + color.bd + ';font-size:11px;font-weight:800;">' + escapeHTML(row.E || 'Sin estado') + '</span>' +
           (puedeEditar ? '<button type="button" title="Cambiar estado" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;width:22px;height:22px;cursor:pointer;">✏️</button>' : '');
         return '<tr class="registro-base-row" aria-selected="false" onclick="_seleccionarFilaRegistroBase(this,event)" title="Haz clic para resaltar esta fila">' +
-          '<td style="min-width:145px;padding:10px;border-bottom:1px solid #e2e8f0;font-weight:900;color:#1e40af;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(row.O || '—') + '</span>' + lapiz('O','Número OPA','#️⃣') + '</td>' +
+          '<td style="min-width:145px;padding:10px;border-bottom:1px solid #e2e8f0;font-weight:900;color:#1e40af;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(row.O || '—') + '</span>' + lapiz('O','Número OPA','#️⃣') + '<button type="button" data-opa-number="' + escapeAttr(row.O || '') + '" onclick="_copiarOPADesdeBoton(event,this)" title="Copiar número OPA" aria-label="Copiar número OPA" style="display:inline-flex;align-items:center;justify-content:center;margin-left:5px;width:28px;height:28px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;cursor:pointer;vertical-align:middle;box-shadow:0 1px 2px rgba(30,64,175,.08);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3"/></svg></button></td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(row.P || '—') + '</span>' + lapiz('P','Proyecto','📁') + '</td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(row.T || '—') + '</span>' + lapiz('T','Tipo de producto','🏷️') + '</td>' +
           '<td style="min-width:150px;max-width:220px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:flex;flex-wrap:wrap;align-items:center;">' + photos + '</div></td>' +
