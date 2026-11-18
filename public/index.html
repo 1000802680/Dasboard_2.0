@@ -1245,6 +1245,18 @@
       letter-spacing: 0;
     }
 
+    .avance-opas-detail{margin:0 0 14px;padding:16px;border:1px solid #dbe5f1;border-radius:16px;background:#fff}
+    .avance-opas-detail-head h3{margin:0;color:#15233d;font-size:16px}.avance-opas-detail-head p{margin:4px 0 12px;color:#64748b;font-size:12px}
+    .avance-opas-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .avance-opas-col{min-width:0;border:1px solid #dbe5f1;border-radius:12px;overflow:hidden}
+    .avance-opas-col h4{display:flex;justify-content:space-between;gap:8px;margin:0;padding:11px 13px;font-size:13px}
+    .avance-opas-col.current h4{background:#ecfdf3;color:#08783d}.avance-opas-col.missing h4{background:#fff7ed;color:#a54b00}
+    .avance-opas-list{max-height:280px;overflow:auto;padding:8px;list-style:none;margin:0}
+    .avance-opas-list li{display:flex;justify-content:space-between;gap:12px;padding:9px 8px;border-bottom:1px solid #edf1f5;font-size:12px}
+    .avance-opas-list li:last-child{border:0}.avance-opas-number{font-weight:800;color:#2146b8;white-space:nowrap}
+    .avance-opas-meta{color:#64748b;text-align:right}.avance-opas-empty{padding:16px 10px;color:#718096;text-align:center}
+    .avance-opas-note{margin:10px 2px 0;color:#64748b;font-size:12px}
+    @media(max-width:700px){.avance-opas-columns{grid-template-columns:1fr}}
     .avance-estado-inline {
       margin-top: 18px;
       padding-top: 18px;
@@ -7130,7 +7142,7 @@
       const pid = 'pj-' + (typeof projectIdx === 'number' ? projectIdx : hashString(proyecto).toString(36));
 
       let html = `
-        <div class="detail-container proj-detail-wrapper" data-pid="${pid}">
+        <div class="detail-container proj-detail-wrapper" data-pid="${pid}" data-proyecto="${escapeAttribute(proyecto)}">
 
           <!-- ============== PANEL DE AVANCE (NUEVO) ============== -->
           <div class="proj-avance-panel">
@@ -7562,102 +7574,38 @@
 
     /* Click desde chip de AVANCE (panel superior) → mostrar estado dentro del mismo panel */
     function abrirEstadoDesdePasoCard(pid, estado, evt) {
-      if (evt) { evt.stopPropagation && evt.stopPropagation(); }
-
+      if(evt&&evt.stopPropagation)evt.stopPropagation();
       try {
-        const wrapper = document.querySelector('[data-pid="' + pid + '"]');
-        if (!wrapper) return;
-
-        /* Buscar el estado-chip-card que coincida ANTES de abrir el panel.
-           Si NO existe (0 OPAs en este proyecto en este estado) → NO ABRIR NADA (solo feedback visual flash). */
-        const cardEstado = wrapper.querySelector('.estado-chip-card[data-estado="' + estado + '"]');
-
-        if (!cardEstado) {
-          /* 0 OPAs → no abrimos panel inline, no mostramos toolbar NADA
-             Solo feedback visual flash en el propio chip (1s */
-          try {
-            const chipPaso = document.querySelector(
-              '.paso-card[data-pid="' + pid + '"][data-estado="' + estado + '"]'
-            );
-            if (chipPaso) {
-              chipPaso.classList.add('paso-card-flash-empty');
-              setTimeout(function() {
-                try { chipPaso.classList.remove('paso-card-flash-empty'); } catch(_) {}
-              }, 1100);
-            }
-          } catch(_) {}
-          return;
-        }
-
-        // Si llegamos AQUÍ = sí hay al menos 1 OPA → abrimos panel inline y continuamos
-        const inline = document.getElementById('inline-estados-' + pid);
-        if (inline && inline.style.display === 'none') {
-          inline.style.display = 'block';
-        }
-
-        /* 1. Cerrar otros estados para dejar visible solo el seleccionado */
-        try {
-          const abiertos = wrapper.querySelectorAll('.estado-chip-body');
-          for (let i = 0; i < abiertos.length; i++) {
-            abiertos[i].style.display = 'none';
-          }
-          const arrows = wrapper.querySelectorAll('.estado-chip-arrow');
-          for (let i = 0; i < arrows.length; i++) {
-            arrows[i].classList.remove('open');
-          }
-        } catch(_) {}
-
-        /* 2. Expandir el body del Estado Plataforma (tipos producto) */
-        const eid = cardEstado.getAttribute('data-eid');
-        if (eid) {
-          const body = document.getElementById('body-' + eid);
-          const arrow = document.getElementById('arrow-' + eid);
-          if (body) {
-            body.style.display = 'block';
-          }
-          if (arrow) {
-            arrow.classList.add('open');
-          }
-        }
-
-        /* 3. Scroll suave hasta la tarjeta Estado */
-        try {
-          cardEstado.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-            inline: 'nearest'
-          });
-        } catch(_) {}
-
-        /* 4. Resaltado visual pulse 2s para que el usuario vea "este es" */
-        try {
-          cardEstado.classList.remove('estado-chip-highlight');
-          // Forzar reflow
-          void cardEstado.offsetWidth;
-          cardEstado.classList.add('estado-chip-highlight');
-          setTimeout(function() {
-            try { cardEstado.classList.remove('estado-chip-highlight'); } catch(_) {}
-          }, 2400);
-        } catch(_) {}
-
-        /* 5. OCULTAR los otros estados (solo dejar VISIBLE el que el usuario clickeó) */
-        try {
-          let cntStr = '';
-          try {
-            const cntEl = cardEstado.querySelector('.estado-chip-count');
-            if (cntEl) cntStr = cntEl.textContent.trim();
-          } catch(_) {}
-          filtrarInlineSoloEstado(pid, estado, cntStr);
-        } catch(_) {}
-
-      } catch(err) {
-        try { console.warn('abrirEstadoDesdePasoCard falló:', err && err.message ? err.message : err); } catch(_) {}
-      }
+        const wrapper=document.querySelector('[data-pid="'+pid+'"]'); if(!wrapper)return;
+        const inline=document.getElementById('inline-estados-'+pid); if(inline)inline.style.display='block';
+        const detail=document.getElementById('detalle-opas-paso-'+pid), proyecto=wrapper.getAttribute('data-proyecto')||'';
+        if(detail){detail.innerHTML=_renderDetallePasoOpas(proyecto,estado);detail.style.display='block'}
+        const card=wrapper.querySelector('.estado-chip-card[data-estado="'+estado+'"]');
+        if(!card){try{const chip=document.querySelector('.paso-card[data-pid="'+pid+'"][data-estado="'+estado+'"]');if(chip){chip.classList.add('paso-card-flash-empty');setTimeout(()=>chip.classList.remove('paso-card-flash-empty'),1100)}}catch(_){} if(detail)detail.scrollIntoView({behavior:'smooth',block:'start'});return}
+        try{wrapper.querySelectorAll('.estado-chip-body').forEach(x=>x.style.display='none');wrapper.querySelectorAll('.estado-chip-arrow').forEach(x=>x.classList.remove('open'))}catch(_){}
+        const eid=card.getAttribute('data-eid'); if(eid){const body=document.getElementById('body-'+eid),arrow=document.getElementById('arrow-'+eid);if(body)body.style.display='block';if(arrow)arrow.classList.add('open')}
+        try{card.scrollIntoView({behavior:'smooth',block:'center',inline:'nearest'})}catch(_){}
+        try{card.classList.remove('estado-chip-highlight');void card.offsetWidth;card.classList.add('estado-chip-highlight');setTimeout(()=>card.classList.remove('estado-chip-highlight'),2400)}catch(_){}
+        try{const cnt=card.querySelector('.estado-chip-count');filtrarInlineSoloEstado(pid,estado,cnt?cnt.textContent.trim():'')}catch(_){}
+      }catch(err){try{console.warn('abrirEstadoDesdePasoCard falló:',err&&err.message?err.message:err)}catch(_){}}
     }
 
+    function _renderDetallePasoOpas(proyecto,estado){
+      const objetivo=ESTADOS_ORDEN.indexOf(estado), mapa=new Map();
+      datosFiltrados.forEach(function(r){
+        if((limpiarTexto(r.P)||'Sin proyecto')!==proyecto||!esOPAValida(r.O))return;
+        const key=normalizarOPA(r.O);
+        if(!mapa.has(key))mapa.set(key,{opa:limpiarTexto(r.O),producto:limpiarTexto(r.T)||'Sin tipo de producto',estado:buscarEstadoCoincidencia(r.E)||ESTADO_SIN_ASIGNAR});
+      });
+      const dentro=[],faltan=[];let avanzaron=0,canceladas=0;
+      mapa.forEach(function(x){const n=ESTADOS_ORDEN.indexOf(x.estado);if(x.estado===estado)dentro.push(x);else if(x.estado==='Cancelado')canceladas++;else if(objetivo>=0&&(n<0||n<objetivo))faltan.push(x);else if(objetivo>=0&&n>objetivo)avanzaron++});
+      const ordenar=(a,b)=>a.opa.localeCompare(b.opa,undefined,{numeric:true,sensitivity:'base'});dentro.sort(ordenar);faltan.sort(ordenar);
+      const lista=(arr,msg)=>arr.length?arr.map(x=>'<li><span class="avance-opas-number">OPA '+escapeHTML(x.opa)+'</span><span class="avance-opas-meta">'+escapeHTML(x.producto)+'<br>'+escapeHTML(x.estado)+'</span></li>').join(''):'<li class="avance-opas-empty">'+msg+'</li>';
+      const titulo=estado==='Cancelado'?'No aplica':'OPAs que faltan por llegar', vacio=estado==='Cancelado'?'Estado final.':'No hay OPAs pendientes de llegar a este paso.';
+      const nota=(avanzaron?avanzaron+' OPA(s) ya avanzaron a pasos posteriores. ':'')+(canceladas&&estado!=='Cancelado'?canceladas+' OPA(s) canceladas, excluidas de faltantes.':'');
+      return '<section class="avance-opas-detail"><div class="avance-opas-detail-head"><h3>Detalle de '+escapeHTML(estado)+'</h3><p>OPAs únicas del proyecto '+escapeHTML(proyecto)+'</p></div><div class="avance-opas-columns"><section class="avance-opas-col current"><h4><span>OPAs en este proceso</span><span>'+dentro.length+'</span></h4><ul class="avance-opas-list">'+lista(dentro,'No hay OPAs actualmente en este proceso.')+'</ul></section><section class="avance-opas-col missing"><h4><span>'+titulo+'</span><span>'+faltan.length+'</span></h4><ul class="avance-opas-list">'+lista(faltan,vacio)+'</ul></section></div>'+(nota?'<p class="avance-opas-note">'+escapeHTML(nota.trim())+'</p>':'')+'</section>';
+    }
 
-    /* ========= FILTRAR el bloque inline de "Estados" para mostrar SOLO el estado seleccionado (y ocultar los demás).
-       Aparece un toolbar arriba con botón para volver a ver todos. */
     function filtrarInlineSoloEstado(pid, estado, cantidadTexto) {
       try {
         const wrapper = document.querySelector('[data-pid="' + pid + '"]');
@@ -12018,23 +11966,113 @@
       heading = heading || (columnKey === 'GE' ? 'Fotos de la guía de envío' : 'Fotos del producto');
       const images = Array.isArray(row && (columnKey === 'GE' ? row.guiaImagenes : row.imagenes)) ? (columnKey === 'GE' ? row.guiaImagenes : row.imagenes) : [];
       const guideLink = columnKey === 'GE' ? _opaSafeImageUrl(row && (row.guiaEnlace || row.enlaceGuia || _opaReadGuideLink(row.todasLasFechas && row.todasLasFechas.GE))) : '';
-      const cards = images.map(function(image) {
+      const modeKey = String(dataId) + ':' + columnKey;
+      const deleteMode = !!(window.__opaEliminarFotoMode && window.__opaEliminarFotoMode[modeKey]);
+      const cards = images.map(function(image, index) {
         const url = _opaSafeImageUrl(image && image.url);
         const name = String(image && image.name || 'Imagen del producto');
-        if (!url) return '<div style="padding:10px 12px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;font-size:12px;">' + escapeHTML(name) + ' · No se pudo cargar la vista previa</div>';
-        return '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" title="Ver ' + escapeAttr(name) + '" style="display:block;width:118px;padding:0;border:0;background:transparent;text-align:left;color:#334155;cursor:zoom-in;">' +
-          '<img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:118px;height:92px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;display:block;" onerror="this.style.display=\'none\';" />' +
-          '<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:700;margin-top:5px;">' + escapeHTML(name) + '</span></button>';
+        const attachmentKey = String(image && image.attachmentKey || '');
+        const preview = url
+          ? '<button type="button" onclick="_verImagenOPA(this.dataset.url,this.dataset.name)" data-url="' + escapeAttr(url) + '" data-name="' + escapeAttr(name) + '" title="Ver ' + escapeAttr(name) + '" style="display:block;width:118px;padding:0;border:0;background:transparent;text-align:left;color:#334155;cursor:zoom-in;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(name) + '" loading="lazy" style="width:118px;height:92px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;display:block;" onerror="this.style.display=\'none\';" /><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:700;margin-top:5px;">' + escapeHTML(name) + '</span></button>'
+          : '<div style="width:118px;padding:10px 8px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;font-size:11px;">' + escapeHTML(name) + ' · Vista previa no disponible</div>';
+        const remove = deleteMode && canUpload
+          ? '<button type="button" onclick="_opaEliminarFotoOPA(\'' + escapeAttr(dataId) + '\',\'' + columnKey + '\',' + index + ')" title="Eliminar ' + escapeAttr(name) + '" aria-label="Eliminar ' + escapeAttr(name) + '" ' + (attachmentKey ? '' : 'disabled') + ' style="display:flex;align-items:center;justify-content:center;gap:5px;width:100%;margin-top:5px;padding:6px 8px;border:1px solid ' + (attachmentKey ? '#fecaca' : '#e2e8f0') + ';border-radius:8px;background:' + (attachmentKey ? '#fff1f2' : '#f1f5f9') + ';color:' + (attachmentKey ? '#b91c1c' : '#94a3b8') + ';font-size:11px;font-weight:800;cursor:' + (attachmentKey ? 'pointer' : 'not-allowed') + ';">🗑️ Quitar foto</button>'
+          : '';
+        return '<div style="width:118px;min-width:118px;">' + preview + remove + '</div>';
       }).join('');
-      const picker = canUpload ? '<label for="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar foto</label>' +
-        '<input id="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this,\'' + escapeAttr(columnKey) + '\')" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />' : '';
+      const picker = canUpload
+        ? '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><label for="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer;">📎 Adjuntar foto</label><button type="button" onclick="_opaToggleModoEliminarFoto(\'' + escapeAttr(dataId) + '\',\'' + columnKey + '\')" ' + (images.length ? '' : 'disabled') + ' title="' + (images.length ? 'Selecciona la foto que deseas quitar' : 'No hay fotos para eliminar') + '" style="display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:10px;background:' + (deleteMode ? '#fff1f2' : '#fff') + ';border:1px solid ' + (images.length ? '#fecaca' : '#e2e8f0') + ';color:' + (images.length ? '#b91c1c' : '#94a3b8') + ';font-weight:800;font-size:12px;cursor:' + (images.length ? 'pointer' : 'not-allowed') + ';">' + (deleteMode ? 'Cancelar' : '🗑️ Eliminar foto') + '</button></div>' +
+          '<input id="opa-files-' + escapeAttr(columnKey) + '-' + escapeAttr(dataId) + '" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_subirImagenesOPA(\'' + escapeAttr(dataId) + '\',this,\'' + escapeAttr(columnKey) + '\')" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />'
+        : '';
       return '<div style="padding:14px 15px;border:1px solid ' + (images.length ? '#dbeafe' : '#fecaca') + ';border-radius:15px;background:linear-gradient(135deg,#fff 0%,#f8fbff 100%);box-shadow:0 3px 12px rgba(15,23,42,.035);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
           '<div><div style="font-size:12px;font-weight:900;color:#0f172a;">🖼️ ' + escapeHTML(heading) + '</div><div style="font-size:11px;color:#64748b;margin-top:2px;">' + images.length + ' adjunta' + (images.length === 1 ? '' : 's') + ' · se guardan en ' + escapeHTML(columnKey === 'GE' ? 'ENLACE GUÍA DE ENVÍO' : 'LINK O FOTO PRODUCTO') + '</div>' + (guideLink ? '<a href="' + escapeAttr(guideLink) + '" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:6px;color:#1d4ed8;font-size:11px;font-weight:800;text-decoration:none;">Abrir enlace de guía ↗</a>' : '') + '</div>' + picker +
         '</div>' +
+        (deleteMode ? '<div style="margin:0 0 9px;padding:7px 9px;border:1px solid #fecaca;border-radius:8px;background:#fff7f7;color:#991b1b;font-size:11px;font-weight:700;">Selecciona “Quitar foto” debajo de la imagen incorrecta.</div>' : '') +
         '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' + (cards || '<span style="display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;font-size:12px;color:#b91c1c;font-weight:700;">Sin fotos registradas todavía.</span>') + '</div>' +
         '<div data-opa-upload-status="' + escapeAttr(dataId + ':' + columnKey) + '" style="display:none;margin-top:10px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;"></div>' +
       '</div>';
+    }
+
+    function _opaToggleModoEliminarFoto(dataId, columnKey) {
+      columnKey = columnKey || 'LF';
+      const row = window._busqOpaCache && window._busqOpaCache[dataId];
+      if (!row) return;
+      if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
+      const modeKey = String(dataId) + ':' + columnKey;
+      window.__opaEliminarFotoMode = window.__opaEliminarFotoMode || {};
+      window.__opaEliminarFotoMode[modeKey] = !window.__opaEliminarFotoMode[modeKey];
+      const gallery = document.querySelector('[data-opa-gallery="' + dataId + ':' + columnKey + '"]');
+      if (gallery) gallery.innerHTML = _opaRenderGaleria(dataId, row, true, columnKey);
+    }
+
+    async function _opaEliminarFotoOPA(dataId, columnKey, imageIndex) {
+      columnKey = columnKey || 'LF';
+      const row = window._busqOpaCache && window._busqOpaCache[dataId];
+      const images = row && (columnKey === 'GE' ? row.guiaImagenes : row.imagenes);
+      const image = Array.isArray(images) ? images[Number(imageIndex)] : null;
+      if (!row || !image || !image.attachmentKey) {
+        _buscarOPA_setStatus('No se pudo identificar la foto. Vuelve a buscar la OPA e intenta de nuevo.', 'error');
+        return;
+      }
+      if (!_authSesionActual || !_authSesionActual.token) { _authAbrirModal(); return; }
+      const name = String(image.name || 'esta foto');
+      if (!window.confirm('¿Eliminar "' + name + '" de la OPA ' + String(row.numeroOPA || '') + '?')) return;
+
+      const status = document.querySelector('[data-opa-upload-status="' + dataId + ':' + columnKey + '"]');
+      const setStatus = function(message, error) {
+        if (!status) return;
+        status.style.display = 'block';
+        status.style.background = error ? '#fef2f2' : '#f0fdf4';
+        status.style.color = error ? '#b91c1c' : '#15803d';
+        status.style.border = error ? '1px solid #fecaca' : '1px solid #bbf7d0';
+        status.textContent = message;
+      };
+      setStatus('Eliminando foto de SeaTable…', false);
+      const form = new FormData();
+      form.append('token', _authSesionActual.token);
+      form.append('action', 'delete');
+      form.append('table', row.hoja || '');
+      form.append('rowId', row.rowId || '');
+      form.append('numeroOPA', row.numeroOPA || '');
+      form.append('columnKey', columnKey);
+      form.append('attachmentKey', String(image.attachmentKey));
+
+      try {
+        const response = await fetch('/api/upload-opa-image', { method: 'POST', body: form });
+        const result = await response.json().catch(function() { return {}; });
+        if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudo eliminar la foto.');
+        if (columnKey === 'GE') {
+          row.guiaImagenes = Array.isArray(result.imagenes) ? result.imagenes : [];
+          row.guiaEnlace = String(result.enlaceGuia || row.guiaEnlace || '');
+          row.enlaceGuia = row.guiaEnlace;
+          if (!row.todasLasFechas) row.todasLasFechas = {};
+          row.todasLasFechas.GE = result.valorGuardado;
+        } else {
+          row.imagenes = Array.isArray(result.imagenes) ? result.imagenes : [];
+          if (!row.todasLasFechas) row.todasLasFechas = {};
+          row.todasLasFechas.LF = result.valorGuardado;
+        }
+        try {
+          const baseKey = String(row.hoja || '') + '::' + String(row.rowId || '');
+          if (window._registrosImagenesCache) delete window._registrosImagenesCache[baseKey];
+          const mainRecord = Array.isArray(datos) ? datos.find(function(item) { return String(item.H || '') === String(row.hoja || '') && String(item._id || '') === String(row.rowId || ''); }) : null;
+          if (mainRecord) {
+            mainRecord[columnKey] = result.valorGuardado;
+            _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
+            _invalidateMemo();
+            actualizarDashboard();
+          }
+          if (document.getElementById('tab-registros') && document.getElementById('tab-registros').classList.contains('active')) actualizarTablaRegistrosBase();
+        } catch(_) {}
+        window.__opaEliminarFotoMode = window.__opaEliminarFotoMode || {};
+        window.__opaEliminarFotoMode[String(dataId) + ':' + columnKey] = false;
+        const gallery = document.querySelector('[data-opa-gallery="' + dataId + ':' + columnKey + '"]');
+        if (gallery) gallery.innerHTML = _opaRenderGaleria(dataId, row, true, columnKey);
+        setStatus(String(result.mensaje || 'Foto eliminada de la OPA.'), false);
+      } catch (error) {
+        setStatus(error && error.message || 'No se pudo eliminar la foto.', true);
+      }
     }
 
     function _opaRenderCamposProducto(dataId, row, canEdit) {
