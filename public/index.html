@@ -3575,7 +3575,7 @@
         </div>
         <div>
           <h2 class="matriz-title">Matriz Proyecto × Estado</h2>
-          <p class="matriz-subtitle">Por estado actual muestra OPAs en la etapa, acumuladas que ya la alcanzaron y las que faltan para pasar a la siguiente. Canceladas se excluyen del avance.</p>
+          <p class="matriz-subtitle">En cada etapa muestra las OPAs actuales; al lado: las que ya están en estados posteriores y las que faltan para llegar al siguiente. Las canceladas se excluyen del avance.</p>
         </div>
       </div>
 
@@ -3626,13 +3626,13 @@
               <th class="matriz-unknown-head" rowspan="2">SIN ESTADO<br>/ OTRO</th>
             </tr>
             <tr>
-              <th class="matriz-sub-current">CONCEPTO ENVIADO<br>EN ESTADO</th><th class="matriz-sub-flow">ALCANZARON /<br>FALTAN A APROBADO</th>
-              <th class="matriz-sub-current">CONCEPTO APROBADO<br>EN ESTADO</th><th class="matriz-sub-flow">ALCANZARON /<br>FALTAN A PREPROD. ENVIADA</th>
-              <th class="matriz-sub-current">PREPRODUCCIÓN ENVIADA<br>EN ESTADO</th><th class="matriz-sub-flow">ALCANZARON /<br>FALTAN A PREPROD. APROBADA</th>
-              <th class="matriz-sub-current">PREPRODUCCIÓN APROBADA<br>EN ESTADO</th><th class="matriz-sub-flow">ALCANZARON /<br>FALTAN A FOTOS ENVIADAS</th>
-              <th class="matriz-sub-current">FOTOS PRODUCCIÓN ENVIADAS<br>EN ESTADO</th><th class="matriz-sub-flow">ALCANZARON /<br>FALTAN A FOTOS APROBADAS</th>
-              <th class="matriz-sub-current">FOTOS PRODUCCIÓN APROBADAS<br>EN ESTADO</th><th class="matriz-sub-flow">ALCANZARON /<br>FALTAN A MUESTRAS FINALES</th>
-              <th class="matriz-sub-current">MUESTRAS FINALES ENVIADAS<br>EN ESTADO</th><th class="matriz-sub-flow">ALCANZARON /<br>FALTAN A CIERRE</th>
+              <th class="matriz-sub-current">CONCEPTO ENVIADO<br>EN ESTADO</th><th class="matriz-sub-flow">PASARON / FALTAN<br>AL SIGUIENTE ESTADO</th>
+              <th class="matriz-sub-current">CONCEPTO APROBADO<br>EN ESTADO</th><th class="matriz-sub-flow">PASARON / FALTAN<br>AL SIGUIENTE ESTADO</th>
+              <th class="matriz-sub-current">PREPRODUCCIÓN ENVIADA<br>EN ESTADO</th><th class="matriz-sub-flow">PASARON / FALTAN<br>AL SIGUIENTE ESTADO</th>
+              <th class="matriz-sub-current">PREPRODUCCIÓN APROBADA<br>EN ESTADO</th><th class="matriz-sub-flow">PASARON / FALTAN<br>AL SIGUIENTE ESTADO</th>
+              <th class="matriz-sub-current">FOTOS PRODUCCIÓN ENVIADAS<br>EN ESTADO</th><th class="matriz-sub-flow">PASARON / FALTAN<br>AL SIGUIENTE ESTADO</th>
+              <th class="matriz-sub-current">FOTOS PRODUCCIÓN APROBADAS<br>EN ESTADO</th><th class="matriz-sub-flow">PASARON / FALTAN<br>AL SIGUIENTE ESTADO</th>
+              <th class="matriz-sub-current">MUESTRAS FINALES ENVIADAS<br>EN ESTADO</th><th class="matriz-sub-flow">PASARON / FALTAN<br>AL SIGUIENTE ESTADO</th>
               <th class="matriz-sub-current">APROBADA / CERRADA<br>EN ESTADO</th><th class="matriz-sub-flow">CERRADAS /<br>PENDIENTES DE CIERRE</th>
             </tr>
           </thead>
@@ -6353,17 +6353,16 @@
         const flowTotal = function(c) { return Math.max(0, c.total - c.canceladas); };
         const stageCells = function(c, idx) {
           const current = currentCount(c, estados[idx]);
-          const reached = reachedCount(c, idx);
-          const nextReached = idx < estados.length - 1 ? reachedCount(c, idx + 1) : current;
-          const missing = idx < estados.length - 1
-            ? Math.max(0, flowTotal(c) - nextReached)
-            : Math.max(0, flowTotal(c) - current);
+          // "Pasaron" cuenta las OPAs que ya están en el siguiente estado o uno posterior.
+          // La diferencia contra el total no cancelado son las que faltan para llegar allí.
+          const passed = idx < estados.length - 1 ? reachedCount(c, idx + 1) : current;
+          const missing = Math.max(0, flowTotal(c) - passed);
           const currentCell = '<td class="matriz-stage-current"><span class="matriz-number ' +
             (idx === 7 ? 'success' : 'active') + '">' + format(current) + '</span></td>';
-          const reachedLabel = idx === 7 ? 'Cerradas' : 'Alcanzaron';
-          const missingLabel = idx === 7 ? 'Pendientes de cierre' : 'Faltan siguiente';
+          const passedLabel = idx === 7 ? 'Cerradas' : 'Pasaron';
+          const missingLabel = idx === 7 ? 'Faltan para cierre' : 'Faltan';
           const flowCell = '<td class="matriz-stage-flow"><span class="matriz-flow-reached"><b>' +
-            reachedLabel + '</b><strong>' + format(reached) + '</strong></span><span class="matriz-flow-missing"><b>' +
+            passedLabel + '</b><strong>' + format(passed) + '</strong></span><span class="matriz-flow-missing"><b>' +
             missingLabel + '</b><strong>' + format(missing) + '</strong></span></td>';
           return currentCell + flowCell;
         };
