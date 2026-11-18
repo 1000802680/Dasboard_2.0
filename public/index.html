@@ -1527,6 +1527,11 @@
       gap: 7px;
     }
 
+    .avance-opas-product-toggle{width:100%;display:flex;align-items:center;gap:8px;padding:0;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer;flex-wrap:wrap}
+    .avance-opas-toggle-hint{margin-left:auto;color:#08783d;font-size:11px;font-weight:750;white-space:nowrap}
+    .avance-opas-product-toggle:hover .avance-opas-toggle-hint{text-decoration:underline}
+    .estado-product-breakdown{margin-top:12px;padding:12px;border:1px solid #dcebe2;border-radius:12px;background:linear-gradient(180deg,#f7fff9,#fff)}
+
     .producto-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3227,10 +3232,12 @@
     }
 
     /* Matriz por estado actual y avance acumulado. */
-    .matriz-table{min-width:2780px}
+    .matriz-table{min-width:2920px}
     .matriz-table thead tr:first-child th:not([rowspan]){height:44px;padding:7px 8px;font-size:11px;font-weight:850;letter-spacing:.02em;text-align:center;white-space:nowrap}
     .matriz-table thead tr:nth-child(2) th{height:60px;min-width:132px;padding:7px 8px;font-size:9px;line-height:1.25;font-weight:800;text-align:center;vertical-align:middle;white-space:normal}
     .matriz-table th.matriz-total-head{background:#e2e8f0;color:#334155}
+    .matriz-table th.matriz-total-active-head{min-width:132px;background:#dcfce7;color:#08783d}
+    .matriz-table tbody td.matriz-no-cancel-cell{min-width:132px;background:#f0fdf4;color:#08783d;font-weight:850}
     .matriz-table th.matriz-cancel-head{background:#fee2e2;color:#b91c1c}
     .matriz-table th.matriz-unknown-head{background:#e2e8f0;color:#475569}
     .matriz-table thead tr:nth-child(2) th.matriz-sub-current{background:#eff6ff;color:#1d4ed8}
@@ -3630,6 +3637,7 @@
             <tr>
               <th class="matriz-proyecto-head" rowspan="2">PROYECTO</th>
               <th class="matriz-total-head" rowspan="2">NÚMERO<br>DE OPAs</th>
+              <th class="matriz-total-active-head" rowspan="2">NÚMERO DE OPAs<br>SIN CANCELADAS</th>
               <th class="matriz-group-concepto" colspan="4">CONCEPTO</th>
               <th class="matriz-group-pre" colspan="4">PRE-PRODUCCIÓN</th>
               <th class="matriz-group-produccion" colspan="4">PRODUCCIÓN</th>
@@ -3651,7 +3659,7 @@
           </thead>
           <tbody id="tbodyMatrizProyectoEtapa">
             <tr>
-              <td colspan="20" class="matriz-loading">Cargando matriz de proyectos...</td>
+              <td colspan="21" class="matriz-loading">Cargando matriz de proyectos...</td>
             </tr>
           </tbody>
         </table>
@@ -6340,7 +6348,7 @@
           else cuenta.sinEstado++;
         });
         if (!proyectos.size) {
-          tbody.innerHTML = '<tr><td colspan="20" class="matriz-empty">No existen datos para los filtros seleccionados.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="21" class="matriz-empty">No existen datos para los filtros seleccionados.</td></tr>';
           return;
         }
 
@@ -6389,13 +6397,15 @@
             total.estados.set(estado, (total.estados.get(estado) || 0) + currentCount(c, estado));
           });
           html += '<tr><td class="matriz-project-name">' + escapeHTML(proyecto) +
-            '</td><td><span class="matriz-number active">' + format(c.total) + '</span></td>';
+            '</td><td><span class="matriz-number active">' + format(c.total) + '</span></td>' +
+            '<td class="matriz-no-cancel-cell"><span class="matriz-number success">' + format(flowTotal(c)) + '</span></td>';
           estados.forEach(function(estado, idx) { html += stageCells(c, idx); });
           html += '<td class="matriz-cancel-cell"><span class="matriz-number warning">' + format(c.canceladas) +
             '</span></td><td class="matriz-unknown-cell">' + format(c.sinEstado) + '</td></tr>';
         });
         html += '<tr class="matriz-total-row"><td class="matriz-project-name">TOTAL</td>' +
-          '<td>' + format(total.total) + '</td>';
+          '<td>' + format(total.total) + '</td>' +
+          '<td class="matriz-no-cancel-cell">' + format(flowTotal(total)) + '</td>';
         estados.forEach(function(estado, idx) { html += stageCells(total, idx); });
         html += '<td class="matriz-cancel-cell">' + format(total.canceladas) + '</td>' +
           '<td class="matriz-unknown-cell">' + format(total.sinEstado) + '</td></tr>';
@@ -6405,7 +6415,7 @@
         console.error('Error al construir Matriz Proyecto × Estado:', error);
         const detalle = String(error && error.message || error || 'Error desconocido').slice(0,180);
         const seguro = detalle.replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});
-        tbody.innerHTML = '<tr><td colspan="20" class="matriz-empty">No fue posible calcular la matriz: ' + seguro + '.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="21" class="matriz-empty">No fue posible calcular la matriz: ' + seguro + '.</td></tr>';
       }
     }
 
@@ -7248,6 +7258,7 @@
               <div class="estado-chip-body" id="body-${eid}" style="display:none;">
                 <div class="estado-chip-body-inner">
                 <div class="estado-opas-comparison-slot" id="estado-opas-${eid}"></div>
+                <div class="estado-product-breakdown" style="display:none;">
                 <div class="estado-chip-body-title">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
                     <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
@@ -7323,6 +7334,7 @@
           }
 
           html += `
+                </div>
                 </div>
               </div>
             </div>
@@ -7476,6 +7488,19 @@
       }
     }
 
+    function _toggleEstadoProductosDesdeComparacion(button) {
+      const card = button && button.closest('.estado-chip-card');
+      if (!card) return;
+      const breakdown = card.querySelector('.estado-product-breakdown');
+      if (!breakdown) return;
+      const abrir = breakdown.style.display === 'none' || !breakdown.style.display;
+      breakdown.style.display = abrir ? 'block' : 'none';
+      button.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+      const hint = button.querySelector('.avance-opas-toggle-hint');
+      if (hint) hint.textContent = abrir ? 'Ocultar tipos de producto ▴' : 'Ver tipos de producto ▾';
+      if (abrir) breakdown.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+
     function _renderDetallePasoOpas(proyecto, estado) {
       const objetivo = ESTADOS_ORDEN.indexOf(estado);
       const opasProyecto = dedupeOPAs(Array.isArray(datosFiltrados) ? datosFiltrados : [])
@@ -7521,8 +7546,8 @@
       return '<section class="avance-opas-detail"><div class="avance-opas-detail-head"><h3>Detalle de ' +
         escapeHTML(estado) + '</h3><p>Datos únicos por OPA tomados de Estado Plataforma.</p></div>' +
         '<div class="avance-opas-columns">' +
-        '<section class="avance-opas-col current"><h4><span>OPAs actualmente en este estado</span><span class="avance-opas-count">' +
-        enEstado.length + '</span></h4><ul class="avance-opas-list">' +
+        '<section class="avance-opas-col current"><h4><button type="button" class="avance-opas-product-toggle" data-estado="' + escapeAttribute(estado) + '" aria-expanded="false" onclick="event.stopPropagation();_toggleEstadoProductosDesdeComparacion(this)"><span>OPAs actualmente en este estado</span><span class="avance-opas-count">' +
+        enEstado.length + '</span><span class="avance-opas-toggle-hint">Ver tipos de producto ▾</span></button></h4><ul class="avance-opas-list">' +
         lista(enEstado, 'No hay OPAs actualmente en este estado.') + '</ul></section>' +
         '<section class="avance-opas-col missing"><h4><span>' + tituloFaltantes +
         '</span><span class="avance-opas-count">' + faltantes.length +
@@ -9361,7 +9386,7 @@
         try {
           const tb = document.getElementById('ad-tbody');
           if (tb) tb.innerHTML =
-            '<tr><td colspan="20"><div class="ad-empty-msg"><strong>Error al generar el análisis por días.</strong>' +
+            '<tr><td colspan="21"><div class="ad-empty-msg"><strong>Error al generar el análisis por días.</strong>' +
             escapeHTML(String(err && err.message ? err.message : err)) +
             '</div></td></tr>';
         } catch(_) {}
