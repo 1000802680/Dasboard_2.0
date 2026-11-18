@@ -6258,51 +6258,108 @@
     ========================================================= */
 
     function actualizarMatrizProyectoEtapa() {
-      const tbody=document.getElementById('tbodyMatrizProyectoEtapa');
-      if(!tbody)return;
-      try{
-        // Usa la misma lista deduplicada que el resto del dashboard y cuenta
-        // el estado actual de cada OPA; la matriz se reconstruye al recargar.
-        const opas=getOpasUnicasCache(), proyectos=new Map();
-        const crear=function(){return{total:0,'Concepto Enviado':0,'Concepto Aprobado':0,'Pre-Producción Aprobada':0,'Pre-Producción Enviada':0,'Fotos de Producción Enviada':0,'Fotos de Producción Aprobada':0,'Muestras Finales Enviadas':0,'Aprobada / Cerrada':0,'Cancelado':0,sinEstado:0}};
-        opas.forEach(function(opa){
-          if(!opa||!esOPAValida(opa.O))return;
-          const proyecto=limpiarTexto(opa.P)||'Sin proyecto';
-          if(!proyectos.has(proyecto))proyectos.set(proyecto,crear());
-          const c=proyectos.get(proyecto);c.total++;
-          const estado=buscarEstadoCoincidencia(limpiarTexto(opa.E));
-          if(estado&&Object.prototype.hasOwnProperty.call(c,estado))c[estado]++;else c.sinEstado++;
+      const tbody = document.getElementById('tbodyMatrizProyectoEtapa');
+      if (!tbody) return;
+      try {
+        // E es ESTADO PLATAFORMA. Contamos OPAs válidas únicas del mismo
+        // dataset filtrado que alimenta el dashboard y conservamos el estado
+        // vigente según la regla compartida de deduplicación.
+        const estados = [
+          'Concepto Enviado',
+          'Concepto Aprobado',
+          'Pre-Producción Aprobada',
+          'Pre-Producción Enviada',
+          'Fotos de Producción Enviada',
+          'Fotos de Producción Aprobada',
+          'Muestras Finales Enviadas',
+          'Aprobada / Cerrada',
+          'Cancelado'
+        ];
+        const origen = Array.isArray(datosFiltrados) ? datosFiltrados : [];
+        const opas = dedupeOPAs(origen);
+        const proyectos = new Map();
+
+        opas.forEach(function(opa) {
+          if (!opa || !esOPAValida(opa.O)) return;
+          const nombreProyecto = limpiarTexto(opa.P) || 'Sin proyecto';
+          let conteo = proyectos.get(nombreProyecto);
+          if (!conteo) {
+            conteo = { total: 0, estados: new Map(), sinEstado: 0 };
+            proyectos.set(nombreProyecto, conteo);
+          }
+          conteo.total += 1;
+          const estado = buscarEstadoCoincidencia(limpiarTexto(opa.E));
+          if (estado && estados.indexOf(estado) !== -1) {
+            conteo.estados.set(estado, (conteo.estados.get(estado) || 0) + 1);
+          } else {
+            conteo.sinEstado += 1;
+          }
         });
-        if(!proyectos.size){tbody.innerHTML='<tr><td colspan="12" class="matriz-empty">No existen datos para los filtros seleccionados.</td></tr>';return}
-        const ordenar=function(a,b){
-          const aa=(String(a).match(/(20\d{2})/)||[])[1],bb=(String(b).match(/(20\d{2})/)||[])[1];
-          return (aa?Number(aa):9999)-(bb?Number(bb):9999)||String(a).localeCompare(String(b),'es',{numeric:true,sensitivity:'base'});
+
+        if (proyectos.size === 0) {
+          tbody.innerHTML = '<tr><td colspan="12" class="matriz-empty">No existen datos para los filtros seleccionados.</td></tr>';
+          return;
+        }
+
+        const ordenar = function(a, b) {
+          const anioA = (String(a).match(/(20\\d{2})/) || [])[1];
+          const anioB = (String(b).match(/(20\\d{2})/) || [])[1];
+          const diferencia = (anioA ? Number(anioA) : 9999) - (anioB ? Number(anioB) : 9999);
+          return diferencia || String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' });
         };
-        const estados=['Concepto Enviado','Concepto Aprobado','Pre-Producción Aprobada','Pre-Producción Enviada','Fotos de Producción Enviada','Fotos de Producción Aprobada','Muestras Finales Enviadas','Aprobada / Cerrada','Cancelado'];
-        const total=crear(), fmt=function(n){return Number(n||0).toLocaleString('es-CO')};let html='';
-        Array.from(proyectos.keys()).sort(orden).forEach(function(nombre){
-          const c=proyectos.get(nombre);total.total+=c.total;total.sinEstado+=c.sinEstado;
-          estados.forEach(function(e){total[e]+=c[e]||0});
-          html+='<tr><td class="matriz-project-name">'+escapeHTML(nombre)+'</td>'+
-            '<td><span class="matriz-number active">'+fmt(c.total)+'</span></td>'+
-            '<td><span class="matriz-number active">'+fmt(c[estados[0]])+'</span></td>'+
-            '<td><span class="matriz-number success">'+fmt(c[estados[1]])+'</span></td>'+
-            '<td><span class="matriz-number success">'+fmt(c[estados[2]])+'</span></td>'+
-            '<td><span class="matriz-number active">'+fmt(c[estados[3]])+'</span></td>'+
-            '<td><span class="matriz-number active">'+fmt(c[estados[4]])+'</span></td>'+
-            '<td><span class="matriz-number success">'+fmt(c[estados[5]])+'</span></td>'+
-            '<td><span class="matriz-number active">'+fmt(c[estados[6]])+'</span></td>'+
-            '<td><span class="matriz-number success">'+fmt(c[estados[7]])+'</span></td>'+
-            '<td><span class="matriz-number warning">'+fmt(c[estados[8]])+'</span></td>'+
-            '<td><span class="matriz-number">'+fmt(c.sinEstado)+'</span></td></tr>';
+        const total = { total: 0, estados: new Map(), sinEstado: 0 };
+        const formato = function(valor) {
+          const numero = Number(valor) || 0;
+          try { return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(numero); }
+          catch (_) { return String(numero); }
+        };
+        const pintarEstado = function(conteo, estado) {
+          return formato(conteo.estados.get(estado) || 0);
+        };
+        let html = '';
+
+        Array.from(proyectos.keys()).sort(ordenar).forEach(function(nombreProyecto) {
+          const c = proyectos.get(nombreProyecto);
+          total.total += c.total;
+          total.sinEstado += c.sinEstado;
+          estados.forEach(function(estado) {
+            total.estados.set(estado, (total.estados.get(estado) || 0) + (c.estados.get(estado) || 0));
+          });
+          html += '<tr>' +
+            '<td class="matriz-project-name">' + escapeHTML(nombreProyecto) + '</td>' +
+            '<td><span class="matriz-number active">' + formato(c.total) + '</span></td>' +
+            '<td><span class="matriz-number active">' + pintarEstado(c, estados[0]) + '</span></td>' +
+            '<td><span class="matriz-number success">' + pintarEstado(c, estados[1]) + '</span></td>' +
+            '<td><span class="matriz-number success">' + pintarEstado(c, estados[2]) + '</span></td>' +
+            '<td><span class="matriz-number active">' + pintarEstado(c, estados[3]) + '</span></td>' +
+            '<td><span class="matriz-number active">' + pintarEstado(c, estados[4]) + '</span></td>' +
+            '<td><span class="matriz-number success">' + pintarEstado(c, estados[5]) + '</span></td>' +
+            '<td><span class="matriz-number active">' + pintarEstado(c, estados[6]) + '</span></td>' +
+            '<td><span class="matriz-number success">' + pintarEstado(c, estados[7]) + '</span></td>' +
+            '<td><span class="matriz-number warning">' + pintarEstado(c, estados[8]) + '</span></td>' +
+            '<td><span class="matriz-number">' + formato(c.sinEstado) + '</span></td>' +
+            '</tr>';
         });
-        html+='<tr class="matriz-total-row"><td class="matriz-project-name">TOTAL</td><td>'+fmt(total.total)+'</td>'+
-          estados.map(function(e){return '<td>'+fmt(total[e])+'</td>'}).join('')+'<td>'+fmt(total.sinEstado)+'</td></tr>';
-        tbody.innerHTML=html;
-        setTimeout(function(){sincronizarScrollMatriz()},50);
-      }catch(error){
-        console.error('Error al construir Matriz Proyecto × Estado:',error);
-        tbody.innerHTML='<tr><td colspan="12" class="matriz-empty">No fue posible calcular la matriz. Revisa la consola para más detalles.</td></tr>';
+
+        html += '<tr class="matriz-total-row">' +
+          '<td class="matriz-project-name">TOTAL</td>' +
+          '<td>' + formato(total.total) + '</td>' +
+          estados.map(function(estado) {
+            return '<td>' + formato(total.estados.get(estado) || 0) + '</td>';
+          }).join('') +
+          '<td>' + formato(total.sinEstado) + '</td>' +
+          '</tr>';
+
+        tbody.innerHTML = html;
+        setTimeout(function() { sincronizarScrollMatriz(); }, 50);
+      } catch (error) {
+        console.error('Error al construir Matriz Proyecto × Estado:', error);
+        const detalle = String(error && error.message || error || 'Error desconocido').slice(0, 180);
+        const seguro = detalle.replace(/[&<>"]/g, function(caracter) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[caracter];
+        });
+        tbody.innerHTML = '<tr><td colspan="12" class="matriz-empty">No fue posible calcular la matriz: ' +
+          seguro + '.</td></tr>';
       }
     }
 
