@@ -72,6 +72,10 @@ export function getDashboardColumnName(env, internalKey) {
   return columnName;
 }
 
+export function getDashboardColumnMap(env) {
+  return getColumnMap(env);
+}
+
 async function getBaseToken(env, apiToken = env.SEATABLE_API_TOKEN, options = {}) {
   const now = Date.now();
   const cached = globalThis.__seatableToken;
@@ -118,25 +122,19 @@ export async function discoverTableNames(env, token = null, options = {}) {
   if (cachedMetadata?.key === metadataCacheKey && cachedMetadata.expiresAt > Date.now() && Array.isArray(cachedMetadata.tables)) {
     return dashboardDataTableNames(cachedMetadata.tables);
   }
-  const pending = globalThis.__seatableMetadataPending || (globalThis.__seatableMetadataPending = new Map());
-  if (pending.has(metadataCacheKey)) return pending.get(metadataCacheKey).then(dashboardDataTableNames);
   const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
   const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
-  const promise = (async () => {
-    const accessToken = token || await getBaseToken(env);
-    const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
-    const metadataResponse = await fetchWithTimeout(metadataUrl, {
-      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-      signal: options.signal,
-    }, options.timeoutMs || 10_000);
-    const metadataBody = await metadataResponse.json().catch(() => ({}));
-    if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de pestañas de SeaTable (HTTP ${metadataResponse.status}).`);
-    const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
-    globalThis.__seatableMetadataCache = { key: metadataCacheKey, tables, expiresAt: Date.now() + 60_000 };
-    return tables;
-  })().finally(() => pending.delete(metadataCacheKey));
-  pending.set(metadataCacheKey, promise);
-  return dashboardDataTableNames(await promise);
+  const accessToken = token || await getBaseToken(env);
+  const metadataUrl = `${server}/api-gateway/api/v2/dtables/${baseId}/metadata/`;
+  const metadataResponse = await fetchWithTimeout(metadataUrl, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+    signal: options.signal,
+  }, options.timeoutMs || 10_000);
+  const metadataBody = await metadataResponse.json().catch(() => ({}));
+  if (!metadataResponse.ok) throw new Error(`No se pudo leer la lista de pestañas de SeaTable (HTTP ${metadataResponse.status}).`);
+  const tables = metadataBody.metadata?.tables || metadataBody.tables || [];
+  globalThis.__seatableMetadataCache = { key: metadataCacheKey, tables, expiresAt: Date.now() + 60_000 };
+  return dashboardDataTableNames(tables);
 }
 
 function dashboardDataTableNames(tables) {
@@ -343,15 +341,11 @@ function activityTime(record) {
   return latestStage || record._mtime || "";
 }
 
-export async function loadDashboardRecords(env, { forceRefresh = false, tableNames = null } = {}) {
+export async function loadDashboardRecords(env, { forceRefresh = false, tableNames = null, includeDuplicates = false } = {}) {
   const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
   const now = Date.now();
   const cached = globalThis.__dashboardRowsCache;
   if (!forceRefresh && cached?.key === cacheKey && cached.expiresAt > now) return cached.records;
-  // Una actualización manual también comparte la lectura que ya esté en curso
-  // dentro del mismo isolate, evitando que varios usuarios disparen el mismo scan.
-  if (globalThis.__dashboardRowsLoading?.key === cacheKey) return globalThis.__dashboardRowsLoading.promise;
-
   // Cache API de Cloudflare comparte el resultado entre solicitudes/aislamientos
   // cercanos. Así los usuarios concurrentes no vuelven a leer todas las hojas.
   const sharedCache = getSharedDashboardCache(env);
@@ -379,7 +373,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       }
     }
   }
-  if (sharedCache) {
+  if (sharedCache && !includeDuplicates) {
     const lockRequest = dashboardCacheRequest(env, "refresh-lock");
     // Una pequeña espera escalonada permite que el primer usuario publique el
     // lease antes de que los demás decidan iniciar otra lectura completa.
@@ -415,6 +409,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     const schemaByTable = new Map();
     const latest = new Map();
     const withoutOPA = [];
+    const allRecords = includeDuplicates ? [] : null;
     let rowCount = 0;
     const detectedTableNames = await forEachSeaTableRow(env, (row, tableName) => {
       rowCount++;
@@ -425,6 +420,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         schemaByTable.set(tableName, sourceKeyMap);
       }
       const record = toInternalRecord(row, tableName, sourceKeyMap);
+      if (allRecords) allRecords.push(record);
       const opa = String(record.O || "").trim();
       if (!opa) { withoutOPA.push(record); return; }
       const project = String(record.P || "").trim().toLocaleUpperCase();
@@ -451,164 +447,49 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         }));
       } catch (_) {}
     }
-    return records;
+    return allRecords || records;
   })().finally(async () => {
     if (ownsRefreshLease && sharedCache) {
       try { await sharedCache.delete(dashboardCacheRequest(env, "refresh-lock")); } catch (_) {}
     }
   });
-  globalThis.__dashboardRowsLoading = { key: cacheKey, promise };
-  try { return await promise; }
-  finally { if (globalThis.__dashboardRowsLoading?.promise === promise) globalThis.__dashboardRowsLoading = null; }
+  return await promise;
 }
 
-// Reutiliza por unos segundos las búsquedas repetidas y comparte solicitudes
-// simultáneas del mismo número dentro del mismo isolate.
+// Busca dentro de la copia compartida del dashboard. La copia se actualiza
+// con el sondeo periódico del dashboard, sin hacer una consulta a SeaTable
+// por cada búsqueda.
 export async function searchDashboardRecordsByOPA(env, query) {
-  const key = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default", query].join("|");
-  // La búsqueda confirmada consulta SeaTable directamente para reflejar altas
-  // hechas desde otros dispositivos. Solo se comparte una petición en curso.
-  const pending = globalThis.__dashboardOpaSearchPending || (globalThis.__dashboardOpaSearchPending = new Map());
-  if (pending.has(key)) return pending.get(key);
-  const promise = searchDashboardRecordsByOPAUncached(env, query).finally(() => pending.delete(key));
-  pending.set(key, promise);
-  return promise;
-}
-
-// Busca una OPA exacta directamente en SeaTable cuando no hay un snapshot
-// reciente. Evita descargar miles de filas solo para mostrar uno o pocos matches.
-async function searchDashboardRecordsByOPAUncached(env, query) {
   const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
-  const local = globalThis.__dashboardRowsCache;
-  // La API SQL consulta la tabla completa, no una vista concreta. Si el
-  // dashboard está configurado con una vista, respetamos ese alcance existente.
-  const sharedCache = getSharedDashboardCache(env);
-  if (sharedCache) {
-    const snapshot = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env));
-    if (snapshot) {
-      globalThis.__dashboardRowsCache = { key: cacheKey, records: snapshot.records, tableNames: snapshot.tableNames, updatedAt: snapshot.updatedAt, expiresAt: Date.now() + 60_000 };
-      // La copia regional solo sirve como respaldo si la consulta directa falla;
-      // nunca confirma resultados porque podría estar atrasada frente a otra región.
-    }
-  }
-  // SQL no aplica vistas. En ese caso respetamos la vista solo si ya existe
-  // una copia compartida; evitamos descargar miles de filas por una búsqueda.
-  if (env.SEATABLE_VIEW_NAME) {
-    const localView = globalThis.__dashboardRowsCache;
-    if (localView?.key === cacheKey && localView.records) return localView.records.filter((record) => String(record.O || "").trim().toLocaleLowerCase() === query);
-    throw new Error("La vista de SeaTable todavía no está cargada. Abre Dashboard o pulsa Actualizar datos y vuelve a buscar.");
-  }
+  let records = globalThis.__dashboardRowsCache?.key === cacheKey
+    ? globalThis.__dashboardRowsCache.records
+    : null;
 
-  // Limita el tiempo total del fallback, incluyendo token, metadata y consultas
-  // SQL. Antes cada fase podía esperar hasta 10 s por separado y acercarse al
-  // límite del navegador/Pages antes de llegar a la búsqueda.
-  const searchDeadlineAt = Date.now() + 18_000;
-  const controller = new AbortController();
-  let rejectSearchDeadline;
-  const searchDeadlinePromise = new Promise((_, reject) => { rejectSearchDeadline = reject; });
-  let deadlineTimer = setTimeout(() => {
-    controller.abort();
-    rejectSearchDeadline(new Error("La búsqueda en SeaTable superó el tiempo máximo de 18 segundos. Intenta de nuevo en unos segundos."));
-  }, 18_000);
-  const remainingTimeout = () => Math.max(1, Math.min(8_000, searchDeadlineAt - Date.now()));
-  const withinSearchDeadline = (promise) => Promise.race([promise, searchDeadlinePromise]);
-  let token;
-  let tableNames;
-  try {
-    // Auth y Dashboard comparten el token cuando apuntan a la misma base; esto
-    // evita repetir el intercambio de token en una solicitud fría.
-    token = await withinSearchDeadline(getBaseToken(env, env.SEATABLE_API_TOKEN, { signal: controller.signal, timeoutMs: remainingTimeout() }));
-    tableNames = new Set(await withinSearchDeadline(discoverTableNames(env, token, { signal: controller.signal, timeoutMs: remainingTimeout() })));
-  } catch (error) {
-    clearTimeout(deadlineTimer);
-    if (controller.signal.aborted) throw new Error("SeaTable no respondió a tiempo al preparar la búsqueda. Intenta de nuevo en unos segundos.");
-    throw error;
-  }
-  const tables = (globalThis.__seatableMetadataCache?.tables || []).filter((table) => table.name && tableNames.has(table.name));
-  const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
-  const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
-  const opaColumnName = normalizeHeader(getColumnMap(env).O);
-  const searchable = tables.map((table) => ({
-    name: table.name,
-    opaColumn: (table.columns || []).find((column) => normalizeHeader(column.name) === opaColumnName)?.name,
-    columns: table.columns || [],
-  })).filter((table) => table.opaColumn);
-  const columnMap = getColumnMap(env);
-  const resultsByTable = new Map();
-  const tableErrors = [];
-  let next = 0;
-  async function searchTable(table) {
-    const quote = (identifier) => `\`${String(identifier).replace(/`/g, "``")}\``;
-    const selectedColumns = new Set(["_id"]);
-    const availableByNormalized = new Map(table.columns.map((column) => [normalizeHeader(column.name), column.name]));
-    for (const configuredName of Object.values(columnMap)) {
-      const actualName = availableByNormalized.get(normalizeHeader(configuredName));
-      if (actualName) selectedColumns.add(actualName);
-    }
-    const projection = [...selectedColumns].map(quote).join(", ");
-    const response = await fetchWithTimeout(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sql: `SELECT ${projection} FROM ${quote(table.name)} WHERE ${quote(table.opaColumn)} = ? LIMIT 10000`,
-        parameters: [query],
-        convert_keys: true,
-      }),
-      signal: controller.signal,
-    }, remainingTimeout());
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`SeaTable no pudo buscar la OPA en "${table.name}" (HTTP ${response.status}).`);
-    const rows = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
-    if (!Array.isArray(rows)) throw new Error(`SeaTable devolvió un formato inesperado al buscar en "${table.name}".`);
-    const records = [];
-    for (const row of rows) {
-      // Garantiza coincidencia completa incluso si el motor convierte tipos.
-      const opaKey = Object.keys(row).find((key) => normalizeHeader(key) === normalizeHeader(table.opaColumn));
-      if (String(opaKey ? row[opaKey] : "").trim().toLocaleLowerCase() !== query) continue;
-      records.push(toInternalRecord(row, table.name, getSourceKeyMap(row, columnMap)));
-    }
-    resultsByTable.set(table.name, records);
-  }
-  // Evita que decenas de usuarios simultáneos multipliquen por 10 las llamadas
-  // a SeaTable y provoquen respuestas 503 por saturación.
-  const concurrency = Math.min(4, searchable.length);
-  async function worker() {
-    while (next < searchable.length) {
-      const table = searchable[next++];
-      try {
-        await searchTable(table);
-      } catch (error) {
-        // Una pestaña con una columna dañada o una respuesta 503 no debe
-        // cancelar las consultas de las demás marcas. Conservamos el error
-        // para reportar una búsqueda incompleta si no encontramos la OPA.
-        if (controller.signal.aborted) throw error;
-        tableErrors.push({ table: table.name, error });
-      }
+  // La búsqueda no debe iniciar un escaneo completo de SeaTable en una
+  // instancia fría. Usa el snapshot compartido si ya existe; el dashboard
+  // sigue siendo responsable de crearlo y renovarlo.
+  if (!Array.isArray(records)) {
+    const sharedCache = getSharedDashboardCache(env);
+    const snapshot = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
+    if (snapshot) {
+      records = snapshot.records;
+      globalThis.__dashboardRowsCache = {
+        key: cacheKey,
+        records,
+        tableNames: snapshot.tableNames,
+        revision: snapshot.revision || "",
+        updatedAt: snapshot.updatedAt,
+        expiresAt: Date.now() + 60_000,
+      };
     }
   }
-  try {
-    // Un límite global evita que la búsqueda quede girando mientras se espera
-    // a una hoja lenta. La búsqueda directa reemplaza el fallback de escanear
-    // todas las filas (que podía tardar 50 s o más).
-    await Promise.race([
-      Promise.all(Array.from({ length: concurrency }, () => worker())),
-      searchDeadlinePromise,
-    ]);
-  } catch (error) {
-    controller.abort();
-    // No reportar como actual un resultado de caché si la consulta en vivo
-    // falló: distinguir disponibilidad del servidor de una OPA inexistente.
-    throw error;
-  } finally {
-    clearTimeout(deadlineTimer);
+  if (!Array.isArray(records)) {
+    throw new Error("La copia del dashboard todavía no está disponible en esta región. Abre Dashboard o pulsa «Actualizar datos» y vuelve a buscar.");
   }
-  const results = searchable.flatMap((table) => resultsByTable.get(table.name) || []).sort((a, b) => activityTime(b).localeCompare(activityTime(a)));
-  if (!results.length && tableErrors.length) {
-    const first = tableErrors[0];
-    const detail = first.error?.message || "error de conexión";
-    throw new Error(`No se pudo completar la búsqueda en ${tableErrors.length} hoja(s); la primera fue "${first.table}": ${detail}`);
-  }
-  return results;
+  const needle = String(query || "").trim().toLocaleLowerCase();
+  return records
+    .filter((record) => String(record.O || "").trim().toLocaleLowerCase() === needle)
+    .sort((a, b) => String(activityTime(b)).localeCompare(String(activityTime(a))));
 }
 
 function getSharedDashboardCache(env) {
@@ -838,8 +719,10 @@ export async function refreshForNewTables(env, context = null) {
     const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
     if (isStale && !lock && context && typeof context.waitUntil === "function") {
       const pending = globalThis.__dashboardBackgroundRefresh;
-      if (pending?.key === cacheKey) context.waitUntil(pending.promise);
-      else {
+      // Una promesa de otra solicitud no se puede reutilizar con waitUntil
+      // bajo handle_cross_request_promise_resolution. La solicitud original
+      // ya mantiene vivo su propio refresco; esta solo devuelve el snapshot.
+      if (!pending || pending.key !== cacheKey) {
         const promise = loadDashboardRecords(env, { forceRefresh: true })
           .catch((error) => console.warn("Dashboard background refresh failed:", error?.message || error));
         globalThis.__dashboardBackgroundRefresh = { key: cacheKey, promise };
