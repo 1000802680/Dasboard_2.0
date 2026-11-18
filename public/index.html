@@ -4702,7 +4702,7 @@
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 15000;  // La revisión usa el snapshot compartido y detecta invalidaciones de escrituras.
+    const POLL_INTERVAL_MS      = 30000;  // Menos consultas al endpoint; SeaTable se refresca mediante la caché compartida.
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
@@ -12369,7 +12369,17 @@
       try {
         const row = window._busqOpaCache && window._busqOpaCache[dataId];
         if (!row || !Array.isArray(datos)) return;
-        const mainRow = datos.find(function(item) { return String(item._id || '') === String(row.rowId || '') && String(item.H || '') === String(row.hoja || ''); });
+        const rowId = String(row.rowId || '');
+        const hoja = String(row.hoja || '');
+        const opa = normalizarOPA(row.numeroOPA || '');
+        let mainRow = rowId ? datos.find(function(item) {
+          return String(item._id || '') === rowId && String(item.H || '') === hoja;
+        }) : null;
+        // Algunos registros procedentes de una búsqueda antigua pueden no
+        // traer _id. Usa OPA + hoja como respaldo para reflejar la edición local.
+        if (!mainRow && opa) mainRow = datos.find(function(item) {
+          return String(item.H || '') === hoja && normalizarOPA(item.O || '') === opa;
+        });
         if (mainRow) {
           mainRow.E = String(row.estadoPlataforma || '');
           mainRow.O = String(row.numeroOPA || '');
@@ -12385,8 +12395,10 @@
           _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
         }
         _invalidateMemo();
-        actualizarDashboard();
-        try { actualizarTablaRegistrosBase(); } catch(_) {}
+        // Reconstruye los filtros dependientes (hoja → proyecto → producto →
+        // OPA) antes de volver a renderizar. Si el proyecto cambió, el filtro
+        // anterior desaparece y el tablero muestra el proyecto actualizado.
+        actualizarListasYDashboard();
         actualizarSyncStatus('Cambio guardado en SeaTable · dashboard actualizado', false);
       } catch(error) {
         try { console.warn('No se pudo refrescar el dashboard local:', error && error.message || error); } catch(_) {}
