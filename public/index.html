@@ -3214,6 +3214,16 @@
       .opa-search-results tbody tr[data-expand] > td { padding:13px !important; }
       .opa-search-results thead th, .opa-search-results tbody tr:not([data-expand]) td { padding-left:9px !important; padding-right:9px !important; }
     }
+
+    /* Matriz compacta: solo conteos por estado actual. */
+    .matriz-table{min-width:1560px}
+    .matriz-table thead tr:first-child th:not(.matriz-proyecto-head){height:68px;min-height:68px;padding:8px 9px;font-size:10px;line-height:1.25;text-align:center;vertical-align:middle;font-weight:800;white-space:normal;overflow-wrap:anywhere;color:#334155;background:#f1f5f9}
+    .matriz-table thead tr:first-child th:nth-child(2){background:#e2e8f0;color:#334155}
+    .matriz-table thead tr:first-child th:nth-child(3),.matriz-table thead tr:first-child th:nth-child(6),.matriz-table thead tr:first-child th:nth-child(7),.matriz-table thead tr:first-child th:nth-child(9){background:#eff6ff;color:#1d4ed8}
+    .matriz-table thead tr:first-child th:nth-child(4),.matriz-table thead tr:first-child th:nth-child(5),.matriz-table thead tr:first-child th:nth-child(8),.matriz-table thead tr:first-child th:nth-child(10){background:#ecfdf3;color:#08783d}
+    .matriz-table thead tr:first-child th:nth-child(11){background:#fef2f2;color:#b91c1c}
+    .matriz-table thead tr:first-child th:nth-child(12){background:#f1f5f9;color:#64748b}
+    .matriz-table tbody td:not(:first-child){min-width:112px}
   </style>
 </head>
 
@@ -3539,8 +3549,8 @@
           </svg>
         </div>
         <div>
-          <h2 class="matriz-title">Matriz Proyecto × Etapa (embudo)</h2>
-          <p class="matriz-subtitle">Cuenta cada OPA una vez por proyecto. Los pendientes siguen su estado actual y dejan de contarse en etapas anteriores cuando la OPA avanza; las canceladas se excluyen.</p>
+          <h2 class="matriz-title">Matriz Proyecto × Estado</h2>
+          <p class="matriz-subtitle">Según los filtros activos, muestra el total de OPAs únicas y cuántas están actualmente en cada estado. La matriz se reconstruye al actualizar los datos de la base.</p>
         </div>
       </div>
 
@@ -3580,39 +3590,17 @@
         <table class="matriz-table" id="matrizProyectoEtapa">
           <thead>
             <tr>
-              <th class="matriz-proyecto-head" rowspan="2">PROYECTO</th>
-              <th class="matriz-group-concepto" colspan="3">CONCEPTO</th>
-              <th class="matriz-group-pre" colspan="3">PRE-PRODUCCIÓN</th>
-              <th class="matriz-group-produccion" colspan="4">PRODUCCIÓN</th>
-              <th class="matriz-group-muestra" colspan="4">MUESTRA FÍSICA</th>
-              <th class="matriz-group-final" colspan="2">APROBACIÓN FINAL</th>
-            </tr>
-            <tr>
-              <th>TOTAL<br>CONCEPTOS</th>
-              <th>CONCEPTO<br>APROBADO</th>
-              <th class="matriz-warning">CONCEPTO<br>POR APROBAR</th>
-
-              <th>PRE-PRODUCCIÓN<br>ENVIADA</th>
-              <th>PRE-PRODUCCIÓN<br>APROBADA</th>
-              <th class="matriz-warning">PRE-PRODUCCIÓN<br>POR ENVIAR</th>
-
-              <th>FOTOS DE<br>PRODUCCIÓN<br>ENVIADA</th>
-              <th>FOTOS DE<br>PRODUCCIÓN<br>APROBADA</th>
-              <th class="matriz-warning">FOTOS DE PRODUCCIÓN<br>POR ENVIAR</th>
-              <th class="matriz-warning">FOTOS DE PRODUCCIÓN<br>POR APROBAR</th>
-
-              <th>MUESTRAS FÍSICAS<br>ENVIADAS</th>
-              <th>MUESTRAS FÍSICAS<br>APROBADAS</th>
-              <th class="matriz-warning">MUESTRAS FÍSICAS<br>POR ENVIAR</th>
-              <th class="matriz-warning">MUESTRAS FÍSICAS<br>POR APROBAR</th>
-
-              <th># APROBACIÓN<br>FINAL</th>
-              <th class="matriz-warning">POR APROBACIÓN<br>FINAL</th>
+              <th class="matriz-proyecto-head">PROYECTO</th><th>NÚMERO DE<br>OPAS</th>
+              <th>CONCEPTO<br>ENVIADO</th><th>CONCEPTO<br>APROBADO</th>
+              <th>PRE-PRODUCCIÓN<br>APROBADA</th><th>PRE-PRODUCCIÓN<br>ENVIADA</th>
+              <th>FOTOS DE PRODUCCIÓN<br>ENVIADAS</th><th>FOTOS DE PRODUCCIÓN<br>APROBADAS</th>
+              <th>MUESTRAS FINALES<br>ENVIADAS</th><th>APROBADA /<br>CERRADA</th>
+              <th>CANCELADAS</th><th>SIN ESTADO /<br>OTRO</th>
             </tr>
           </thead>
           <tbody id="tbodyMatrizProyectoEtapa">
             <tr>
-              <td colspan="17" class="matriz-loading">Cargando matriz de proyectos...</td>
+              <td colspan="12" class="matriz-loading">Cargando matriz de proyectos...</td>
             </tr>
           </tbody>
         </table>
@@ -6270,293 +6258,53 @@
     ========================================================= */
 
     function actualizarMatrizProyectoEtapa() {
-
-      const tbody = document.getElementById('tbodyMatrizProyectoEtapa');
-      if (!tbody) return;
-
-      try {
-        /*
-         * MATRIZ PROYECTO × ETAPA
-         * ------------------------------------------------------------
-         * Cada OPA se toma una sola vez usando getOpasUnicasCache(), la
-         * misma fuente que alimenta Recuento por Proyecto. Los conteos se
-         * derivan del estado actual, sin reconstruir cantidades desde %.
-         *
-         * Flujo:
-         *   0 Concepto Enviado
-         *   1 Concepto Aprobado
-         *   2 Pre-Producción Enviada
-         *   3 Pre-Producción Aprobada
-         *   4 Fotos de Producción Enviada
-         *   5 Fotos de Producción Aprobada
-         *   6 Muestras Finales Enviadas
-         *   7 Aprobada / Cerrada
-         *   8 Cancelado
-         *
-         * Las columnas de cada etapa muestran el conteo de OPAs cuyo estado
-         * actual corresponde exactamente a esa etapa, igual que Recuento por
-         * Proyecto. Los faltantes acumulados se calculan por separado.
-         *
-         *   Aprobación final       = estado 7
-         *   Por aprobación final   = muestras enviadas - aprobadas/cerradas
-         *
-         * Cancelado no entra en el embudo activo.
-         */
-        const opasUnicas = getOpasUnicasCache();
-        const proyectos = new Map();
-
-        for (let i = 0; i < opasUnicas.length; i++) {
-          const opa = opasUnicas[i];
-          if (!opa || !esOPAValida(opa.O)) continue;
-
-          const proyecto = limpiarTexto(opa.P) || 'Sin proyecto';
-          const estadoTexto = limpiarTexto(opa.E);
-          const estado = buscarEstadoCoincidencia(estadoTexto) || ESTADO_SIN_ASIGNAR;
-
-          if (!proyectos.has(proyecto)) {
-            proyectos.set(proyecto, []);
-          }
-
-          proyectos.get(proyecto).push({
-            O: opa.O,
-            estado: estado
-          });
-        }
-
-        if (proyectos.size === 0) {
-          tbody.innerHTML =
-            '<tr><td colspan="17" class="matriz-empty">No existen datos para los filtros seleccionados.</td></tr>';
-          return;
-        }
-
-        const listaProyectos = Array.from(proyectos.keys());
-        const regexAno = /(20\d{2})/;
-
-        function obtenerAno(nombre) {
-          const match = String(nombre || '').match(regexAno);
-          return match ? Number(match[1]) : 9999;
-        }
-
-        listaProyectos.sort(function(a, b) {
-          const anoA = obtenerAno(a);
-          const anoB = obtenerAno(b);
-
-          if (anoA !== anoB) return anoA - anoB;
-
-          return String(a).localeCompare(String(b), 'es', {
-            numeric: true,
-            sensitivity: 'base'
-          });
+      const tbody=document.getElementById('tbodyMatrizProyectoEtapa');
+      if(!tbody)return;
+      try{
+        // Usa la misma lista deduplicada que el resto del dashboard y cuenta
+        // el estado actual de cada OPA; la matriz se reconstruye al recargar.
+        const opas=getOpasUnicasCache(), proyectos=new Map();
+        const crear=function(){return{total:0,'Concepto Enviado':0,'Concepto Aprobado':0,'Pre-Producción Aprobada':0,'Pre-Producción Enviada':0,'Fotos de Producción Enviada':0,'Fotos de Producción Aprobada':0,'Muestras Finales Enviadas':0,'Aprobada / Cerrada':0,'Cancelado':0,sinEstado:0}};
+        opas.forEach(function(opa){
+          if(!opa||!esOPAValida(opa.O))return;
+          const proyecto=limpiarTexto(opa.P)||'Sin proyecto';
+          if(!proyectos.has(proyecto))proyectos.set(proyecto,crear());
+          const c=proyectos.get(proyecto);c.total++;
+          const estado=buscarEstadoCoincidencia(limpiarTexto(opa.E));
+          if(estado&&Object.prototype.hasOwnProperty.call(c,estado))c[estado]++;else c.sinEstado++;
         });
-
-        let html = '';
-
-        const totales = {
-          conceptoTotal: 0,
-          conceptoEnviado: 0,
-          conceptoAprobado: 0,
-          conceptoPorAprobar: 0,
-          conceptoPorSubir: 0,
-          preEnviada: 0,
-          preAprobada: 0,
-          prePorAprobar: 0,
-          prePorEnviar: 0,
-          produccionEnviada: 0,
-          produccionAprobada: 0,
-          produccionPorAprobar: 0,
-          produccionPorEnviar: 0,
-          muestraEnviada: 0,
-          muestraAprobada: 0,
-          muestraPorAprobar: 0,
-          muestraPorEnviar: 0,
-          aprobacionFinal: 0,
-          porAprobacionFinal: 0
+        if(!proyectos.size){tbody.innerHTML='<tr><td colspan="12" class="matriz-empty">No existen datos para los filtros seleccionados.</td></tr>';return}
+        const ordenar=function(a,b){
+          const aa=(String(a).match(/(20\d{2})/)||[])[1],bb=(String(b).match(/(20\d{2})/)||[])[1];
+          return (aa?Number(aa):9999)-(bb?Number(bb):9999)||String(a).localeCompare(String(b),'es',{numeric:true,sensitivity:'base'});
         };
-
-        for (let p = 0; p < listaProyectos.length; p++) {
-
-          const proyecto = listaProyectos[p];
-          // Usar el mismo cálculo que genera las tarjetas de Recuento por
-          // Proyecto. Así cada fila de la matriz comparte base, deduplicación
-          // y pendientes con su proyecto, sin reconstruirlos con otra regla.
-          const avance = calcularAvanceProyecto(proyecto);
-          const pasos = (avance && Array.isArray(avance.pasos)) ? avance.pasos : [];
-          const totalActivas = Number(avance && avance.totalOPAsActivas) || 0;
-          function pendientesEnPaso(idx) {
-            return Number(pasos[idx] && pasos[idx].cantidad) || 0;
-          }
-          function completadasEnPaso(idx) {
-            const paso = pasos[idx];
-            if (!paso || totalActivas <= 0) return 0;
-            return Math.max(0, Math.min(totalActivas, totalActivas - (Number(paso.arrastre) || 0)));
-          }
-
-          const conceptoTotal = totalActivas;
-          const conceptoEnviado = completadasEnPaso(0);
-          const conceptoAprobado = completadasEnPaso(1);
-          const conceptoPorSubir = Math.max(0, conceptoTotal - conceptoEnviado);
-          const conceptoPorAprobar = Math.max(0, conceptoEnviado - conceptoAprobado);
-
-          const preEnviada = pendientesEnPaso(2);
-          const preAprobada = pendientesEnPaso(3);
-          // Para los faltantes acumulados, incluir las OPAs que ya avanzaron
-          // a etapas posteriores; de lo contrario aparecerían otra vez como
-          // pendientes de envío/aprobación en una etapa anterior.
-          const preEnviadaAcumulada = completadasEnPaso(1);
-          const preAprobadaAcumulada = completadasEnPaso(2);
-          const prePorEnviar = Math.max(0, conceptoEnviado - preEnviadaAcumulada);
-          const prePorAprobar = Math.max(0, preEnviadaAcumulada - preAprobadaAcumulada);
-
-          const produccionEnviada = pendientesEnPaso(4);
-          const produccionAprobada = pendientesEnPaso(5);
-          const produccionEnviadaAcumulada = completadasEnPaso(3);
-          const produccionAprobadaAcumulada = completadasEnPaso(4);
-          const produccionPorEnviar = Math.max(0, preAprobadaAcumulada - produccionEnviadaAcumulada);
-          const produccionPorAprobar = Math.max(0, produccionEnviadaAcumulada - produccionAprobadaAcumulada);
-
-          // Conteos visibles de estado actual en la matriz.
-          const muestraAprobada = pendientesEnPaso(7);
-          const muestraEnviada = pendientesEnPaso(6);
-          const muestraEnviadaAcumulada = completadasEnPaso(5);
-          const muestraAprobadaAcumulada = completadasEnPaso(6);
-          const muestraPorEnviar = Math.max(0, produccionAprobadaAcumulada - muestraEnviadaAcumulada);
-          const muestraPorAprobar = Math.max(0, muestraEnviadaAcumulada - muestraAprobadaAcumulada);
-          const aprobacionFinal = pendientesEnPaso(7);
-          // Pendientes para completar la aprobación final, incluyendo las OPAs
-          // que todavía están en etapas anteriores del flujo.
-          const porAprobacionFinal = Math.max(0, totalActivas - aprobacionFinal);
-
-          totales.conceptoTotal += conceptoTotal;
-          totales.conceptoEnviado += conceptoEnviado;
-          totales.conceptoAprobado += conceptoAprobado;
-          totales.conceptoPorAprobar += conceptoPorAprobar;
-          totales.conceptoPorSubir += conceptoPorSubir;
-          totales.preEnviada += preEnviada;
-          totales.preAprobada += preAprobada;
-          totales.prePorAprobar += prePorAprobar;
-          totales.prePorEnviar += prePorEnviar;
-          totales.produccionEnviada += produccionEnviada;
-          totales.produccionAprobada += produccionAprobada;
-          totales.produccionPorAprobar += produccionPorAprobar;
-          totales.produccionPorEnviar += produccionPorEnviar;
-          totales.muestraEnviada += muestraEnviada;
-          totales.muestraAprobada += muestraAprobada;
-          totales.muestraPorAprobar += muestraPorAprobar;
-          totales.muestraPorEnviar += muestraPorEnviar;
-          totales.aprobacionFinal += aprobacionFinal;
-          totales.porAprobacionFinal += porAprobacionFinal;
-
-          html += `
-            <tr>
-              <td class="matriz-project-name">${escapeHTML(proyecto)}</td>
-
-              <td><span class="matriz-number active">${conceptoTotal.toLocaleString()}</span></td>
-              <td>
-                <span class="matriz-number success">
-                  ${conceptoAprobado.toLocaleString()}
-                </span>
-              </td>
-              <td><span class="matriz-number warning">${conceptoPorAprobar.toLocaleString()}</span></td>
-
-              <td>
-                <span class="matriz-number active">
-                  ${preEnviada.toLocaleString()}
-                </span>
-              </td>
-              <td>
-                <span class="matriz-number success">
-                  ${preAprobada.toLocaleString()}
-                </span>
-              </td>
-              <td><span class="matriz-number warning">${prePorEnviar.toLocaleString()}</span></td>
-
-              <td>
-                <span class="matriz-number active">
-                  ${produccionEnviada.toLocaleString()}
-                </span>
-              </td>
-              <td>
-                <span class="matriz-number success">
-                  ${produccionAprobada.toLocaleString()}
-                </span>
-              </td>
-              <td><span class="matriz-number warning">${produccionPorEnviar.toLocaleString()}</span></td>
-              <td><span class="matriz-number warning">${produccionPorAprobar.toLocaleString()}</span></td>
-
-              <td>
-                <span class="matriz-number active">
-                  ${muestraEnviada.toLocaleString()}
-                </span>
-              </td>
-              <td>
-                <span class="matriz-number success">
-                  ${muestraAprobada.toLocaleString()}
-                </span>
-              </td>
-              <td>
-                <span class="matriz-number warning">
-                  ${muestraPorEnviar.toLocaleString()}
-                </span>
-              </td>
-              <td><span class="matriz-number warning">${muestraPorAprobar.toLocaleString()}</span></td>
-
-              <td>
-                <span class="matriz-number success">
-                  ${aprobacionFinal.toLocaleString()}
-                </span>
-              </td>
-              <td>
-                <span class="matriz-number warning">
-                  ${porAprobacionFinal.toLocaleString()}
-                </span>
-              </td>
-            </tr>
-          `;
-        }
-
-        html += `
-          <tr class="matriz-total-row">
-            <td class="matriz-project-name">TOTAL</td>
-            <td>${totales.conceptoTotal.toLocaleString()}</td>
-            <td>${totales.conceptoAprobado.toLocaleString()}</td>
-            <td>${totales.conceptoPorAprobar.toLocaleString()}</td>
-            <td>${totales.preEnviada.toLocaleString()}</td>
-            <td>${totales.preAprobada.toLocaleString()}</td>
-            <td>${totales.prePorEnviar.toLocaleString()}</td>
-            <td>${totales.produccionEnviada.toLocaleString()}</td>
-            <td>${totales.produccionAprobada.toLocaleString()}</td>
-            <td>${totales.produccionPorEnviar.toLocaleString()}</td>
-            <td>${totales.produccionPorAprobar.toLocaleString()}</td>
-            <td>${totales.muestraEnviada.toLocaleString()}</td>
-            <td>${totales.muestraAprobada.toLocaleString()}</td>
-            <td>${totales.muestraPorEnviar.toLocaleString()}</td>
-            <td>${totales.muestraPorAprobar.toLocaleString()}</td>
-            <td>${totales.aprobacionFinal.toLocaleString()}</td>
-            <td>${totales.porAprobacionFinal.toLocaleString()}</td>
-          </tr>
-        `;
-
-        tbody.innerHTML = html;
-
-        // Actualizar la barra superior después de construir la tabla.
-        setTimeout(function() {
-          sincronizarScrollMatriz();
-        }, 50);
-
-      } catch (error) {
-        console.error('Error al construir Matriz Proyecto × Etapa:', error);
-
-        tbody.innerHTML =
-          '<tr><td colspan="17" class="matriz-empty">' +
-          'No fue posible calcular la matriz. Revisa la consola para más detalles.' +
-          '</td></tr>';
+        const estados=['Concepto Enviado','Concepto Aprobado','Pre-Producción Aprobada','Pre-Producción Enviada','Fotos de Producción Enviada','Fotos de Producción Aprobada','Muestras Finales Enviadas','Aprobada / Cerrada','Cancelado'];
+        const total=crear(), fmt=function(n){return Number(n||0).toLocaleString('es-CO')};let html='';
+        Array.from(proyectos.keys()).sort(orden).forEach(function(nombre){
+          const c=proyectos.get(nombre);total.total+=c.total;total.sinEstado+=c.sinEstado;
+          estados.forEach(function(e){total[e]+=c[e]||0});
+          html+='<tr><td class="matriz-project-name">'+escapeHTML(nombre)+'</td>'+
+            '<td><span class="matriz-number active">'+fmt(c.total)+'</span></td>'+
+            '<td><span class="matriz-number active">'+fmt(c[estados[0]])+'</span></td>'+
+            '<td><span class="matriz-number success">'+fmt(c[estados[1]])+'</span></td>'+
+            '<td><span class="matriz-number success">'+fmt(c[estados[2]])+'</span></td>'+
+            '<td><span class="matriz-number active">'+fmt(c[estados[3]])+'</span></td>'+
+            '<td><span class="matriz-number active">'+fmt(c[estados[4]])+'</span></td>'+
+            '<td><span class="matriz-number success">'+fmt(c[estados[5]])+'</span></td>'+
+            '<td><span class="matriz-number active">'+fmt(c[estados[6]])+'</span></td>'+
+            '<td><span class="matriz-number success">'+fmt(c[estados[7]])+'</span></td>'+
+            '<td><span class="matriz-number warning">'+fmt(c[estados[8]])+'</span></td>'+
+            '<td><span class="matriz-number">'+fmt(c.sinEstado)+'</span></td></tr>';
+        });
+        html+='<tr class="matriz-total-row"><td class="matriz-project-name">TOTAL</td><td>'+fmt(total.total)+'</td>'+
+          estados.map(function(e){return '<td>'+fmt(total[e])+'</td>'}).join('')+'<td>'+fmt(total.sinEstado)+'</td></tr>';
+        tbody.innerHTML=html;
+        setTimeout(function(){sincronizarScrollMatriz()},50);
+      }catch(error){
+        console.error('Error al construir Matriz Proyecto × Estado:',error);
+        tbody.innerHTML='<tr><td colspan="12" class="matriz-empty">No fue posible calcular la matriz. Revisa la consola para más detalles.</td></tr>';
       }
     }
-
-    /* =========================================================
-       CONTROLES DE DESPLAZAMIENTO HORIZONTAL
-       MATRIZ PROYECTO × ETAPA
-    ========================================================= */
 
     function sincronizarScrollMatriz() {
 
