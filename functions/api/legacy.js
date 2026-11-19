@@ -447,11 +447,14 @@ function buildSummary(records) {
 }
 
 function fastEtag(records) {
-  // Firma corta basada en la identidad y última modificación de cada fila.
-  // Evita serializar todo el dataset y calcular SHA-256 en cada revisión automática.
+  // Incluye campos visibles clave además de _mtime. Así los cambios de proyecto,
+  // producto, estado u OPA activan la descarga aunque la marca de SeaTable no cambie.
   let hash = 2166136261;
   for (const row of records) {
-    const value = `${row._id || ""}|${row._mtime || ""};`;
+    const value = JSON.stringify([
+      row._id || "", row._mtime || "", row.O || "", row.P || "",
+      row.T || "", row.E || "", row.TE || ""
+    ]);
     for (let i = 0; i < value.length; i++) {
       hash ^= value.charCodeAt(i);
       hash = Math.imul(hash, 16777619);
