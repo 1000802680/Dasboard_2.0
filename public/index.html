@@ -8607,6 +8607,15 @@
               throw new Error('El servidor no devolvió los registros actualizados.');
             }
 
+            // A forced refresh can return the current snapshot while Cloudflare
+            // scans SeaTable in the background. Keep the visible/local copy and
+            // let the checksum poll reload it once the new snapshot is published.
+            if (respuesta.actualizandoEnSegundoPlano === true) {
+              try { actualizarSyncStatus('Actualizando desde SeaTable en segundo plano · se conserva la copia actual', false); } catch(_) {}
+              finishRefresh(true, respuesta);
+              return;
+            }
+
             // El endpoint ya hizo la lectura fresca. Pintar esa misma respuesta
             // directamente evita una segunda llamada completa a Sheets.
             datos = respuesta.registros;
