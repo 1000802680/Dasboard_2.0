@@ -5409,7 +5409,7 @@
           return false;
         }
 
-        if (producto !== '' && limpiarTexto(x.T) !== producto) {
+        if (producto !== '' && _claveOpcionProducto(x.T) !== _claveOpcionProducto(producto)) {
           return false;
         }
 
@@ -6161,20 +6161,29 @@
     }
 
 
+    function _claveOpcionProducto(valor) {
+      return limpiarTexto(valor)
+        .normalize('NFD')
+        .replace(/[\\u0300-\\u036f]/g, '')
+        .toLocaleLowerCase('es')
+        .replace(/\\s+/g, ' ')
+        .trim();
+    }
+
     function actualizarListasYDashboard() {
-
-      const hoja =
-        limpiarTexto(document.getElementById('filtroHoja').value);
-
-      const filtradosHoja = datos.filter(function(x) {
-
+      const hoja = limpiarTexto(document.getElementById('filtroHoja').value);
+      // Los filtros de proyecto/producto deben representar filas que sí aparecen
+      // en Registros de la base, donde solo se listan OPAs válidas.
+      const datosConOPA = (Array.isArray(datos) ? datos : []).filter(function(x) {
+        return x && esOPAValida(x.O);
+      });
+      const filtradosHoja = datosConOPA.filter(function(x) {
         return hoja === '' || limpiarTexto(x.H) === hoja;
-
       });
 
       llenarSelect(
         'filtroProyecto',
-        filtradosHoja.map(x => limpiarTexto(x.P)),
+        filtradosHoja.map(function(x) { return limpiarTexto(x.P); }),
         'Todos los proyectos'
       );
 
@@ -6183,21 +6192,28 @@
         return proyecto === '' || limpiarTexto(x.P) === proyecto;
       });
 
+      // Elimina opciones vacías y duplicados que solo difieren por mayúsculas,
+      // acentos o espacios. Se conserva la forma escrita en la base.
+      const productos = new Map();
+      filtradosProyecto.forEach(function(x) {
+        const producto = limpiarTexto(x.T);
+        const clave = _claveOpcionProducto(producto);
+        if (producto && clave && !productos.has(clave)) productos.set(clave, producto);
+      });
       llenarSelect(
         'filtroProducto',
-        filtradosProyecto.map(x => limpiarTexto(x.T)),
+        Array.from(productos.values()),
         'Todos los productos'
       );
 
       const producto = limpiarTexto(document.getElementById('filtroProducto').value);
+      const claveProducto = _claveOpcionProducto(producto);
       const filtradosProducto = filtradosProyecto.filter(function(x) {
-        return producto === '' || limpiarTexto(x.T) === producto;
+        return !claveProducto || _claveOpcionProducto(x.T) === claveProducto;
       });
 
       llenarFiltroOPA(filtradosProducto);
-
       actualizarDashboard();
-
     }
 
 
