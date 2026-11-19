@@ -43,7 +43,7 @@
             const isHtml = contentType.includes("text/html") || /^\s*<!doctype html|^\s*<html/i.test(responseText);
             const detail = String(body.error || (!isHtml ? responseText : "")).replace(/\s+/g, " ").trim().slice(0, 220);
             const message = isHtml && response.status === 503
-              ? "Cloudflare no pudo atender la función de búsqueda (HTTP 503). Revisa el registro de Pages Functions usando el Ray ID."
+              ? `Cloudflare no pudo ejecutar ${functionName} (HTTP 503). Revisa los registros de Pages Functions usando el Ray ID.`
               : (body.error || `Error del servidor (${response.status})`);
             throw new Error(`${message}${trace}${detail && !body.error && !isHtml ? ` · ${detail}` : ""}`);
           }
