@@ -37,12 +37,17 @@ export async function onRequestPost(context) {
       }
       case "obtenerDatosDashboard":
       case "actualizarDashboardDatos": {
-        const registros = await loadDashboardRecords(env, { forceRefresh: functionName === "actualizarDashboardDatos" });
+        // Manual refresh starts a shared background scan and returns the current
+        // snapshot immediately. A full SeaTable scan can exceed the Pages request
+        // lifetime and produce HTTP 503; the checksum poll will pick up its ETag.
+        const snapshot = await refreshForNewTables(env, context, { forceRefresh: functionName === "actualizarDashboardDatos" });
+        const registros = snapshot.records;
         value = {
           registros,
           totalRegistros: registros.length,
           etag: fastEtag(registros),
           fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
+          actualizandoEnSegundoPlano: snapshot.refreshing,
         };
         break;
       }
