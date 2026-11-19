@@ -707,7 +707,7 @@ export async function getDashboardFileDownloadLink(env, path) {
   catch (error) { linkCache.delete(cacheKey); throw error; }
 }
 
-export async function refreshForNewTables(env, context = null) {
+export async function refreshForNewTables(env, context = null, { forceRefresh = false } = {}) {
   const cached = globalThis.__dashboardRowsCache;
   const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
   const sharedCache = getSharedDashboardCache(env);
@@ -725,7 +725,7 @@ export async function refreshForNewTables(env, context = null) {
     // the snapshot advance during continuous team activity without launching a
     // full-table scan for each individual save; direct SeaTable edits are still
     // caught by the 60 second periodic refresh.
-    const isStale = ageMs >= 60_000 || (changedWhileEditing && ageMs >= 30_000);
+    const isStale = forceRefresh || ageMs >= 60_000 || (changedWhileEditing && ageMs >= 30_000);
     const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
     if (isStale && !lock && context && typeof context.waitUntil === "function") {
       const pending = globalThis.__dashboardBackgroundRefresh;
@@ -744,9 +744,26 @@ export async function refreshForNewTables(env, context = null) {
     return { records: shared.records, updatedAt: Number(shared.updatedAt || 0), refreshing: isStale };
   }
 
-  // Cold start for a region with no shared snapshot: a full read is necessary
-  // once; later requests use stale-while-revalidate above.
-  if (cached?.key === cacheKey) cached.expiresAt = 0;
+  // A Cache API snapshot can be absent in a newly routed isolate/colo even
+  // though this isolate already has usable rows. Keep those rows visible and
+  // refresh them in the background instead of blocking the user's request.
+  if (cached?.key === cacheKey) {
+    const ageMs = Date.now() - Number(cached.updatedAt || 0);
+    const isStale = forceRefresh || ageMs >= 60_000;
+    const pending = globalThis.__dashboardBackgroundRefresh;
+    if (isStale && context && typeof context.waitUntil === "function" && (!pending || pending.key !== cacheKey)) {
+      const promise = loadDashboardRecords(env, { forceRefresh: true })
+        .catch((error) => console.warn("Dashboard background refresh failed:", error?.message || error));
+      globalThis.__dashboardBackgroundRefresh = { key: cacheKey, promise };
+      context.waitUntil(promise.finally(() => {
+        if (globalThis.__dashboardBackgroundRefresh?.promise === promise) globalThis.__dashboardBackgroundRefresh = null;
+      }));
+    }
+    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: isStale };
+  }
+
+  // Cold start for a region with no shared or isolate snapshot: one full read
+  // is still required to produce the initial data set.
   const records = await loadDashboardRecords(env);
   return { records, updatedAt: Number(globalThis.__dashboardRowsCache?.updatedAt || Date.now()), refreshing: false };
 }
