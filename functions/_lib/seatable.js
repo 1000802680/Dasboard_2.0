@@ -332,13 +332,23 @@ function deduplicateLatestOPA(records) {
 
 function activityTime(record) {
   if (!record) return 0;
-  // Fechas normalizadas como YYYY-MM-DD y marcas _mtime son comparables como texto.
-  let latestStage = "";
-  for (const key of ["F8", "F7", "F6", "F5", "F4", "F3", "F2", "F1", "FM", "F"]) {
-    const value = record[key];
-    if (value && value > latestStage) latestStage = value;
+  // Para copias repetidas de una misma OPA, la fila modificada más recientemente
+  // debe prevalecer incluso si una fila antigua tiene fechas de etapa posteriores.
+  const modified = record._mtime || record._ctime || "";
+  const modifiedNumber = Number(modified);
+  if (Number.isFinite(modifiedNumber) && modifiedNumber > 0) {
+    return modifiedNumber < 100_000_000_000 ? modifiedNumber * 1000 : modifiedNumber;
   }
-  return latestStage || record._mtime || "";
+  const modifiedAt = Date.parse(String(modified));
+  if (Number.isFinite(modifiedAt) && modifiedAt > 0) return modifiedAt;
+
+  // Respaldo para filas que no traen metadatos de modificación.
+  let latestStage = 0;
+  for (const key of ["F8", "F7", "F6", "F5", "F4", "F3", "F2", "F1", "FM", "F"]) {
+    const stageAt = Date.parse(String(record[key] || ""));
+    if (Number.isFinite(stageAt) && stageAt > latestStage) latestStage = stageAt;
+  }
+  return latestStage;
 }
 
 export async function loadDashboardRecords(env, { forceRefresh = false, tableNames = null, includeDuplicates = false } = {}) {
