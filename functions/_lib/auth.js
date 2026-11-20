@@ -478,7 +478,8 @@ export async function handleAuthRequest(functionName, args, env) {
       const admin = await requireAdmin(args[0], env);
       if (admin.error) return { ok: false, error: admin.error };
       const users = (await authUsersRows(env)).map(normalizeUser).filter((user) => user.username);
-      const audit = (await allRows(env, AUDIT_TABLE)).slice(-3000).reverse().map(toAuditRecord);
+      // Se cargan hasta 10.000 movimientos recientes en una sola consulta de la pestaña; los filtros se aplican en memoria para no generar nuevas lecturas al filtrar.
+      const audit = (await allRows(env, AUDIT_TABLE)).slice(-10_000).reverse().map(toAuditRecord);
       const stats = new Map();
       for (const user of users) stats.set(user.username, { username: user.username, nombreCompleto: user.nombreCompleto, rol: user.rol, correo: user.correo, fechaRegistro: user.fechaRegistro, ultimoAcceso: user.ultimoAcceso, totalAcciones: 0, cambioEstado: 0, editarCampo: 0, loginOk: 0, loginFallido: 0, cambioPermisos: 0, registroUsuario: 0, otras: 0, opas: new Set() });
       for (const item of audit) {
