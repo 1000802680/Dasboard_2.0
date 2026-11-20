@@ -30,6 +30,11 @@ const DEFAULT_COLUMNS = {
 };
 
 const EMPTY_OPA = new Set(["", "N/A", "NA", "N.A.", "-", "SIN OPA", "NINGUNO", "NINGUNA"]);
+const DASHBOARD_DATA_VERSION = "all-rows-v2";
+
+function dashboardDataCacheKey(env) {
+  return [DASHBOARD_DATA_VERSION, env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+}
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 10_000) {
   const controller = new AbortController();
@@ -350,7 +355,7 @@ function activityTime(record) {
 }
 
 export async function loadDashboardRecords(env, { forceRefresh = false, tableNames = null, includeDuplicates = false } = {}) {
-  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const cacheKey = dashboardDataCacheKey(env);
   const now = Date.now();
   const cached = globalThis.__dashboardRowsCache;
   if (!forceRefresh && cached?.key === cacheKey && cached.expiresAt > now) return cached.records;
@@ -468,7 +473,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
 // con el sondeo periódico del dashboard, sin hacer una consulta a SeaTable
 // por cada búsqueda.
 export async function searchDashboardRecordsByOPA(env, query) {
-  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const cacheKey = dashboardDataCacheKey(env);
   let records = globalThis.__dashboardRowsCache?.key === cacheKey
     ? globalThis.__dashboardRowsCache.records
     : null;
@@ -506,7 +511,7 @@ function getSharedDashboardCache(env) {
 }
 
 function dashboardCacheRequest(env, suffix = "snapshot") {
-  const key = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const key = dashboardDataCacheKey(env);
   return new Request(`https://dashboard-cache.invalid/v1/${encodeURIComponent(key)}/${suffix}`);
 }
 
@@ -590,7 +595,7 @@ export async function createDashboardRow(env, tableName, values) {
 }
 
 async function invalidateDashboardSnapshot(env) {
-  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const cacheKey = dashboardDataCacheKey(env);
   const local = globalThis.__dashboardRowsCache;
   if (local?.key === cacheKey) local.expiresAt = 0;
 
@@ -707,7 +712,7 @@ export async function getDashboardFileDownloadLink(env, path) {
 
 export async function refreshForNewTables(env, context = null, { forceRefresh = false } = {}) {
   const cached = globalThis.__dashboardRowsCache;
-  const cacheKey = [env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
+  const cacheKey = dashboardDataCacheKey(env);
   const sharedCache = getSharedDashboardCache(env);
   const shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
 
