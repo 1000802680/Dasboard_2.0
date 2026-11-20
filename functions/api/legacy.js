@@ -173,6 +173,8 @@ export async function onRequestPost(context) {
           catch (error) { return Response.json({ ok: false, error: error.message }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
         } else newValue = String(rawValue ?? "").trim();
         const columnName = getDashboardColumnName(env, key);
+        const oldRow = await getDashboardRow(env, String(table), String(rowId || ""));
+        const oldValue = getRowValueForField(oldRow, columnName) ?? oldRow?.[key] ?? "";
         const updates = { [columnName]: newValue };
         if (key === "GE") {
           const columnType = await getDashboardColumnType(env, String(table), columnName);
@@ -204,7 +206,7 @@ export async function onRequestPost(context) {
           }
         }
         await updateDashboardRow(env, String(table), String(rowId || ""), updates);
-        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valor: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
+        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valorAnterior: oldValue, valorNuevo: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
         value = { ok: true, campo: columnName, valorNuevo: newValue, ...(key === "GE" ? { valorAlmacenado: updates[columnName] } : {}), ...(estadoActualizado ? { estado: estadoActualizado } : {}) };
         break;
       }
@@ -220,13 +222,15 @@ export async function onRequestPost(context) {
           return Response.json({ ok: false, error: "Selecciona un estado válido." }, { status: 400, headers: { "Cache-Control": "no-store" } });
         }
         await assertEditableTable(env, table);
+        const previousRow = await getDashboardRow(env, table, rowId);
+        const previousState = String(getRowValueForField(previousRow, getDashboardColumnName(env, "E")) || previousRow?.E || "");
         const updates = { [getDashboardColumnName(env, "E")]: state };
         const stageIndex = ESTADOS.findIndex((item) => item.toLocaleLowerCase() === state.toLocaleLowerCase());
         const stageKey = stageIndex >= 0 && stageIndex < 8 ? `F${stageIndex + 1}` : "";
         const fechaEscrita = stageKey && p.fechaElegida ? await formatDateForSeaTable(env, table, stageKey, p.fechaElegida) : "";
         if (fechaEscrita) updates[getDashboardColumnName(env, stageKey)] = fechaEscrita;
         await updateDashboardRow(env, table, rowId, updates);
-        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
+        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estadoAnterior: previousState, estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
         value = { ok: true, hoja: table, fila: rowId, estado: state, fechaCampo: stageKey && fechaEscrita ? stageKey : "", fechaEscrita };
         break;
       }
@@ -265,7 +269,7 @@ export async function onRequestPost(context) {
         const result = await createDashboardRow(env, table, row);
         const rowId = String(result.row_id || result.rowId || result._id || result.id || result.inserted_row_id || result.row?.row_id || result.row?._id || result.row?.id || result.row_ids?.[0] || result.rows?.[0]?.row_id || result.rows?.[0]?._id || result.rows?.[0]?.id || result.inserted_rows?.[0]?.row_id || result.inserted_rows?.[0]?._id || result.inserted_rows?.[0]?.id || "");
         try {
-          await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
+          await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { proyecto: p.campos.P || "", tipoProducto: p.campos.T || "", estado: row[statusColumn] || "", campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
         } catch (auditError) {
           console.warn("No se pudo guardar la auditoría del nuevo registro:", auditError);
         }
