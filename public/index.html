@@ -4145,10 +4145,7 @@
   </div>
 
 
-  <!-- =========================
-       CONTENEDOR TAB 4 — HISTORIAL AUDITORÍA (SOLO ADMIN)
-       Resumen stats por usuario + Tabla detalle auditoría
-  ========================= -->
+  <!-- Historial de acciones por persona y periodo -->
 
   <div id="tab-historial" class="tab-content">
     <div id="historial-bloqueo-sinpermiso" style="display:none;margin:20px 0;padding:34px 28px;border-radius:18px;background:linear-gradient(135deg,#fef2f2,#fee2e2);border:1.5px solid #fecaca;text-align:center;">
@@ -4156,110 +4153,48 @@
       <div style="font-size:17px;font-weight:900;color:#991b1b;margin-bottom:4px;">Acceso reservado a Administradores</div>
       <div style="font-size:13px;color:#7f1d1d;margin-bottom:14px;font-weight:600;">Esta pestaña de auditoría solo está disponible para usuarios con rol de Administrador. Inicia sesión con una cuenta de administrador para continuar.</div>
     </div>
-    <div id="contenido-tab-historial-logueado" style="margin:16px 0 20px 0;display:none;">
+    <div id="contenido-tab-historial-logueado" style="margin:16px 0 24px;display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
         <div>
-          <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:900;">📋 Historial y Auditoría</h2>
-          <p style="margin:5px 0 0 0;color:#64748b;font-size:13px;font-weight:500;">
-            Seguimiento diario por persona: OPAs creadas, fotos cargadas, ediciones y cambios realizados. Acceso exclusivo para administradores.
-          </p>
+          <h2 style="margin:0;font-size:22px;color:#0f172a;font-weight:900;">📋 Historial de actividad</h2>
+          <p style="margin:5px 0 0;color:#64748b;font-size:13px;">Consulta quién hizo cada acción, cuándo la hizo y qué OPA fue afectada.</p>
         </div>
-        <div style="display:flex;gap:10px;flex-shrink:0;flex-wrap:wrap;">
-          <button class="btn-secondary" onclick="_historialCargar()" style="pointer-events:auto;cursor:pointer;">🔄 Actualizar</button>
-        </div>
-      </div>
-
-      <!-- TARJETAS RESUMEN GLOBALES -->
-      <div style="display:none;">
-        <div class="estado-chip-card" style="padding:14px 16px;background:linear-gradient(135deg,#eff6ff,#dbeafe);border-color:#bfdbfe;">
-          <div style="font-size:11px;color:#1e40af;font-weight:800;letter-spacing:.3px;margin-bottom:6px;">USUARIOS REGISTRADOS</div>
-          <div id="hist-global-usuarios" style="font-size:28px;color:#0f172a;font-weight:900;line-height:1;">—</div>
-        </div>
-        <div class="estado-chip-card" style="padding:14px 16px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-color:#fcd34d;">
-          <div style="font-size:11px;color:#92400e;font-weight:800;letter-spacing:.3px;margin-bottom:6px;">TOTAL ACCIONES</div>
-          <div id="hist-global-acciones" style="font-size:28px;color:#0f172a;font-weight:900;line-height:1;">—</div>
-        </div>
-        <div class="estado-chip-card" style="padding:14px 16px;background:linear-gradient(135deg,#dbeafe,#bfdbfe);border-color:#93c5fd;">
-          <div style="font-size:11px;color:#1e3a8a;font-weight:800;letter-spacing:.3px;margin-bottom:6px;">CAMBIOS DE ESTADO</div>
-          <div id="hist-global-cambios-estado" style="font-size:28px;color:#0f172a;font-weight:900;line-height:1;">—</div>
-        </div>
-        <div class="estado-chip-card" style="padding:14px 16px;background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-color:#86efac;">
-          <div style="font-size:11px;color:#166534;font-weight:800;letter-spacing:.3px;margin-bottom:6px;">EDICIONES DE CAMPO (lápiz)</div>
-          <div id="hist-global-ediciones" style="font-size:28px;color:#0f172a;font-weight:900;line-height:1;">—</div>
-        </div>
-        <div class="estado-chip-card" style="padding:14px 16px;background:linear-gradient(135deg,#ede9fe,#ddd6fe);border-color:#c4b5fd;">
-          <div style="font-size:11px;color:#5b21b6;font-weight:800;letter-spacing:.3px;margin-bottom:6px;">OPAs ÚNICAS TOCADAS</div>
-          <div id="hist-global-opas" style="font-size:28px;color:#0f172a;font-weight:900;line-height:1;">—</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="_historialLimpiarFiltros()" type="button">Limpiar filtros</button>
+          <button class="btn-primary" onclick="_historialCargar()" type="button">↻ Actualizar historial</button>
         </div>
       </div>
 
-      <!-- FILTROS -->
-      <div class="panel" style="padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <div style="min-width:180px;flex:1;">
-          <label style="display:block;font-size:11.5px;color:#334155;font-weight:800;margin-bottom:4px;">Filtrar por usuario</label>
-          <select id="hist-filtro-usuario" onchange="_historialAplicarFiltros()"
-            style="width:100%;padding:9px 12px;border-radius:10px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13px;">
-            <option value="">👥 Todos los usuarios</option>
-          </select>
+      <div class="panel" style="padding:16px;margin-bottom:16px;border:1px solid #dbe5f1;background:linear-gradient(135deg,#fff,#f8fbff);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;font-weight:900;color:#1e293b;">🔎 Filtros del historial</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;align-items:end;">
+          <div><label for="hist-filtro-usuario" style="display:block;font-size:12px;color:#475569;font-weight:800;margin-bottom:5px;">Persona</label><select id="hist-filtro-usuario" onchange="_historialAplicarFiltros()" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:white;color:#0f172a;"><option value="">Todas las personas</option></select></div>
+          <div><label for="hist-filtro-desde" style="display:block;font-size:12px;color:#475569;font-weight:800;margin-bottom:5px;">Desde</label><input id="hist-filtro-desde" type="date" onchange="_historialAplicarFiltros()" style="width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:10px;background:white;color:#0f172a;"></div>
+          <div><label for="hist-filtro-hasta" style="display:block;font-size:12px;color:#475569;font-weight:800;margin-bottom:5px;">Hasta</label><input id="hist-filtro-hasta" type="date" onchange="_historialAplicarFiltros()" style="width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:10px;background:white;color:#0f172a;"></div>
+          <div><label for="hist-filtro-tipo" style="display:block;font-size:12px;color:#475569;font-weight:800;margin-bottom:5px;">Acción</label><select id="hist-filtro-tipo" onchange="_historialAplicarFiltros()" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:white;color:#0f172a;"><option value="">Todas las acciones</option><option value="CAMBIO_ESTADO">Cambio de estado</option><option value="EDITAR_CAMPO">Edición de campo</option><option value="CREAR_REGISTRO">Creación</option><option value="ELIMINAR">Eliminación registrada</option><option value="ADJUNTAR">Fotos o archivos</option><option value="CAMBIO_PERMISOS|RESTABLECER_CONTRASENA|ASIGNAR_ACTIVIDADES">Administración de usuarios</option><option value="LOGIN_OK">Inicio de sesión</option><option value="LOGIN_FALLIDO">Inicio fallido</option></select></div>
+          <div style="grid-column:span 2;min-width:180px;"><label for="hist-filtro-texto" style="display:block;font-size:12px;color:#475569;font-weight:800;margin-bottom:5px;">Buscar OPA, hoja o detalle</label><input id="hist-filtro-texto" type="search" placeholder="Escribe para buscar…" oninput="_historialAplicarFiltros()" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:white;color:#0f172a;"></div>
         </div>
-        <div style="min-width:200px;flex:1;">
-          <label style="display:block;font-size:11.5px;color:#334155;font-weight:800;margin-bottom:4px;">Tipo de acción</label>
-          <select id="hist-filtro-tipo" onchange="_historialAplicarFiltros()"
-            style="width:100%;padding:9px 12px;border-radius:10px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13px;">
-            <option value="">📋 Todas las acciones</option>
-            <option value="CAMBIO_ESTADO">🔄 Cambio de estado</option>
-            <option value="EDITAR_CAMPO">✏️ Editar campo (lápiz)</option>
-            <option value="CAMBIO_PERMISOS">🔐 Cambio de permisos</option>
-            <option value="CREAR_REGISTRO_OPA">➕ Crear registro</option>
-            <option value="ADJUNTAR_IMAGENES|ADJUNTAR_FOTOS_GUIA_ENVIO">🖼️ Adjuntar imágenes</option>
-            <option value="LOGIN_OK|LOGIN">✅ Inicios de sesión</option>
-            <option value="LOGIN_FALLIDO">❌ Logins fallidos</option>
-          </select>
-        </div>
-        <div style="min-width:220px;flex:1;">
-          <label style="display:block;font-size:11.5px;color:#334155;font-weight:800;margin-bottom:4px;">Buscar texto libre (OPA, hoja, etc.)</label>
-          <input type="text" id="hist-filtro-texto" placeholder="Ej: 040587, BLUEY, etc."
-            oninput="try{clearTimeout(window.__histFiltroT);}catch(_){}window.__histFiltroT=setTimeout(function(){_historialAplicarFiltros();},220);"
-            style="width:100%;padding:9px 12px;border-radius:10px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13px;outline:none;user-select:text;cursor:text;" />
-        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:11px;"><button type="button" class="btn-secondary" onclick="_historialRangoRapido('hoy')">Hoy</button><button type="button" class="btn-secondary" onclick="_historialRangoRapido('7d')">Últimos 7 días</button><button type="button" class="btn-secondary" onclick="_historialRangoRapido('30d')">Últimos 30 días</button><button type="button" class="btn-secondary" onclick="_historialRangoRapido('todo')">Todo el historial disponible</button></div>
       </div>
 
-      <!-- RESUMEN POR USUARIO -->
-      <div class="panel" style="padding:18px 20px;margin-bottom:16px;display:none;">
-        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-          <div><h3 style="margin:0;font-size:16px;color:#0f172a;font-weight:900;">📈 Productividad diaria por usuario</h3>
-            <div style="margin-top:4px;font-size:12px;color:#64748b;">OPAs creadas, ediciones, cambios de estado e imágenes cargadas por cada persona en el día seleccionado.</div></div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="btn-secondary" onclick="_historialElegirDia(-1)">Ayer</button>
-            <button type="button" class="btn-secondary" onclick="_historialElegirDia(0)">Hoy</button>
-            <input id="hist-productividad-fecha" type="date" onchange="_historialRenderProductividad();_historialAplicarFiltros()" aria-label="Día de productividad" style="padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-weight:700;" />
-          </div>
-        </div>
-        <div id="hist-productividad-resumen" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px;margin-bottom:12px;"></div>
-        <div style="overflow:auto;border:1px solid #e2e8f0;border-radius:12px;">
-          <table class="opa-table" style="width:100%;min-width:760px;border-collapse:collapse;">
-            <thead style="background:#f8fafc;"><tr><th>Usuario</th><th>OPAs creadas</th><th>Ediciones</th><th>Cambios de estado</th><th>Imágenes subidas</th><th>OPAs únicas trabajadas</th><th>Acciones productivas</th></tr></thead>
-            <tbody id="hist-productividad-body"><tr><td colspan="7" style="text-align:center;padding:18px;color:#64748b;">Selecciona un día.</td></tr></tbody>
-          </table>
-        </div>
-        <div style="margin-top:8px;font-size:11px;color:#64748b;">El reporte se calcula con las últimas 3.000 acciones guardadas en la auditoría.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-bottom:16px;">
+        <div class="panel" style="padding:13px 15px;border-left:4px solid #2563eb;"><div style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;">Acciones</div><div id="hist-kpi-acciones" style="font-size:25px;color:#1d4ed8;font-weight:900;">0</div></div>
+        <div class="panel" style="padding:13px 15px;border-left:4px solid #10b981;"><div style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;">OPAs creadas</div><div id="hist-kpi-creadas" style="font-size:25px;color:#047857;font-weight:900;">0</div></div>
+        <div class="panel" style="padding:13px 15px;border-left:4px solid #f59e0b;"><div style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;">Ediciones y estados</div><div id="hist-kpi-cambios" style="font-size:25px;color:#b45309;font-weight:900;">0</div></div>
+        <div class="panel" style="padding:13px 15px;border-left:4px solid #8b5cf6;"><div style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;">Archivos adjuntos</div><div id="hist-kpi-archivos" style="font-size:25px;color:#6d28d9;font-weight:900;">0</div></div>
+        <div class="panel" style="padding:13px 15px;border-left:4px solid #0f766e;"><div style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;">Personas activas</div><div id="hist-kpi-personas" style="font-size:25px;color:#0f766e;font-weight:900;">0</div></div>
       </div>
 
-      <!-- RESUMEN POR USUARIO -->
-      <div class="panel" style="padding:18px 20px;margin-bottom:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-          <h3 style="margin:0;font-size:15px;color:#0f172a;font-weight:900;">👥 Resumen por Usuario Registrado</h3>
-          <div style="font-size:12px;color:#64748b;font-weight:600;">Cada tarjeta = 1 usuario · ordenado por actividad</div>
-        </div>
-        <div id="hist-resumen-usuarios" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
-          <div style="color:#64748b;padding:20px;text-align:center;font-weight:600;font-size:13px;">⌛ Cargando resumen...</div>
-        </div>
+      <div class="panel" style="padding:16px 18px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:11px;"><div><h3 style="margin:0;font-size:16px;font-weight:900;color:#0f172a;">Producción por persona</h3><div style="font-size:12px;color:#64748b;margin-top:3px;">Conteos calculados con las acciones visibles según los filtros.</div></div><span id="hist-productividad-rango" style="font-size:12px;font-weight:700;color:#475569;"></span></div>
+        <div style="overflow:auto;border:1px solid #e2e8f0;border-radius:12px;"><table class="opa-table" style="width:100%;min-width:760px;border-collapse:collapse;"><thead style="background:#f8fafc;"><tr><th>Persona</th><th>OPAs creadas</th><th>Ediciones</th><th>Cambios de estado</th><th>Archivos</th><th>Eliminaciones registradas</th><th>OPAs trabajadas</th><th>Acciones productivas</th></tr></thead><tbody id="hist-productividad-body"><tr><td colspan="8" style="text-align:center;padding:18px;color:#64748b;">Cargando actividad…</td></tr></tbody></table></div>
+        <div style="margin-top:9px;padding:10px 12px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#854d0e;font-size:12px;line-height:1.5;">Se consultan los últimos 10.000 movimientos guardados. Las eliminaciones hechas directamente en SeaTable no llegan a esta auditoría; aquí se mostrarán cuando una función de la aplicación registre la eliminación.</div>
       </div>
 
       <!-- TABLA DETALLE AUDITORÍA -->
       <div class="panel" style="padding:0;overflow:hidden;">
         <div style="padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-          <h3 style="margin:0;font-size:15px;color:#0f172a;font-weight:900;">📝 Actividad de usuarios del día seleccionado</h3>
+          <h3 style="margin:0;font-size:15px;color:#0f172a;font-weight:900;">🧾 Detalle de movimientos</h3>
           <div id="hist-detalle-contador" style="font-size:12px;color:#64748b;font-weight:700;">0 filas</div>
         </div>
         <div style="overflow-x:auto;max-height:72vh;overflow-y:auto;">
@@ -4268,15 +4203,14 @@
               <tr>
                 <th style="width:160px;">Fecha y Hora</th>
                 <th style="width:140px;">Usuario</th>
-                <th style="width:110px;">Rol</th>
-                <th style="width:170px;">Tipo de acción</th>
-                <th style="width:110px;">OPA</th>
-                <th style="width:120px;">Hoja</th>
-                <th style="min-width:280px;">Detalle</th>
+                <th style="width:170px;">Acción</th>
+                <th style="width:130px;">OPA</th>
+                <th style="width:140px;">Hoja</th>
+                <th style="min-width:320px;">Qué cambió</th>
               </tr>
             </thead>
             <tbody id="hist-detalle-body">
-              <tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#64748b;font-weight:600;">⌛ Cargando historial de auditoría...</td></tr>
+              <tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#64748b;font-weight:600;">⌛ Cargando historial de auditoría...</td></tr>
             </tbody>
           </table>
         </div>
@@ -10845,7 +10779,7 @@
 
         const tbody = document.getElementById('hist-detalle-body');
         const resumenWrap = document.getElementById('hist-resumen-usuarios');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#64748b;font-weight:600;">⌛ Cargando historial de auditoría...</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#64748b;font-weight:600;">⌛ Cargando historial de auditoría...</td></tr>';
         if (resumenWrap) resumenWrap.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;font-weight:600;font-size:13px;">⌛ Cargando resumen por usuarios...</div>';
 
         ['hist-global-usuarios','hist-global-acciones','hist-global-cambios-estado','hist-global-ediciones','hist-global-opas'].forEach(function(id){
@@ -10853,14 +10787,14 @@
         });
 
         const selUsr = document.getElementById('hist-filtro-usuario');
-        if (selUsr) selUsr.innerHTML = '<option value="">👥 Todos los usuarios</option>';
+        if (selUsr) selUsr.innerHTML = '<option value="">Todas las personas</option>';
 
         if (!google || !google.script || !google.script.run) {
-          if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Sin conexión con Apps Script.</td></tr>';
+          if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Sin conexión con Apps Script.</td></tr>';
           return;
         }
         if (!_authSesionActual || !_authSesionActual.token) {
-          if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Sin sesión activa. Inicia sesión de nuevo.</td></tr>';
+          if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Sin sesión activa. Inicia sesión de nuevo.</td></tr>';
           return;
         }
 
@@ -10868,19 +10802,16 @@
           .withSuccessHandler(function(r) {
             try {
               if (!r || !r.ok) {
-                if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(r && r.error || 'Error al cargar historial.')) + '</td></tr>';
+                if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(r && r.error || 'Error al cargar historial.')) + '</td></tr>';
                 if (resumenWrap) resumenWrap.innerHTML = '<div style="color:#b91c1c;padding:20px;text-align:center;font-weight:700;font-size:13px;">❌ ' + escapeHTML(String(r && r.error || 'Error.')) + '</div>';
                 return;
               }
 
               window.__historialCache = {
-                resumenUsuarios: Array.isArray(r.resumenUsuarios) ? r.resumenUsuarios : [],
+          resumenUsuarios: Array.isArray(r.resumenUsuarios) ? r.resumenUsuarios : [],
                 listado: Array.isArray(r.listado) ? r.listado : [],
                 totalesGlobales: r.totalesGlobales || {}
               };
-
-              const fechaProd = document.getElementById('hist-productividad-fecha');
-              if (fechaProd && !fechaProd.value) fechaProd.value = _historialFechaBogota(new Date());
 
               const tg = window.__historialCache.totalesGlobales;
               try { const el = document.getElementById('hist-global-usuarios'); if (el) el.textContent = String(tg.totalUsuariosRegistrados ?? 0); } catch(_) {}
@@ -10890,7 +10821,7 @@
               try { const el = document.getElementById('hist-global-opas'); if (el) el.textContent = String(tg.totalOPAsTocadas ?? 0); } catch(_) {}
 
               if (selUsr) {
-                let opts = '<option value="">👥 Todos los usuarios</option>';
+                let opts = '<option value="">Todas las personas</option>';
                 const usernamesUnicos = {};
                 window.__historialCache.resumenUsuarios.forEach(function(u) {
                   const usr = String(u.username || '').trim();
@@ -10914,11 +10845,11 @@
               _historialAplicarFiltros();
 
             } catch (e) {
-              if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Error render: ' + escapeHTML(String(e && e.message || e)) + '</td></tr>';
+              if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Error render: ' + escapeHTML(String(e && e.message || e)) + '</td></tr>';
             }
           })
           .withFailureHandler(function(err) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
             if (resumenWrap) resumenWrap.innerHTML = '<div style="color:#b91c1c;padding:20px;text-align:center;font-weight:700;font-size:13px;">❌ ' + escapeHTML(String(err && err.message || err)) + '</div>';
           })
           .adminObtenerHistorialYEstadisticas(_authSesionActual.token);
@@ -10926,7 +10857,7 @@
       } catch(err) {
         try {
           const tbody = document.getElementById('hist-detalle-body');
-          if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
+          if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
         } catch(_) {}
       }
     }
@@ -10937,33 +10868,48 @@
       catch(_) { return new Date(fecha).toISOString().slice(0,10); }
     }
 
-    function _historialElegirDia(offset) {
-      const d = new Date(); d.setDate(d.getDate() + (Number(offset) || 0));
-      const input = document.getElementById('hist-productividad-fecha');
-      if (input) { input.value = _historialFechaBogota(d); _historialRenderProductividad(); _historialAplicarFiltros(); }
+    function _historialRangoRapido(rango) {
+      const desde = document.getElementById('hist-filtro-desde');
+      const hasta = document.getElementById('hist-filtro-hasta');
+      if (!desde || !hasta) return;
+      if (rango === 'todo') { desde.value = ''; hasta.value = ''; }
+      else {
+        const fin = new Date();
+        const inicio = new Date(fin);
+        if (rango === '7d') inicio.setDate(inicio.getDate() - 6);
+        else if (rango === '30d') inicio.setDate(inicio.getDate() - 29);
+        desde.value = _historialFechaBogota(inicio);
+        hasta.value = _historialFechaBogota(fin);
+      }
+      _historialAplicarFiltros();
+    }
+
+    function _historialLimpiarFiltros() {
+      ['hist-filtro-usuario','hist-filtro-desde','hist-filtro-hasta','hist-filtro-tipo','hist-filtro-texto'].forEach(function(id) { const el = document.getElementById(id); if (el) el.value = ''; });
+      _historialAplicarFiltros();
     }
 
     function _historialRenderProductividad() {
       const body = document.getElementById('hist-productividad-body');
-      const cards = document.getElementById('hist-productividad-resumen');
-      const input = document.getElementById('hist-productividad-fecha');
-      if (!body || !cards) return;
-      const day = String(input && input.value || _historialFechaBogota(new Date()));
+      const desde = String(document.getElementById('hist-filtro-desde')?.value || '');
+      const hasta = String(document.getElementById('hist-filtro-hasta')?.value || '');
+      const rango = document.getElementById('hist-productividad-rango');
+      if (!body) return;
+      const events = Array.isArray(window.__historialEventosFiltrados) ? window.__historialEventosFiltrados : [];
+      if (rango) rango.textContent = desde || hasta ? (desde || 'Inicio') + ' — ' + (hasta || 'Hoy') : 'Todo el historial disponible';
       const porUsuario = {};
-      const events = (window.__historialCache && Array.isArray(window.__historialCache.listado) ? window.__historialCache.listado : []).filter(function(item) {
-        if (!item || !item.tsISO) return false;
-        const dt = new Date(item.tsISO);
-        return !isNaN(dt.getTime()) && _historialFechaBogota(dt) === day;
-      });
+      const nombrePorUsuario = {};
+      ((window.__historialCache && window.__historialCache.resumenUsuarios) || []).forEach(function(persona) { if (persona && persona.username) nombrePorUsuario[String(persona.username)] = String(persona.nombreCompleto || persona.username); });
       events.forEach(function(item) {
         const type = String(item.tipoAccion || '').toUpperCase();
         const category = type.indexOf('CREAR_REGISTRO') >= 0 ? 'creados' :
           type.indexOf('EDITAR_CAMPO') >= 0 ? 'ediciones' :
           type.indexOf('CAMBIO_ESTADO') >= 0 ? 'estados' :
-          type.indexOf('ADJUNTAR') >= 0 ? 'imagenes' : '';
+          type.indexOf('ADJUNTAR') >= 0 ? 'imagenes' :
+          type.indexOf('ELIMINAR') >= 0 || type.indexOf('BORRAR') >= 0 ? 'eliminados' : '';
         if (!category) return;
         const username = String(item.username || 'Sin usuario');
-        const stat = porUsuario[username] || (porUsuario[username] = { username, creados:0, ediciones:0, estados:0, imagenes:0, opas:{}, total:0 });
+        const stat = porUsuario[username] || (porUsuario[username] = { username, nombre:nombrePorUsuario[username] || username, creados:0, ediciones:0, estados:0, imagenes:0, eliminados:0, opas:{}, total:0 });
         let cantidad = 1;
         if (category === 'imagenes') {
           try {
@@ -10971,16 +10917,16 @@
             cantidad = Array.isArray(detail && (detail.archivos || detail.files)) ? (detail.archivos || detail.files).length : Math.max(1, Number(detail && detail.cantidad) || 1);
           } catch(_) {}
         }
-        stat[category] += cantidad;
+        if (category === 'imagenes') stat.imagenes += cantidad; else stat[category] += 1;
         stat.total++;
         if (item.opaAfectada) stat.opas[String(item.opaAfectada)] = true;
       });
       const rows = Object.keys(porUsuario).map(function(key){ return porUsuario[key]; }).sort(function(a,b){ return b.total-a.total || a.username.localeCompare(b.username); });
-      const sums = rows.reduce(function(s,r){ s.creados+=r.creados; s.ediciones+=r.ediciones; s.estados+=r.estados; s.imagenes+=r.imagenes; s.total+=r.total; return s; }, {creados:0,ediciones:0,estados:0,imagenes:0,total:0});
-      const kpis = [ ['Personas activas', rows.length, '#eff6ff','#1d4ed8'], ['Registros creados', sums.creados, '#ecfdf5','#047857'], ['Ediciones', sums.ediciones, '#f0fdfa','#0f766e'], ['Cambios de estado', sums.estados, '#fffbeb','#b45309'], ['Imágenes', sums.imagenes, '#f5f3ff','#6d28d9'] ];
-      cards.innerHTML = kpis.map(function(k){ return '<div style="padding:11px 13px;border:1px solid #e2e8f0;border-radius:12px;background:'+k[2]+';"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:800;color:'+k[3]+';">'+escapeHTML(k[0])+'</div><div style="margin-top:3px;font-size:24px;line-height:1.1;font-weight:900;color:#0f172a;">'+k[1]+'</div></div>'; }).join('');
-      if (!rows.length) { body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b;">No hay acciones productivas registradas para '+escapeHTML(day)+'.</td></tr>'; return; }
-      body.innerHTML = rows.map(function(r){ return '<tr><td style="font-weight:800;">'+escapeHTML(r.username)+'</td><td>'+r.creados+'</td><td>'+r.ediciones+'</td><td>'+r.estados+'</td><td>'+r.imagenes+'</td><td>'+Object.keys(r.opas).length+'</td><td style="font-weight:900;color:#1d4ed8;">'+r.total+'</td></tr>'; }).join('');
+      const sums = rows.reduce(function(s,r){ s.creados+=r.creados; s.ediciones+=r.ediciones; s.estados+=r.estados; s.imagenes+=r.imagenes; s.eliminados+=r.eliminados; s.total+=r.total; return s; }, {creados:0,ediciones:0,estados:0,imagenes:0,eliminados:0,total:0});
+      const kpi = function(id, value) { const el = document.getElementById(id); if (el) el.textContent = String(value); };
+      kpi('hist-kpi-acciones', events.length); kpi('hist-kpi-creadas', sums.creados); kpi('hist-kpi-cambios', sums.ediciones + sums.estados); kpi('hist-kpi-archivos', sums.imagenes); kpi('hist-kpi-personas', rows.length);
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#64748b;">No hay acciones registradas con los filtros seleccionados.</td></tr>'; return; }
+      body.innerHTML = rows.map(function(r){ return '<tr><td><div style="font-weight:800;">'+escapeHTML(r.nombre)+'</div><div style="font-size:11px;color:#64748b;">@'+escapeHTML(r.username)+'</div></td><td>'+r.creados+'</td><td>'+r.ediciones+'</td><td>'+r.estados+'</td><td>'+r.imagenes+'</td><td>'+r.eliminados+'</td><td>'+Object.keys(r.opas).length+'</td><td style="font-weight:900;color:#1d4ed8;">'+r.total+'</td></tr>'; }).join('');
     }
 
 
@@ -10988,7 +10934,7 @@
       try {
         const wrap = document.getElementById('hist-resumen-usuarios');
         if (!wrap) return;
-        if (!window.__historialCache || !Array.isArray(window.__historialCache.resumenUsuarios)) {
+              if (!window.__historialCache || !Array.isArray(window.__historialCache.resumenUsuarios)) {
           wrap.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;font-weight:600;font-size:13px;">Sin datos todavía.</div>';
           return;
         }
@@ -11090,7 +11036,7 @@
         if (contador) contador.textContent = arr.length + ' fila' + (arr.length === 1 ? '' : 's');
 
         if (!arr.length) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#64748b;font-weight:600;">No se encontraron resultados con los filtros actuales.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#64748b;font-weight:600;">No se encontraron resultados con los filtros actuales.</td></tr>';
           return;
         }
 
@@ -11099,27 +11045,36 @@
           if (t.indexOf('CAMBIO_ESTADO') !== -1 || t.indexOf('ESTADO') !== -1) return { bg: 'rgba(59,130,246,.12)', color: '#1e40af', border: 'rgba(59,130,246,.25)', emoji: '🔄' };
           if (t.indexOf('EDITAR') !== -1) return { bg: 'rgba(34,197,94,.12)', color: '#166534', border: 'rgba(34,197,94,.25)', emoji: '✏️' };
           if (t.indexOf('PERMISOS') !== -1) return { bg: 'rgba(139,92,246,.12)', color: '#5b21b6', border: 'rgba(139,92,246,.25)', emoji: '🔐' };
-          if (t.indexOf('FALLIDO') !== -1) return { bg: 'rgba(239,68,68,.12)', color: '#991b1b', border: 'rgba(239,68,68,.25)', emoji: '❌' };
+          if (t.indexOf('FALLIDO') !== -1 || t.indexOf('ELIMIN') !== -1 || t.indexOf('BORRAR') !== -1) return { bg: 'rgba(239,68,68,.12)', color: '#991b1b', border: 'rgba(239,68,68,.25)', emoji: '❌' };
           if (t.indexOf('LOGIN') !== -1 || t.indexOf('INICIO_SESION') !== -1) return { bg: 'rgba(34,197,94,.1)', color: '#166534', border: 'rgba(34,197,94,.2)', emoji: '✅' };
           if (t.indexOf('REGISTRO') !== -1) return { bg: 'rgba(234,179,8,.12)', color: '#854d0e', border: 'rgba(234,179,8,.25)', emoji: '🆕' };
           return { bg: 'rgba(100,116,139,.12)', color: '#334155', border: 'rgba(100,116,139,.25)', emoji: '📋' };
         }
 
+        function nombreAccion(tipo) {
+          const labels = { CAMBIO_ESTADO:'Cambio de estado', EDITAR_CAMPO:'Edición de campo', CREAR_REGISTRO_OPA:'Creación de OPA', ADJUNTAR_IMAGENES:'Adjuntar fotos del producto', ADJUNTAR_FOTOS_GUIA_ENVIO:'Adjuntar fotos de guía', LOGIN_OK:'Inicio de sesión', LOGIN_FALLIDO:'Inicio fallido', CAMBIO_PERMISOS:'Cambio de permisos', RESTABLECER_CONTRASENA:'Restablecer contraseña', ASIGNAR_ACTIVIDADES:'Asignación de actividades', REGISTRO_USUARIO:'Registro de usuario', ELIMINAR_REGISTRO_OPA:'Eliminación de OPA', ELIMINAR_OPA:'Eliminación de OPA' };
+          const key = String(tipo || '').toUpperCase();
+          return labels[key] || key.toLowerCase().replace(/_/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});
+        }
+
         function prettyDetalle(d) {
           try {
             if (d == null || d === '') return '<span style="color:#94a3b8;font-style:italic;">—</span>';
+            if (typeof d === 'string') { try { d = JSON.parse(d); } catch(_) {} }
             if (typeof d === 'object') {
+              const labels = { campo:'Campo', valorAnterior:'Antes', valor:'Después', valorNuevo:'Después', estadoAnterior:'Estado anterior', estado:'Estado nuevo', fecha:'Fecha', archivos:'Archivos', campos:'Campos registrados' };
+              const entries = Object.entries(d);
+              if (entries.length && !Array.isArray(d)) return '<div style="display:grid;grid-template-columns:minmax(90px,auto) 1fr;gap:5px 10px;font-size:12px;line-height:1.45;">' + entries.map(function(entry) {
+                const key = String(entry[0]); const val = entry[1];
+                const label = labels[key] || key.replace(/_/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});
+                const shown = Array.isArray(val) ? val.join(', ') : (val && typeof val === 'object' ? JSON.stringify(val) : String(val == null || val === '' ? '—' : val));
+                const emph = /valorNuevo|estado$/.test(key) ? 'color:#047857;font-weight:800;' : (/valorAnterior|estadoAnterior/.test(key) ? 'color:#b45309;font-weight:700;' : 'color:#334155;');
+                return '<span style="color:#64748b;font-weight:800;">'+escapeHTML(label)+'</span><span style="'+emph+'word-break:break-word;">'+escapeHTML(shown)+'</span>';
+              }).join('') + '</div>';
               return '<pre style="margin:0;padding:8px 10px;border-radius:8px;background:rgba(15,23,42,.04);border:1px solid rgba(148,163,184,.25);color:#0f172a;font-size:11px;white-space:pre-wrap;word-break:break-all;font-family:Consolas,monospace;line-height:1.45;">' +
                 escapeHTML(JSON.stringify(d, null, 2)) + '</pre>';
             }
             const s = String(d);
-            if ((s.charAt(0) === '{' && s.charAt(s.length - 1) === '}') || (s.charAt(0) === '[' && s.charAt(s.length - 1) === ']')) {
-              try {
-                const parsed = JSON.parse(s);
-                return '<pre style="margin:0;padding:8px 10px;border-radius:8px;background:rgba(15,23,42,.04);border:1px solid rgba(148,163,184,.25);color:#0f172a;font-size:11px;white-space:pre-wrap;word-break:break-all;font-family:Consolas,monospace;line-height:1.45;">' +
-                  escapeHTML(JSON.stringify(parsed, null, 2)) + '</pre>';
-              } catch(_) {}
-            }
             return '<span style="color:#334155;font-weight:500;">' + escapeHTML(s) + '</span>';
           } catch(_) {
             return escapeHTML(String(d || ''));
@@ -11127,24 +11082,21 @@
         }
 
         let html = '';
+        const nombrePorUsuario = {};
+        ((window.__historialCache && window.__historialCache.resumenUsuarios) || []).forEach(function(persona) { if (persona && persona.username) nombrePorUsuario[String(persona.username)] = String(persona.nombreCompleto || persona.username); });
         for (let i = 0; i < arr.length; i++) {
           const h = arr[i];
           const tipo = String(h.tipoAccion || 'OTRA');
           const c = colorParaTipo(tipo);
-          const rol = String(h.rol || 'USUARIO').trim().toUpperCase();
-          const esAdmin = rol === 'ADMINISTRADOR' || rol === 'ADMIN';
-          const rolBg = esAdmin ? '#fef3c7' : '#e0f2fe';
-          const rolColor = esAdmin ? '#92400e' : '#075985';
           const fechaTxt = String(h.tsLocal || h.fechaHoraTxt || '').slice(0, 19);
 
           html += '<tr style="vertical-align:top;">' +
             '<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;color:#334155;white-space:nowrap;font-size:12px;font-weight:600;">' + escapeHTML(fechaTxt) + '</td>' +
-            '<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:800;font-size:12.5px;">@' + escapeHTML(String(h.username || '—')) + '</td>' +
-            '<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;"><span style="padding:2px 9px;border-radius:9999px;background:' + rolBg + ';color:' + rolColor + ';font-weight:800;font-size:10.5px;">' + escapeHTML(rol) + '</span></td>' +
+            '<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-size:12.5px;"><div style="font-weight:800;">' + escapeHTML(nombrePorUsuario[String(h.username || '')] || String(h.username || '—')) + '</div><div style="font-size:11px;color:#64748b;">@' + escapeHTML(String(h.username || '—')) + '</div></td>' +
             '<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;">' +
               '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;background:' + c.bg + ';border:1px solid ' + c.border + ';color:' + c.color + ';font-weight:800;font-size:11px;">' +
                 '<span>' + c.emoji + '</span>' +
-                '<span>' + escapeHTML(tipo) + '</span>' +
+                '<span>' + escapeHTML(nombreAccion(tipo)) + '</span>' +
               '</span>' +
             '</td>' +
             '<td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:800;font-size:12.5px;">' + (h.opaAfectada ? escapeHTML(String(h.opaAfectada)) : '<span style="color:#94a3b8;font-style:italic;">—</span>') + '</td>' +
@@ -11158,7 +11110,7 @@
       } catch (err) {
         try {
           const tbody = document.getElementById('hist-detalle-body');
-          if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Error render tabla: ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
+          if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Error render tabla: ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
         } catch(_) {}
       }
     }
@@ -11176,15 +11128,19 @@
         const inpTexto = document.getElementById('hist-filtro-texto');
 
         const filtroUsr = String(selUsr && selUsr.value || '').trim();
-        const filtroDia = String(document.getElementById('hist-productividad-fecha') && document.getElementById('hist-productividad-fecha').value || '').trim();
+        const filtroDesde = String(document.getElementById('hist-filtro-desde')?.value || '').trim();
+        const filtroHasta = String(document.getElementById('hist-filtro-hasta')?.value || '').trim();
         const filtroTipoRaw = String(selTipo && selTipo.value || '').trim();
         const filtroTipoArr = filtroTipoRaw ? filtroTipoRaw.split('|').filter(function(x){ return x && x.trim(); }).map(function(x){ return x.trim().toUpperCase(); }) : [];
         const filtroTexto = String(inpTexto && inpTexto.value || '').trim().toLowerCase();
 
         const resultados = window.__historialCache.listado.filter(function(h) {
-          if (filtroDia) {
+          if (filtroDesde || filtroHasta) {
             const instante = new Date(h.tsISO || '');
-            if (isNaN(instante.getTime()) || _historialFechaBogota(instante) !== filtroDia) return false;
+            if (isNaN(instante.getTime())) return false;
+            const day = _historialFechaBogota(instante);
+            if (filtroDesde && day < filtroDesde) return false;
+            if (filtroHasta && day > filtroHasta) return false;
           }
           if (filtroUsr) {
             const hu = String(h.username || '').trim();
@@ -11216,12 +11172,14 @@
           return true;
         });
 
+        window.__historialEventosFiltrados = resultados;
+        _historialRenderProductividad();
         _historialRenderDetalle(resultados);
 
       } catch (err) {
         try {
           const tbody = document.getElementById('hist-detalle-body');
-          if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Error filtrado: ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
+          if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ Error filtrado: ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
         } catch(_) {}
       }
     }
