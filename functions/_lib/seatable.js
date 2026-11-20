@@ -195,7 +195,6 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
       url.searchParams.set("start", String(start));
       url.searchParams.set("limit", String(pageSize));
       url.searchParams.set("convert_keys", "true");
-      if (env.SEATABLE_VIEW_NAME) url.searchParams.set("view_name", env.SEATABLE_VIEW_NAME);
       const response = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }, 15_000);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(`Error leyendo la tabla "${tableName}" de SeaTable (HTTP ${response.status}).`);
@@ -234,27 +233,26 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
     return tableRows;
   }
   async function readTable(tableName) {
-    // SQL recupera hasta 10.000 filas por llamada frente al límite de 1.000
-    // del endpoint de filas. Si SQL no está disponible, conserva compatibilidad.
-    if (!env.SEATABLE_VIEW_NAME) {
-      try { return await readTableWithSql(tableName); }
-      catch (projectionError) {
-        // Un timeout indica que SeaTable está lento; volver a pedir la misma
-        // tabla por dos APIs distintas solo triplicaba la espera del usuario.
-        if (/tardó más de/i.test(String(projectionError && projectionError.message || projectionError))) throw projectionError;
-        if (projectedColumnsByTable.has(tableName)) {
-          // Si SeaTable no admite alguna columna proyectada, intenta la consulta
-          // SQL completa antes de caer al API paginado más lento.
-          projectedColumnsByTable.delete(tableName);
-          try { return await readTableWithSql(tableName); }
-          catch (fallbackError) {
-            if (/tardó más de/i.test(String(fallbackError && fallbackError.message || fallbackError))) throw fallbackError;
-          }
+    // El dashboard debe leer todas las filas de la tabla, no solo las visibles
+    // en una vista de SeaTable que puede tener filtros propios. SQL conserva
+    // la proyección de columnas y trae más filas por petición; si no está
+    // disponible, el endpoint paginado también se consulta sin view_name.
+    try { return await readTableWithSql(tableName); }
+    catch (projectionError) {
+      // Un timeout indica que SeaTable está lento; volver a pedir la misma
+      // tabla por otra API solo alarga la espera y puede agotar Pages Functions.
+      if (/tardó más de/i.test(String(projectionError && projectionError.message || projectionError))) throw projectionError;
+      if (projectedColumnsByTable.has(tableName)) {
+        // Si SeaTable no admite alguna columna proyectada, intenta la consulta
+        // SQL completa antes de caer al API paginado más lento.
+        projectedColumnsByTable.delete(tableName);
+        try { return await readTableWithSql(tableName); }
+        catch (fallbackError) {
+          if (/tardó más de/i.test(String(fallbackError && fallbackError.message || fallbackError))) throw fallbackError;
         }
-        return readTableWithRowsAPI(tableName);
       }
+      return readTableWithRowsAPI(tableName);
     }
-    return readTableWithRowsAPI(tableName);
   }
   for (let start = 0; start < tableNames.length; start += maxConcurrentTables) {
     const batch = tableNames.slice(start, start + maxConcurrentTables);
