@@ -219,16 +219,46 @@ export async function onRequestPost(context) {
           return Response.json({ ok: false, error: "Selecciona un estado válido." }, { status: 400, headers: { "Cache-Control": "no-store" } });
         }
         await assertEditableTable(env, table);
-        const previousRow = await getDashboardRow(env, table, rowId);
+        let selectedRowId = rowId;
+        let previousRow;
+        try {
+          previousRow = await getDashboardRow(env, table, selectedRowId);
+        } catch (error) {
+          if (!/HTTP 404/.test(String(error?.message || error))) throw error;
+          // La búsqueda puede conservar una copia con un row_id que ya no
+          // existe. Relee SeaTable solo ante ese 404 y recupera la fila si la
+          // OPA y sus datos identificadores apuntan a un registro inequívoco.
+          const freshRecords = await loadDashboardRecords(env, { forceRefresh: true, includeDuplicates: true });
+          let candidates = freshRecords.filter((record) =>
+            String(record.H || "").trim() === table &&
+            String(record.O || "").trim() === String(p.numeroOPA || "").trim()
+          );
+          for (const [key, fieldValue] of [["P", p.proyecto], ["T", p.tipoProducto], ["TR", p.territorio], ["SO", p.subOpa], ["PJ", p.personaje]]) {
+            if (String(fieldValue || "").trim()) {
+              const normalizedValue = normalizeHeader(fieldValue);
+              candidates = candidates.filter((record) => normalizeHeader(record[key]) === normalizedValue);
+            }
+          }
+          if (candidates.length !== 1 || !String(candidates[0]?._id || "").trim()) {
+            throw new Error(candidates.length
+              ? `La fila de la OPA ${p.numeroOPA || ""} cambió y hay varias filas iguales en ${table}. Vuelve a buscarla y selecciona el registro correcto.`
+              : `La fila seleccionada ya no existe en SeaTable. Vuelve a buscar la OPA ${p.numeroOPA || ""} y selecciona el registro actualizado.`);
+          }
+          previousRow = candidates[0];
+          selectedRowId = String(previousRow._id);
+        }
         const previousState = String(getRowValueForField(previousRow, getDashboardColumnName(env, "E")) || previousRow?.E || "");
         const updates = { [getDashboardColumnName(env, "E")]: state };
         const stageIndex = ESTADOS.findIndex((item) => item.toLocaleLowerCase() === state.toLocaleLowerCase());
         const stageKey = stageIndex >= 0 && stageIndex < 8 ? `F${stageIndex + 1}` : "";
         const fechaEscrita = stageKey && p.fechaElegida ? await formatDateForSeaTable(env, table, stageKey, p.fechaElegida) : "";
         if (fechaEscrita) updates[getDashboardColumnName(env, stageKey)] = fechaEscrita;
-        await updateDashboardRow(env, table, rowId, updates);
-        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estadoAnterior: previousState, estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: rowId });
-        value = { ok: true, hoja: table, fila: rowId, estado: state, fechaCampo: stageKey && fechaEscrita ? stageKey : "", fechaEscrita };
+        await updateDashboardRow(env, table, selectedRowId, updates);
+        let excelSyncWarning = "";
+        try { await updateExcelIndexRecord(env, table, selectedRowId, { E: state, ...(stageKey && fechaEscrita ? { [stageKey]: fechaEscrita } : {}) }); }
+        catch (error) { excelSyncWarning = `SeaTable guardó el cambio, pero el Excel no se actualizó: ${error.message}`; }
+        await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CAMBIO_ESTADO", detail: { estadoAnterior: previousState, estado: state, fecha: p.fechaElegida || "" }, opa: String(p.numeroOPA || ""), table, row: selectedRowId });
+        value = { ok: true, hoja: table, fila: selectedRowId, rowId: selectedRowId, estado: state, fechaCampo: stageKey && fechaEscrita ? stageKey : "", fechaEscrita, ...(excelSyncWarning ? { excelSyncWarning } : {}) };
         break;
       }
       case "crearRegistroOPA": {
