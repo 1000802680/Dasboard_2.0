@@ -399,6 +399,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
           await sharedCache.put(sharedRequest, new Response(JSON.stringify({
             records: durable.records, tableNames: durable.tableNames, revision: durable.revision || "", updatedAt: restoredAt,
           }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" } }));
+          await writeSharedDashboardMetadata(sharedCache, env, durable);
         } catch (_) {}
       }
       return durable.records;
@@ -476,6 +477,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
           // is controlled by updatedAt/revision below, not by Cache API expiry.
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
         }));
+        await writeSharedDashboardMetadata(sharedCache, env, { records, revision: scanRevision, updatedAt });
       } catch (_) {}
     }
     await writeDurableDashboardSnapshot(env, { records, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
@@ -583,7 +585,7 @@ async function writeDurableDashboardSnapshot(env, snapshot) {
     if (existing?.customMetadata?.contentHash === contentHash && Date.now() - lastWriteAt < 5 * 60_000) return;
     await bucket.put(key, serialized, {
       httpMetadata: { contentType: "application/json; charset=utf-8" },
-      customMetadata: { recordCount: String(snapshot.records.length), snapshotAt: String(snapshot.updatedAt || Date.now()), contentHash },
+      customMetadata: { recordCount: String(snapshot.records.length), snapshotAt: String(snapshot.updatedAt || Date.now()), revision: String(snapshot.revision || ""), contentHash },
     });
   } catch (error) {
     // R2 mejora la recuperación tras un cold start, pero no debe hacer fallar
@@ -600,6 +602,101 @@ async function readSharedDashboardSnapshot(cache, request) {
     return Array.isArray(snapshot.records) && Array.isArray(snapshot.tableNames) ? snapshot : null;
   } catch (_) { return null; }
 }
+function dashboardSnapshotMetadataRequest(env) {
+  return dashboardCacheRequest(env, "snapshot-meta");
+}
+
+async function readSharedDashboardMetadata(cache, env) {
+  if (!cache) return null;
+  try {
+    const response = await cache.match(dashboardSnapshotMetadataRequest(env));
+    if (!response) return null;
+    const metadata = await response.json();
+    return Number.isFinite(Number(metadata.updatedAt)) && Number.isFinite(Number(metadata.recordCount)) ? metadata : null;
+  } catch (_) { return null; }
+}
+
+async function writeSharedDashboardMetadata(cache, env, snapshot) {
+  if (!cache || typeof cache.put !== "function") return;
+  const metadata = {
+    recordCount: Array.isArray(snapshot.records) ? snapshot.records.length : Number(snapshot.recordCount) || 0,
+    updatedAt: Number(snapshot.updatedAt) || Date.now(),
+    revision: String(snapshot.revision || ""),
+  };
+  try {
+    await cache.put(dashboardSnapshotMetadataRequest(env), new Response(JSON.stringify(metadata), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+    }));
+  } catch (_) {}
+  globalThis.__dashboardSnapshotMetadata = { key: dashboardDataCacheKey(env), ...metadata };
+}
+
+async function readDurableDashboardMetadata(env) {
+  const bucket = env.DASHBOARD_EXCEL;
+  if (!bucket || typeof bucket.head !== "function") return null;
+  try {
+    const head = await bucket.head(await dashboardSnapshotObjectKey(env));
+    if (!head) return null;
+    const custom = head.customMetadata || {};
+    const updatedAt = Number(custom.snapshotAt) || Number(head.uploaded?.getTime?.()) || 0;
+    if (!updatedAt) return null;
+    return { recordCount: Number(custom.recordCount) || 0, updatedAt, revision: String(custom.revision || ""), contentHash: String(custom.contentHash || "") };
+  } catch (_) { return null; }
+}
+
+async function scheduleDashboardBackgroundRefresh(env, context, cache, cacheKey) {
+  if (!context || typeof context.waitUntil !== "function") return false;
+  const pending = globalThis.__dashboardBackgroundRefresh;
+  if (pending?.key === cacheKey) return true;
+  const lockRequest = dashboardCacheRequest(env, "checksum-refresh-lock");
+  if (cache) {
+    try {
+      if (await cache.match(lockRequest)) return true;
+      await cache.put(lockRequest, new Response(JSON.stringify({ startedAt: Date.now() }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=90" },
+      }));
+    } catch (_) {}
+  }
+  const promise = loadDashboardRecords(env, { forceRefresh: true })
+    .catch((error) => console.warn("Dashboard background refresh failed:", error?.message || error))
+    .finally(async () => {
+      if (cache) { try { await cache.delete(lockRequest); } catch (_) {} }
+      if (globalThis.__dashboardBackgroundRefresh?.promise === promise) globalThis.__dashboardBackgroundRefresh = null;
+    });
+  globalThis.__dashboardBackgroundRefresh = { key: cacheKey, promise };
+  context.waitUntil(promise);
+  return true;
+}
+
+// El checksum lee únicamente metadatos pequeños; no descarga ni parsea miles de filas.
+export async function getDashboardSnapshotStatus(env, context = null) {
+  const cacheKey = dashboardDataCacheKey(env);
+  const sharedCache = getSharedDashboardCache(env);
+  let metadata = await readSharedDashboardMetadata(sharedCache, env);
+  if (!metadata && globalThis.__dashboardSnapshotMetadata?.key === cacheKey) metadata = globalThis.__dashboardSnapshotMetadata;
+  if (!metadata && globalThis.__dashboardRowsCache?.key === cacheKey) {
+    const local = globalThis.__dashboardRowsCache;
+    metadata = { recordCount: local.records.length, updatedAt: Number(local.updatedAt) || 0, revision: String(local.revision || "") };
+  }
+  if (!metadata) metadata = await readDurableDashboardMetadata(env);
+  if (!metadata) {
+    const refreshing = await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
+    return { etag: "snapshot-v4-pending", totalRegistros: 0, updatedAt: 0, refreshing };
+  }
+  const ageMs = Date.now() - Number(metadata.updatedAt || 0);
+  const revision = await readDashboardSnapshotRevision(sharedCache, env);
+  const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision && ageMs >= 30_000);
+  const stale = ageMs >= 60_000 || changedWhileEditing;
+  const refreshing = stale ? await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey) : false;
+  const version = String(metadata.revision || metadata.contentHash || "");
+  return {
+    etag: `snapshot-v4-${Number(metadata.recordCount) || 0}-${Number(metadata.updatedAt) || 0}-${version}`,
+    totalRegistros: Number(metadata.recordCount) || 0,
+    updatedAt: Number(metadata.updatedAt) || 0,
+    refreshing,
+  };
+}
+
 
 async function readDashboardSnapshotRevision(cache, env) {
   if (!cache) return "";
