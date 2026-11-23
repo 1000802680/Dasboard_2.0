@@ -8546,7 +8546,7 @@
             // scans SeaTable in the background. Keep the visible/local copy and
             // let the checksum poll reload it once the new snapshot is published.
             if (respuesta.actualizandoEnSegundoPlano === true) {
-              try { actualizarSyncStatus('Actualizando desde SeaTable en segundo plano · se conserva la copia actual', false); } catch(_) {}
+              try { actualizarSyncStatus('Actualización iniciada en segundo plano · todavía no está confirmada; se conserva la copia actual', true); } catch(_) {}
               finishRefresh(true, respuesta);
               return;
             }
@@ -8639,7 +8639,7 @@
         .then(function(outcome) {
           if (!outcome.ok) throw new Error(outcome.result && outcome.result.message || 'La conexión respondió, pero no se pudo completar la sincronización.');
           const background = outcome.result && outcome.result.actualizandoEnSegundoPlano === true;
-          try { actualizarSyncStatus(background ? 'Servicios conectados · SeaTable está sincronizando en segundo plano' : 'Cloudflare y SeaTable conectados · datos actualizados', false); } catch (_) {}
+          try { actualizarSyncStatus(background ? 'Solicitud aceptada · sincronización pendiente de confirmar; se conserva la copia actual' : 'Cloudflare y SeaTable conectados · datos actualizados', background); } catch (_) {}
         })
         .catch(function(error) {
           const message = String(error && error.message || error || 'No se pudo comprobar la conexión.');
