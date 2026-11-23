@@ -1,4 +1,4 @@
-import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, loadDashboardRecords, refreshForNewTables, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
+import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardSnapshotStatus, loadDashboardRecords, refreshForNewTables, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const ESTADOS = [
@@ -52,16 +52,13 @@ export async function onRequestPost(context) {
         break;
       }
       case "obtenerChecksumDashboard": {
-        // Responde con el último snapshot disponible y reconstruye una copia
-        // vencida en segundo plano para no bloquear a todos los usuarios.
-        const snapshot = await refreshForNewTables(env, context);
-        const registros = snapshot.records;
+        // Solo consulta una ficha pequeña; evita parsear el snapshot de miles de filas.
+        const status = await getDashboardSnapshotStatus(env, context);
         value = {
-          etag: fastEtag(registros, snapshot.updatedAt),
-          totalRegistros: registros.length,
-          totalFilas: registros.length,
-          fechaActualizacion: new Date(snapshot.updatedAt || Date.now()).toISOString(),
-          actualizandoEnSegundoPlano: snapshot.refreshing,
+          ...status,
+          totalFilas: status.totalRegistros,
+          fechaActualizacion: status.updatedAt ? new Date(status.updatedAt).toISOString() : "",
+          actualizandoEnSegundoPlano: status.refreshing,
         };
         break;
       }
