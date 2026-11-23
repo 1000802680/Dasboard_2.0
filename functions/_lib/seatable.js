@@ -745,7 +745,7 @@ export async function updateDashboardRow(env, tableName, rowId, values) {
   return body;
 }
 
-export async function createDashboardRow(env, tableName, values) {
+export async function createDashboardRow(env, tableName, values, context = null) {
   assertConfig(env);
   if (!tableName || !values || typeof values !== "object" || !Object.keys(values).length) {
     throw new Error("Falta la hoja o los datos del nuevo registro.");
@@ -766,7 +766,10 @@ export async function createDashboardRow(env, tableName, values) {
     throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
   }
   await invalidateDashboardSnapshot(env);
-  await publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body));
+  const snapshotUpdate = publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body))
+    .catch((error) => console.warn("No se pudo propagar la nueva OPA a la copia compartida:", error?.message || error));
+  if (typeof context?.waitUntil === "function") context.waitUntil(snapshotUpdate);
+  else await snapshotUpdate;
   return body;
 }
 
