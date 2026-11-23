@@ -8623,10 +8623,12 @@
       fetch('/api/health', { method:'GET', cache:'no-store', headers:{'Accept':'application/json'} })
         .then(async function(response) {
           const body = await response.json().catch(function(){ return {}; });
-          if (!response.ok || !body.ok) {
+          const authMissing = Array.isArray(body.authMissing) ? body.authMissing.filter(function(key){ return key !== 'AUTH_BOOTSTRAP_KEY'; }) : [];
+          if (!response.ok || !body.ok || authMissing.length) {
             const ray = response.headers.get('cf-ray');
             const rayText = ray ? ' · Ray ID ' + ray : '';
-            throw new Error(String(body.message || body.error || ('Cloudflare respondió HTTP ' + response.status)) + rayText);
+            const configText = authMissing.length ? 'Falta configuración de inicio de sesión en Cloudflare: ' + authMissing.join(', ') : '';
+            throw new Error((configText || String(body.message || body.error || ('Cloudflare respondió HTTP ' + response.status))) + rayText);
           }
           return new Promise(function(resolve) {
             try { actualizarSyncStatus('Cloudflare responde y SeaTable está disponible · solicitando sincronización...', false); } catch (_) {}
