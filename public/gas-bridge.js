@@ -73,7 +73,7 @@
         const message = error.name === "AbortError"
           ? `La solicitud tardó demasiado (${Math.round(timeoutMs / 1000)} s). Se conserva la copia local; revisa la conexión o vuelve a intentar.`
           : (isNetworkFailure
-            ? `No se pudo conectar con la API de Cloudflare (/api). Verifica internet y que el proyecto Pages publique la carpeta public junto con functions/api; no es un problema que se resuelva borrando la caché del navegador.`
+            ? `El navegador no recibió respuesta de Cloudflare en ${endpoint}. Puede ser un corte temporal de red o una Function interrumpida; se conserva la copia local y se reintentará.`
             : (rawMessage || String(error)));
         if (typeof failure === "function") failure({ message });
         else console.error("Error de API:", error);
