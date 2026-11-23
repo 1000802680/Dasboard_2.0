@@ -12391,7 +12391,9 @@
           estadoActual: String(row.estadoPlataforma || ''),
           proyecto: String(row.proyecto || ''),
           tipoProducto: String(row.tipoProducto || ''),
-          territorio: String(row.territorio || '')
+          territorio: String(row.territorio || ''),
+          subOpa: String(row.subOpa || ''),
+          personaje: String(row.personaje || '')
         };
         const m = document.getElementById('modal-cambiar-estado');
         const tit = document.getElementById('ce-titulo');
@@ -12511,6 +12513,11 @@
                 _ceSetStatus('❌ ' + String(r && r.error || 'No se pudo cambiar el estado.'), 'error');
                 return;
               }
+              if (r.rowId && _ceActual) {
+                _ceActual.rowId = String(r.rowId);
+                const selected = window._busqOpaCache && window._busqOpaCache[_ceActual.dataId];
+                if (selected) selected.rowId = String(r.rowId);
+              }
               _ceSetStatus('✅ Estado y datos de la etapa actualizados en SeaTable. El dashboard también se actualizó.' + (r.fechaEscrita ? ' · Fecha: ' + escapeHTML(String(r.fechaEscrita)) : ''), 'ok');
               _opaAplicarEdicionLocal(_ceActual.dataId, 'E', String(r.estado || nuevoEstado));
               if (r.fechaCampo && r.fechaEscrita) _opaAplicarEdicionLocal(_ceActual.dataId, r.fechaCampo, String(r.fechaEscrita));
@@ -12530,7 +12537,12 @@
             rowId: _ceActual.rowId,
             numeroOPA: _ceActual.numeroOPA,
             nuevoEstado: nuevoEstado,
-            fechaElegida: fechaElegida
+            fechaElegida: fechaElegida,
+            proyecto: _ceActual.proyecto,
+            tipoProducto: _ceActual.tipoProducto,
+            territorio: _ceActual.territorio,
+            subOpa: _ceActual.subOpa,
+            personaje: _ceActual.personaje
           });
       } catch(err) {
         try { _ceSetStatus('Error: ' + String(err && err.message || err), 'error'); } catch(_) {}
