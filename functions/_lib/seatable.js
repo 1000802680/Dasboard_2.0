@@ -766,7 +766,65 @@ export async function createDashboardRow(env, tableName, values) {
     throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
   }
   await invalidateDashboardSnapshot(env);
+  await publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body));
   return body;
+}
+
+function extractCreatedRowId(body) {
+  const candidates = [
+    body?.row_id, body?.rowId, body?._id, body?.id,
+    body?.inserted_row_id, body?.row?.row_id, body?.row?._id, body?.row?.id,
+    body?.row_ids?.[0], body?.rows?.[0]?.row_id, body?.rows?.[0]?._id,
+    body?.rows?.[0]?.id, body?.inserted_rows?.[0]?.row_id,
+    body?.inserted_rows?.[0]?._id, body?.inserted_rows?.[0]?.id,
+    body?.data?.row_id, body?.data?.row_ids?.[0], body?.data?.rows?.[0]?.row_id,
+  ];
+  return String(candidates.find((value) => value != null && String(value).trim()) || "").trim();
+}
+
+async function publishCreatedDashboardRecord(env, tableName, canonicalValues, rowId) {
+  const cacheKey = dashboardDataCacheKey(env);
+  const cache = getSharedDashboardCache(env);
+  let snapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
+  if (!snapshot && globalThis.__dashboardRowsCache?.key === cacheKey && Array.isArray(globalThis.__dashboardRowsCache.records)) {
+    const local = globalThis.__dashboardRowsCache;
+    snapshot = { records: local.records, tableNames: local.tableNames || [], revision: local.revision || "", updatedAt: local.updatedAt || 0 };
+  }
+  if (!snapshot) snapshot = await readDurableDashboardSnapshot(env);
+  if (!snapshot || !Array.isArray(snapshot.records)) return;
+
+  const createdAt = new Date().toISOString();
+  const internalRow = toInternalRecord({
+    ...canonicalValues,
+    _id: rowId || `created-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    _ctime: createdAt,
+    _mtime: createdAt,
+  }, tableName, getSourceKeyMap(canonicalValues, getColumnMap(env)));
+  const existingIndex = snapshot.records.findIndex((record) =>
+    (rowId && String(record._id || "") === rowId && String(record.H || "") === tableName) ||
+    (String(record.H || "") === tableName && String(record.O || "").trim() === String(internalRow.O || "").trim())
+  );
+  const records = snapshot.records.slice();
+  if (existingIndex >= 0) records[existingIndex] = internalRow;
+  else records.push(internalRow);
+  const now = Date.now();
+  const updated = {
+    records,
+    tableNames: Array.from(new Set([...(snapshot.tableNames || []), tableName])),
+    revision: `${now}-${Math.random().toString(36).slice(2)}`,
+    updatedAt: now,
+  };
+
+  globalThis.__dashboardRowsCache = { key: cacheKey, ...updated, expiresAt: now + 60_000 };
+  if (cache) {
+    try {
+      await cache.put(dashboardCacheRequest(env), new Response(JSON.stringify(updated), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+      }));
+      await writeSharedDashboardMetadata(cache, env, updated);
+    } catch (_) {}
+  }
+  await writeDurableDashboardSnapshot(env, updated);
 }
 
 async function invalidateDashboardSnapshot(env) {
