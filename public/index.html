@@ -5986,9 +5986,12 @@
     }
 
     function _agregarRegistroCreadoLocal(hoja, campos, result) {
-      const rowId = String(result && result.rowId || '');
-      if (!rowId || !Array.isArray(datos)) return false;
-      const registro = { H: String(hoja || ''), _id: rowId, _ctime: new Date().toISOString(), _mtime: new Date().toISOString() };
+      const tabla = String(hoja || '').trim();
+      const numeroOPA = String(campos && campos.O || '').trim();
+      const rowIdServidor = String(result && result.rowId || '').trim();
+      if (!numeroOPA || !Array.isArray(datos)) return false;
+      const marcaTiempo = new Date().toISOString();
+      const registro = { H: tabla, _id: rowIdServidor || ('local-pending:' + tabla + ':' + numeroOPA), _ctime: marcaTiempo, _mtime: marcaTiempo, _pendingCreate: !rowIdServidor };
       Object.keys(campos || {}).forEach(function(key) {
         if (campos[key] == null || String(campos[key]).trim() === '') return;
         if (key === 'GE' && Array.isArray(campos[key])) registro[key] = campos[key];
@@ -5998,7 +6001,10 @@
         const latestStage = ['F8','F7','F6','F5','F4','F3','F2','F1'].find(function(key) { return registro[key]; });
         if (latestStage) registro.E = _estadosOpcionesDefault[Number(latestStage.slice(1)) - 1] || '';
       }
-      const existingIndex = datos.findIndex(function(item) { return String(item._id || '') === rowId && String(item.H || '') === String(hoja || ''); });
+      const existingIndex = datos.findIndex(function(item) {
+        return (rowIdServidor && String(item._id || '') === rowIdServidor && String(item.H || '') === tabla) ||
+          (String(item.H || '') === tabla && String(item.O || '').trim() === numeroOPA);
+      });
       if (existingIndex >= 0) datos[existingIndex] = registro;
       else datos.push(registro);
       try { _invalidateMemo(); } catch(_) {}
@@ -6077,6 +6083,9 @@
         return filtrosColumna.every(function(item) { return _registrosCoincideFiltroColumna(row, item.columna, item.valor, item.exacto); });
       }) : [];
       rows.sort(function(a, b) {
+        const fechaA = Date.parse(String(a && (a._ctime || a._mtime) || '')) || 0;
+        const fechaB = Date.parse(String(b && (b._ctime || b._mtime) || '')) || 0;
+        if (fechaA !== fechaB) return fechaB - fechaA;
         const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
         if (proyecto) return proyecto;
         const hoja = compararTexto(limpiarTexto(a.H), limpiarTexto(b.H));
@@ -6108,17 +6117,19 @@
         const key = String(row.H || '') + '::' + String(row._id || '');
         const fechas = {};
         ['F','F1','F2','F3','F4','F5','F6','F7','F8','FM'].forEach(function(k) { fechas[k] = String(row[k] || ''); });
+        const filaPendienteConfirmacion = !!row._pendingCreate;
         const registroBusqueda = {
           hoja: String(row.H || ''), fila: '', rowId: String(row._id || ''), numeroOPA: String(row.O || ''),
           estadoPlataforma: String(row.E || ''), proyecto: String(row.P || ''), tipoProducto: String(row.T || ''),
           territorio: String(row.TR || ''), personaje: String(row.PJ || ''), subOpa: String(row.SO || ''),
           fechaUltima: String(row.F8 || row.F7 || row.F6 || row.F5 || row.F4 || row.F3 || row.F2 || row.F1 || row.FM || row.F || ''),
-          fechas: fechas, todasLasFechas: row, imagenes: Array.isArray(imagenesCache[key]) ? imagenesCache[key] : [],
+          fechas: fechas, todasLasFechas: row, imagenes: Array.isArray(imagenesCache[key]) ? imagenesCache[key] : [], pendienteConfirmacion: filaPendienteConfirmacion,
           headers: { F1:'Concepto enviado',F2:'Concepto aprobado',F3:'Pre-producción enviada',F4:'Pre-producción aprobada',F5:'Fotos de producción enviadas',F6:'Fotos de producción aprobadas',F7:'Muestras finales enviadas',F8:'Aprobada / cerrada',FM:'Fecha envío muestras' }
         };
         cacheBusqueda[dataId] = registroBusqueda;
+        const puedeEditarFila = puedeEditar && !filaPendienteConfirmacion;
         const lapiz = function(field, label, icon) {
-          return puedeEditar ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + field + '\',\'' + escapeAttr(label) + '\',\'' + escapeAttr(icon) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:22px;height:22px;cursor:pointer;font-size:11px;">✏️</button>' : '';
+          return puedeEditarFila ? '<button type="button" title="Editar ' + escapeAttr(label) + '" onclick="_ecAbrir(\'' + escapeAttr(dataId) + '\',\'' + field + '\',\'' + escapeAttr(label) + '\',\'' + escapeAttr(icon) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;width:22px;height:22px;cursor:pointer;font-size:11px;">✏️</button>' : '';
         };
         const colorCompletado = ['#15803d','#f0fdf4'], colorPendiente = ['#dc2626','#fef2f2'];
         const dateCards = etapas.map(function(item, stageIndex) {
@@ -6139,7 +6150,7 @@
         }).join('');
         const color = _hojaColEst_estadoColor(row.E || '');
         const estado = '<span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:4px 9px;border-radius:999px;background:' + color.bg + ';color:' + color.fg + ';border:1px solid ' + color.bd + ';font-size:11px;font-weight:800;">' + escapeHTML(row.E || 'Sin estado') + '</span>' +
-          (puedeEditar ? '<button type="button" title="Cambiar estado" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;width:22px;height:22px;cursor:pointer;">✏️</button>' : '');
+          (puedeEditarFila ? '<button type="button" title="Cambiar estado" onclick="_ceAbrir(\'' + escapeAttr(dataId) + '\')" style="margin-left:5px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;width:22px;height:22px;cursor:pointer;">✏️</button>' : '');
         return '<tr class="registro-base-row" aria-selected="false" onclick="_seleccionarFilaRegistroBase(this,event)" title="Haz clic para resaltar esta fila">' +
           '<td style="min-width:145px;padding:10px;border-bottom:1px solid #e2e8f0;font-weight:900;color:#1e40af;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(row.O || '—') + '</span>' + lapiz('O','Número OPA','#️⃣') + '<button type="button" data-opa-number="' + escapeAttr(row.O || '') + '" onclick="_copiarOPADesdeBoton(event,this)" title="Copiar número OPA" aria-label="Copiar número OPA" style="display:inline-flex;align-items:center;justify-content:center;margin-left:5px;width:28px;height:28px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;cursor:pointer;vertical-align:middle;box-shadow:0 1px 2px rgba(30,64,175,.08);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3"/></svg></button></td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(row.P || '—') + '</span>' + lapiz('P','Proyecto','📁') + '</td>' +
@@ -6174,6 +6185,7 @@
       const pending = window._registrosImagenesPendientes || (window._registrosImagenesPendientes = {});
       const targets = [];
       pagina.forEach(function(row) {
+        if (row && row._pendingCreate) return;
         const key = _registrosClaveImagen(row);
         if (!Object.prototype.hasOwnProperty.call(cache, key) && !pending[key] && row._id) {
           pending[key] = true;
@@ -12231,7 +12243,7 @@
         ['MR','Cantidad de muestras recibidas'], ['ME','Cantidad de muestras enviadas'], ['GE','Enlace guía de envío']
       ];
       const source = row && row.todasLasFechas || {};
-      const editable = canEdit && !window.CLOUD_READ_ONLY;
+      const editable = canEdit && !window.CLOUD_READ_ONLY && !row.pendienteConfirmacion;
       const cards = fields.map(function(field) {
         const key = field[0];
         const value = key === 'GE' ? (row.guiaEnlace || row.enlaceGuia || _opaReadGuideLink(source.GE)) : (field.length > 2 && field[2] != null && field[2] !== '' ? field[2] : source[key]);
