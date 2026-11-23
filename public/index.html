@@ -4229,8 +4229,8 @@
       <!-- PRODUCCIÓN DIARIA POR PERSONA -->
       <section class="panel" id="hist-produccion-diaria" style="padding:0;overflow:hidden;margin-top:16px;border:1px solid #cbdcf4;">
         <div style="padding:18px 20px;background:linear-gradient(115deg,#eff6ff,#fff 58%,#f5f3ff);border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div><h3 style="margin:0;color:#14213d;font-size:17px;font-weight:900;">📈 Actividad diaria por persona</h3><p style="margin:4px 0 0;color:#64748b;font-size:12px;">Creaciones y trabajo registrado por usuario, agrupado por día (hora de Bogotá).</p></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;"><span class="analisis-chart-head-badge">Días <strong id="hist-prod-dias">0</strong></span><span class="analisis-chart-head-badge">Personas <strong id="hist-prod-personas">0</strong></span><span class="analisis-chart-head-badge">OPAs creadas <strong id="hist-prod-opas">0</strong></span><span class="analisis-chart-head-badge">Acciones registradas <strong id="hist-prod-acciones">0</strong></span></div>
+          <div><h3 style="margin:0;color:#14213d;font-size:17px;font-weight:900;">📈 Actividad diaria por persona</h3><p style="margin:4px 0 0;color:#64748b;font-size:12px;">Cambios de estado registrados por persona, agrupados por día (hora de Bogotá).</p></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;"><span class="analisis-chart-head-badge">Días <strong id="hist-prod-dias">0</strong></span><span class="analisis-chart-head-badge">Personas <strong id="hist-prod-personas">0</strong></span><span class="analisis-chart-head-badge">Cambios de estado <strong id="hist-prod-estados">0</strong></span></div>
         </div>
         <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#fff;">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;">
@@ -4240,11 +4240,11 @@
             <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-secondary" type="button" onclick="_historialRangoProduccion('hoy')">Hoy</button><button class="btn-secondary" type="button" onclick="_historialRangoProduccion(7)">7 días</button><button class="btn-secondary" type="button" onclick="_historialRangoProduccion(30)">30 días</button><button class="btn-secondary" type="button" onclick="_historialRangoProduccion(0)">Todo</button></div>
           </div>
         </div>
-        <div style="max-height:520px;overflow:auto;padding:0 14px 14px;"><table class="analisis-daily-table" style="width:100%;min-width:1120px;border-collapse:separate;border-spacing:0;">
-          <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr><th style="text-align:left;">Fecha</th><th style="text-align:left;">Persona</th><th style="text-align:center;">OPAs creadas</th><th style="text-align:center;">Ediciones</th><th style="text-align:center;">Cambios de estado</th><th style="text-align:center;">Archivos</th><th style="text-align:center;">Eliminaciones</th><th style="text-align:center;">OPAs trabajadas</th><th style="text-align:left;">Números de OPA</th></tr></thead>
-          <tbody id="hist-produccion-diaria-body"><tr><td colspan="9" style="text-align:center;padding:24px;color:#64748b;">Carga el historial para ver la actividad diaria.</td></tr></tbody>
+        <div style="max-height:520px;overflow:auto;padding:0 14px 14px;"><table class="analisis-daily-table" style="width:100%;min-width:620px;border-collapse:separate;border-spacing:0;">
+          <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr><th style="text-align:left;">Fecha</th><th style="text-align:left;">Persona</th><th style="text-align:center;">Total de cambios de estado</th></tr></thead>
+          <tbody id="hist-produccion-diaria-body"><tr><td colspan="3" style="text-align:center;padding:24px;color:#64748b;">Carga el historial para ver la actividad diaria.</td></tr></tbody>
         </table></div>
-        <div style="padding:0 18px 14px;color:#64748b;font-size:11px;line-height:1.5;">La actividad se obtiene del historial de auditoría de la aplicación. Las acciones hechas directamente en SeaTable o anteriores al historial disponible no tienen una persona atribuible y no se pueden reconstruir como producción individual.</div>
+        <div style="padding:0 18px 14px;color:#64748b;font-size:11px;line-height:1.5;">El conteo incluye únicamente los cambios de estado guardados en el historial de auditoría de la aplicación.</div>
       </section>
     </div>
   </div>
@@ -6008,6 +6008,19 @@
       return true;
     }
 
+    function _registrosActualizarFiltroEspecifico() {
+      const select = document.querySelector('#registros-base-table [data-filter-column="TE"]');
+      if (!select) return;
+      const seleccionado = String(select.value || '');
+      const valores = Array.from(new Set((Array.isArray(datosFiltrados) ? datosFiltrados : []).map(function(row) {
+        return limpiarTexto(row && row.TE);
+      }).filter(Boolean))).sort(function(a,b) { return a.localeCompare(b, 'es', { sensitivity: 'base' }); });
+      select.innerHTML = '<option value="">Todos los tipos específicos</option>' + valores.map(function(valor) {
+        return '<option value="' + escapeAttr(valor) + '">' + escapeHTML(valor) + '</option>';
+      }).join('');
+      if (valores.indexOf(seleccionado) >= 0) select.value = seleccionado;
+    }
+
     function filtrarColumnaRegistrosBase(input) {
       if (input && input.dataset && input.dataset.filterColumn) {
         paginaRegistrosBase = 1;
@@ -6045,6 +6058,7 @@
     function actualizarTablaRegistrosBase() {
       const body = document.getElementById('registros-base-body');
       if (!body) return;
+      _registrosActualizarFiltroEspecifico();
       // Registros de base solo muestra filas que tienen número de OPA.
       // La carga general también contiene filas vacías de algunas hojas.
       const filtrosColumna = Array.from(document.querySelectorAll('#registros-base-table .registro-col-filter')).map(function(input) {
@@ -11072,52 +11086,54 @@
     }
 
     function _historialRenderProduccionDiaria() {
-      const body=document.getElementById('hist-produccion-diaria-body');
-      if(!body)return;
-      const cache=window.__historialCache, listado=cache&&Array.isArray(cache.listado)?cache.listado:[];
-      if(!cache){body.innerHTML='<tr><td colspan="9" style="text-align:center;padding:24px;color:#64748b;">Carga el historial para ver la actividad diaria.</td></tr>';return;}
-      const userFilter=String(document.getElementById('hist-prod-persona')?.value||'').trim();
-      const desde=String(document.getElementById('hist-prod-desde')?.value||'').trim();
-      const hasta=String(document.getElementById('hist-prod-hasta')?.value||'').trim();
-      const nombres={};
-      (cache.resumenUsuarios||[]).forEach(function(u){if(u&&u.username)nombres[String(u.username)]=String(u.nombreCompleto||u.username);});
-      const grupos={};
-      listado.forEach(function(item){
-        const type=String(item&&item.tipoAccion||'').trim().toUpperCase();
-        const category=type.indexOf('CREAR_REGISTRO')>=0||type==='CREAR_OPA'?'creadas':
-          type.indexOf('EDITAR_CAMPO')>=0||type.indexOf('EDITAR_REGISTRO')>=0?'ediciones':
-          type.indexOf('CAMBIO_ESTADO')>=0?'estados':
-          type.indexOf('ADJUNTAR')>=0||type.indexOf('SUBIR_ARCHIVO')>=0?'archivos':
-          type.indexOf('ELIMINAR')>=0||type.indexOf('BORRAR')>=0?'eliminaciones':'';
-        if(!category)return;
-        const username=String(item.username||'Sin usuario').trim()||'Sin usuario';
-        if(userFilter&&username!==userFilter)return;
-        const instant=new Date(item.tsISO||'');
-        if(isNaN(instant.getTime()))return;
-        const fecha=_historialFechaBogota(instant);
-        if((desde&&fecha<desde)||(hasta&&fecha>hasta))return;
-        const key=fecha+'\u0000'+username;
-        const group=grupos[key]||(grupos[key]={fecha,username,nombre:nombres[username]||username,opas:{},opasCreadas:{},sinNumero:0,creadas:0,ediciones:0,estados:0,archivos:0,eliminaciones:0,acciones:0});
-        const opa=String(item.opaAfectada||'').trim();
-        if(opa){group.opas[opa]=true;if(category==='creadas')group.opasCreadas[opa]=true;}
-        else if(category==='creadas')group.sinNumero++;
-        let amount=1;
-        if(category==='archivos'){try{const d=typeof item.detalleJSON==='string'?JSON.parse(item.detalleJSON||'{}'):item.detalleJSON;if(Array.isArray(d&&(d.archivos||d.files)))amount=Math.max(1,(d.archivos||d.files).length);}catch(_){}}
-        group[category]+=amount;group.acciones++;
+      const body = document.getElementById('hist-produccion-diaria-body');
+      if (!body) return;
+      const cache = window.__historialCache;
+      const listado = cache && Array.isArray(cache.listado) ? cache.listado : [];
+      if (!cache) {
+        body.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:24px;color:#64748b;">Carga el historial para ver la actividad diaria.</td></tr>';
+        return;
+      }
+      const userFilter = String(document.getElementById('hist-prod-persona')?.value || '').trim();
+      const desde = String(document.getElementById('hist-prod-desde')?.value || '').trim();
+      const hasta = String(document.getElementById('hist-prod-hasta')?.value || '').trim();
+      const nombres = {};
+      (cache.resumenUsuarios || []).forEach(function(u) {
+        if (u && u.username) nombres[String(u.username)] = String(u.nombreCompleto || u.username);
       });
-      const rows=Object.keys(grupos).map(function(k){return grupos[k];}).sort(function(a,b){return b.fecha.localeCompare(a.fecha)||a.nombre.localeCompare(b.nombre,'es');});
-      const days=new Set(rows.map(function(r){return r.fecha;})).size, people=new Set(rows.map(function(r){return r.username;})).size;
-      const created=rows.reduce(function(n,r){return n+Object.keys(r.opasCreadas).length+r.sinNumero;},0);
-      const actions=rows.reduce(function(n,r){return n+r.acciones;},0);
-      [['hist-prod-dias',days],['hist-prod-personas',people],['hist-prod-opas',created],['hist-prod-acciones',actions]].forEach(function(p){const el=document.getElementById(p[0]);if(el)el.textContent=Number(p[1]).toLocaleString('es-CO');});
-      if(!rows.length){const note=listado.length?'No hay actividad productiva registrada en este rango. Amplía las fechas o selecciona “Todo”.':'El historial no contiene acciones atribuibles a personas. Las OPAs existentes en SeaTable no registran por sí solas quién las creó.';body.innerHTML='<tr><td colspan="9" style="text-align:center;padding:26px;color:#64748b;font-weight:600;">'+escapeHTML(note)+'</td></tr>';return;}
-      const badge=function(value,bg,fg){return '<td style="text-align:center;"><span style="display:inline-flex;min-width:32px;justify-content:center;padding:4px 9px;border-radius:999px;background:'+bg+';color:'+fg+';font-weight:900;">'+Number(value).toLocaleString('es-CO')+'</span></td>';};
-      body.innerHTML=rows.map(function(row){
-        const opas=Object.keys(row.opas).sort(function(a,b){return a.localeCompare(b,'es',{numeric:true});});
-        const chips=opas.map(function(opa){return '<span style="display:inline-flex;margin:2px;padding:4px 8px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:11px;font-weight:800;">'+escapeHTML(opa)+'</span>';}).join('');
-        const missing=row.sinNumero?'<span title="La auditoría registró la creación, pero no guardó el número de OPA" style="display:inline-flex;margin:2px;padding:4px 8px;border-radius:999px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:11px;font-weight:700;">'+row.sinNumero+' sin número</span>':'';
-        const createdCount=Object.keys(row.opasCreadas).length+row.sinNumero;
-        return '<tr><td style="white-space:nowrap;font-weight:800;color:#334155;">'+escapeHTML(row.fecha)+'</td><td><div style="font-weight:800;color:#0f172a;">'+escapeHTML(row.nombre)+'</div><div style="font-size:11px;color:#64748b;">@'+escapeHTML(row.username)+'</div></td>'+badge(createdCount,'#dcfce7','#047857')+badge(row.ediciones,'#dbeafe','#1d4ed8')+badge(row.estados,'#fef3c7','#b45309')+badge(row.archivos,'#ede9fe','#6d28d9')+badge(row.eliminaciones,'#fee2e2','#b91c1c')+badge(opas.length,'#e0f2fe','#0369a1')+'<td style="min-width:230px;">'+(chips||'<span style="color:#94a3b8;">—</span>')+missing+'</td></tr>';
+      const grupos = {};
+      listado.forEach(function(item) {
+        const type = String(item && item.tipoAccion || '').trim().toUpperCase();
+        if (type.indexOf('CAMBIO_ESTADO') < 0) return;
+        const username = String(item.username || 'Sin usuario').trim() || 'Sin usuario';
+        if (userFilter && username !== userFilter) return;
+        const instante = new Date(item.tsISO || '');
+        if (isNaN(instante.getTime())) return;
+        const fecha = _historialFechaBogota(instante);
+        if ((desde && fecha < desde) || (hasta && fecha > hasta)) return;
+        const key = fecha + '\u0000' + username;
+        const group = grupos[key] || (grupos[key] = { fecha: fecha, username: username, nombre: nombres[username] || username, estados: 0 });
+        group.estados++;
+      });
+      const rows = Object.keys(grupos).map(function(key) { return grupos[key]; })
+        .filter(function(row) { return row.estados > 0; })
+        .sort(function(a,b) { return b.fecha.localeCompare(a.fecha) || a.nombre.localeCompare(b.nombre, 'es'); });
+      const dias = new Set(rows.map(function(row) { return row.fecha; })).size;
+      const personas = new Set(rows.map(function(row) { return row.username; })).size;
+      const cambios = rows.reduce(function(total, row) { return total + row.estados; }, 0);
+      [['hist-prod-dias', dias], ['hist-prod-personas', personas], ['hist-prod-estados', cambios]].forEach(function(pair) {
+        const el = document.getElementById(pair[0]);
+        if (el) el.textContent = Number(pair[1]).toLocaleString('es-CO');
+      });
+      if (!rows.length) {
+        const note = listado.length
+          ? 'No hay cambios de estado registrados en este rango. Amplía las fechas o selecciona “Todo”.'
+          : 'El historial no contiene cambios de estado atribuibles a personas.';
+        body.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:26px;color:#64748b;font-weight:600;">' + escapeHTML(note) + '</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map(function(row) {
+        return '<tr><td style="white-space:nowrap;font-weight:800;color:#334155;">' + escapeHTML(row.fecha) + '</td><td><div style="font-weight:800;color:#0f172a;">' + escapeHTML(row.nombre) + '</div><div style="font-size:11px;color:#64748b;">@' + escapeHTML(row.username) + '</div></td><td style="text-align:center;"><span style="display:inline-flex;min-width:40px;justify-content:center;padding:5px 12px;border-radius:999px;background:#fef3c7;color:#b45309;font-weight:900;">' + Number(row.estados).toLocaleString('es-CO') + '</span></td></tr>';
       }).join('');
     }
 
