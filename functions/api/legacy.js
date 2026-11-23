@@ -45,7 +45,7 @@ export async function onRequestPost(context) {
         value = {
           registros,
           totalRegistros: registros.length,
-          etag: fastEtag(registros),
+          etag: fastEtag(registros, snapshot.updatedAt),
           fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
           actualizandoEnSegundoPlano: snapshot.refreshing,
         };
@@ -57,7 +57,7 @@ export async function onRequestPost(context) {
         const snapshot = await refreshForNewTables(env, context);
         const registros = snapshot.records;
         value = {
-          etag: fastEtag(registros),
+          etag: fastEtag(registros, snapshot.updatedAt),
           totalRegistros: registros.length,
           totalFilas: registros.length,
           fechaActualizacion: new Date(snapshot.updatedAt || Date.now()).toISOString(),
@@ -455,27 +455,11 @@ function buildSummary(records) {
   };
 }
 
-function fastEtag(records) {
-  // Incluir los campos que alimentan filtros y métricas: SeaTable puede
-  // devolver un _mtime vacío/estable aunque cambie el valor de una columna.
-  // Así el sondeo detecta cambios de PROYECTO, producto o estado aunque el
-  // número de filas y la fecha de modificación no cambien.
-  let hash = 2166136261;
-  for (const row of records) {
-    const value = JSON.stringify([
-      row._id || "", row._mtime || "", row.O || "", row.P || "", row.T || "",
-      row.TE || "", row.M || "", row.TR || "", row.E || "", row.F || "",
-      row.F1 || "", row.F2 || "", row.F3 || "", row.F4 || "", row.F5 || "",
-      row.F6 || "", row.F7 || "", row.F8 || "", row.FM || "", row.MR || "",
-      row.ME || "", row.PO || "", row.PJ || "", row.SO || "", row.B2B || "",
-      row.B2C || "", row.D || "", row.NP || "", row.GE || "", row.LF || "",
-    ]) + ";";
-    for (let i = 0; i < value.length; i++) {
-      hash ^= value.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-  }
-  return `v2-${records.length}-${(hash >>> 0).toString(16)}`;
+function fastEtag(records, updatedAt = Date.now()) {
+  // La versión de la copia se fija al terminar cada lectura de SeaTable.
+  // Recalcular un hash recorriendo todas las filas en cada sondeo de 15 s
+  // agotaba el límite de CPU de Cloudflare y terminaba en HTTP 503.
+  return `snapshot-v3-${records.length}-${Number(updatedAt) || Date.now()}`;
 }
 
 
