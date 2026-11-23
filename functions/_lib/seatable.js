@@ -357,7 +357,7 @@ function activityTime(record) {
 export async function loadDashboardRecords(env, { forceRefresh = false, tableNames = null, includeDuplicates = false } = {}) {
   const cacheKey = dashboardDataCacheKey(env);
   const now = Date.now();
-  const cached = globalThis.__dashboardRowsCache;
+  let cached = globalThis.__dashboardRowsCache;
   if (!forceRefresh && cached?.key === cacheKey && cached.expiresAt > now) return cached.records;
   // Cache API de Cloudflare comparte el resultado entre solicitudes/aislamientos
   // cercanos. Así los usuarios concurrentes no vuelven a leer todas las hojas.
@@ -384,6 +384,24 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
         return shared.records;
       }
+    }
+  }
+  // En un isolate nuevo, si Cache API no tiene copia, lee el snapshot persistido
+  // en R2 y responde sin esperar un escaneo completo de todas las hojas.
+  if (!forceRefresh && (!cached || cached.key !== cacheKey)) {
+    const durable = await readDurableDashboardSnapshot(env);
+    if (durable) {
+      const restoredAt = Number(durable.updatedAt || Date.now());
+      cached = { key: cacheKey, records: durable.records, tableNames: durable.tableNames, revision: durable.revision || "", updatedAt: restoredAt, expiresAt: Date.now() + 60_000 };
+      globalThis.__dashboardRowsCache = cached;
+      if (sharedCache) {
+        try {
+          await sharedCache.put(sharedRequest, new Response(JSON.stringify({
+            records: durable.records, tableNames: durable.tableNames, revision: durable.revision || "", updatedAt: restoredAt,
+          }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" } }));
+        } catch (_) {}
+      }
+      return durable.records;
     }
   }
   if (sharedCache && !includeDuplicates) {
@@ -460,6 +478,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         }));
       } catch (_) {}
     }
+    await writeDurableDashboardSnapshot(env, { records, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
     return allRecords || records;
   })().finally(async () => {
     if (ownsRefreshLease && sharedCache) {
@@ -513,6 +532,64 @@ function getSharedDashboardCache(env) {
 function dashboardCacheRequest(env, suffix = "snapshot") {
   const key = dashboardDataCacheKey(env);
   return new Request(`https://dashboard-cache.invalid/v1/${encodeURIComponent(key)}/${suffix}`);
+}
+
+async function dashboardSnapshotObjectKey(env) {
+  const data = new TextEncoder().encode(dashboardDataCacheKey(env));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  const hash = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `dashboard/snapshots/${hash}.json`;
+}
+
+async function readDurableDashboardSnapshot(env) {
+  const bucket = env.DASHBOARD_EXCEL;
+  if (!bucket || typeof bucket.get !== "function") return null;
+  try {
+    const object = await bucket.get(await dashboardSnapshotObjectKey(env));
+    if (!object) return null;
+    const snapshot = await object.json();
+    if (snapshot.version !== DASHBOARD_DATA_VERSION || !Array.isArray(snapshot.records) || !Array.isArray(snapshot.tableNames)) return null;
+    return snapshot;
+  } catch (error) {
+    console.warn("No se pudo leer la copia persistente del dashboard:", error?.message || error);
+    return null;
+  }
+}
+
+async function writeDurableDashboardSnapshot(env, snapshot) {
+  const bucket = env.DASHBOARD_EXCEL;
+  if (!bucket || typeof bucket.put !== "function") return;
+  try {
+    const key = await dashboardSnapshotObjectKey(env);
+    const serialized = JSON.stringify({
+      version: DASHBOARD_DATA_VERSION,
+      records: snapshot.records,
+      tableNames: snapshot.tableNames,
+      revision: snapshot.revision || "",
+      updatedAt: Number(snapshot.updatedAt || Date.now()),
+    });
+    const digestSource = JSON.stringify({
+      version: DASHBOARD_DATA_VERSION,
+      records: snapshot.records,
+      tableNames: snapshot.tableNames,
+      revision: snapshot.revision || "",
+    });
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(digestSource)));
+    const contentHash = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const existing = typeof bucket.head === "function" ? await bucket.head(key) : null;
+    // Evita escribir en R2 cada minuto si la lectura devuelve los mismos datos.
+    // Renueva la copia durable como mínimo cada cinco minutos.
+    const lastWriteAt = Number(existing?.customMetadata?.snapshotAt || 0);
+    if (existing?.customMetadata?.contentHash === contentHash && Date.now() - lastWriteAt < 5 * 60_000) return;
+    await bucket.put(key, serialized, {
+      httpMetadata: { contentType: "application/json; charset=utf-8" },
+      customMetadata: { recordCount: String(snapshot.records.length), snapshotAt: String(snapshot.updatedAt || Date.now()), contentHash },
+    });
+  } catch (error) {
+    // R2 mejora la recuperación tras un cold start, pero no debe hacer fallar
+    // una lectura correcta de SeaTable si la copia durable no puede guardarse.
+    console.warn("No se pudo guardar la copia persistente del dashboard:", error?.message || error);
+  }
 }
 
 async function readSharedDashboardSnapshot(cache, request) {
@@ -711,7 +788,7 @@ export async function getDashboardFileDownloadLink(env, path) {
 }
 
 export async function refreshForNewTables(env, context = null, { forceRefresh = false } = {}) {
-  const cached = globalThis.__dashboardRowsCache;
+  let cached = globalThis.__dashboardRowsCache;
   const cacheKey = dashboardDataCacheKey(env);
   const sharedCache = getSharedDashboardCache(env);
   const shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
@@ -745,6 +822,27 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
       }
     }
     return { records: shared.records, updatedAt: Number(shared.updatedAt || 0), refreshing: isStale };
+  }
+
+  // La memoria del isolate y Cache API pueden estar vacías en una región nueva.
+  // R2 conserva la última copia completa y permite responder de inmediato.
+  if (!cached || cached.key !== cacheKey) {
+    const durable = await readDurableDashboardSnapshot(env);
+    if (durable) {
+      cached = {
+        key: cacheKey, records: durable.records, tableNames: durable.tableNames,
+        revision: durable.revision || "", updatedAt: Number(durable.updatedAt || 0),
+        expiresAt: Date.now() + 60_000,
+      };
+      globalThis.__dashboardRowsCache = cached;
+      if (sharedCache) {
+        try {
+          await sharedCache.put(dashboardCacheRequest(env), new Response(JSON.stringify({
+            records: cached.records, tableNames: cached.tableNames, revision: cached.revision, updatedAt: cached.updatedAt,
+          }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" } }));
+        } catch (_) {}
+      }
+    }
   }
 
   // A Cache API snapshot can be absent in a newly routed isolate/colo even
