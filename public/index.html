@@ -12227,7 +12227,7 @@
         ['O','Número de OPA',row.numeroOPA], ['P','Proyecto',row.proyecto], ['T','Tipo de producto',row.tipoProducto],
         ['TE','Tipo de producto específico'], ['M','Marca'], ['TR','Territorio',row.territorio], ['PO','Portafolio'],
         ['B2B','Item / SKU B2B'], ['B2C','Item / SKU B2C'], ['NP','Nombre de producto en OPA'],
-        ['D','Descripción del producto ERP'], ['PJ','Personaje',row.personaje], ['SO','Sub-OPA',row.subOpa],
+        ['D','Descripción del producto ERP'], ['OBS','Observación / Novedad CG'], ['PJ','Personaje',row.personaje], ['SO','Sub-OPA',row.subOpa],
         ['MR','Cantidad de muestras recibidas'], ['ME','Cantidad de muestras enviadas'], ['GE','Enlace guía de envío']
       ];
       const source = row && row.todasLasFechas || {};
@@ -12512,7 +12512,7 @@
         const row = window._busqOpaCache && window._busqOpaCache[dataId];
         if (!row) return;
         const value = String(valor == null ? '' : valor);
-        const props = { O:'numeroOPA', P:'proyecto', T:'tipoProducto', TE:'tipoProductoEspecifico', M:'marca', TR:'territorio', PO:'portafolio', B2B:'skuB2B', B2C:'skuB2C', D:'descripcionProducto', NP:'nombreProductoOPA', PJ:'personaje', SO:'subOpa', MR:'muestrasRecibidas', ME:'muestrasEnviadas', GE:'enlaceGuia', E:'estadoPlataforma' };
+        const props = { O:'numeroOPA', P:'proyecto', T:'tipoProducto', TE:'tipoProductoEspecifico', M:'marca', TR:'territorio', PO:'portafolio', B2B:'skuB2B', B2C:'skuB2C', D:'descripcionProducto', NP:'nombreProductoOPA', OBS:'observacionCG', PJ:'personaje', SO:'subOpa', MR:'muestrasRecibidas', ME:'muestrasEnviadas', GE:'enlaceGuia', E:'estadoPlataforma' };
         if (props[campoClave]) row[props[campoClave]] = value;
         if (campoClave === 'GE') row.guiaEnlace = value;
         if (!row.todasLasFechas) row.todasLasFechas = {};
