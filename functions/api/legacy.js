@@ -9,7 +9,7 @@ const ESTADOS = [
 ];
 // Se pueden editar los campos de negocio mostrados en la tarjeta de vista
 // previa. LF queda fuera porque sus archivos se administran con la carga segura.
-const EDITABLE_FIELDS = new Set(["O", "P", "T", "TE", "M", "TR", "PO", "B2B", "B2C", "D", "NP", "PJ", "SO", "MR", "ME", "GE", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM"]);
+const EDITABLE_FIELDS = new Set(["O", "P", "T", "TE", "M", "TR", "PO", "B2B", "B2C", "D", "NP", "OBS", "PJ", "SO", "MR", "ME", "GE", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM"]);
 const NUMERIC_FIELDS = new Set(["MR", "ME"]);
 
 export async function onRequestPost(context) {
@@ -239,7 +239,7 @@ export async function onRequestPost(context) {
         const table = String(p.hoja || "").trim();
         const tableNames = await discoverTableNames(env);
         if (!tableNames.includes(table)) return Response.json({ ok: false, error: "Selecciona una hoja válida de la base." }, { status: 400, headers: { "Cache-Control": "no-store" } });
-        const allowed = ["O", "P", "T", "TE", "M", "TR", "PJ", "SO", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM", "PO", "B2B", "B2C", "D", "NP", "MR", "ME", "GE"];
+        const allowed = ["O", "P", "T", "TE", "M", "TR", "PJ", "SO", "E", "F", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "FM", "PO", "B2B", "B2C", "D", "NP", "OBS", "MR", "ME", "GE"];
         const row = {};
         for (const key of allowed) {
           const raw = p.campos?.[key];
