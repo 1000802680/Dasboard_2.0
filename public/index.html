@@ -4215,6 +4215,27 @@
           </table>
         </div>
       </div>
+
+      <!-- PRODUCCIÓN DIARIA POR PERSONA -->
+      <section class="panel" id="hist-produccion-diaria" style="padding:0;overflow:hidden;margin-top:16px;border:1px solid #cbdcf4;">
+        <div style="padding:18px 20px;background:linear-gradient(115deg,#eff6ff,#fff 58%,#f5f3ff);border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div><h3 style="margin:0;color:#14213d;font-size:17px;font-weight:900;">📈 Producción diaria por persona</h3><p style="margin:4px 0 0;color:#64748b;font-size:12px;">OPAs creadas desde la aplicación, agrupadas por día y usuario (hora de Bogotá).</p></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;"><span class="analisis-chart-head-badge">Días <strong id="hist-prod-dias">0</strong></span><span class="analisis-chart-head-badge">Personas <strong id="hist-prod-personas">0</strong></span><span class="analisis-chart-head-badge">OPAs creadas <strong id="hist-prod-opas">0</strong></span></div>
+        </div>
+        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#fff;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;">
+            <label style="font-size:11px;font-weight:800;color:#475569;">Persona<select id="hist-prod-persona" onchange="_historialRenderProduccionDiaria()" style="display:block;width:100%;margin-top:5px;padding:9px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"><option value="">Todas las personas</option></select></label>
+            <label style="font-size:11px;font-weight:800;color:#475569;">Desde<input id="hist-prod-desde" type="date" onchange="_historialRenderProduccionDiaria()" style="display:block;width:100%;margin-top:5px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></label>
+            <label style="font-size:11px;font-weight:800;color:#475569;">Hasta<input id="hist-prod-hasta" type="date" onchange="_historialRenderProduccionDiaria()" style="display:block;width:100%;margin-top:5px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;"></label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-secondary" type="button" onclick="_historialRangoProduccion('hoy')">Hoy</button><button class="btn-secondary" type="button" onclick="_historialRangoProduccion(7)">7 días</button><button class="btn-secondary" type="button" onclick="_historialRangoProduccion(30)">30 días</button><button class="btn-secondary" type="button" onclick="_historialRangoProduccion(0)">Todo</button></div>
+          </div>
+        </div>
+        <div style="max-height:520px;overflow:auto;padding:0 14px 14px;"><table class="analisis-daily-table" style="width:100%;min-width:720px;border-collapse:separate;border-spacing:0;">
+          <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr><th style="text-align:left;">Fecha</th><th style="text-align:left;">Persona</th><th style="text-align:center;">OPAs creadas</th><th style="text-align:left;">Números de OPA</th></tr></thead>
+          <tbody id="hist-produccion-diaria-body"><tr><td colspan="4" style="text-align:center;padding:24px;color:#64748b;">Carga el historial para ver la producción diaria.</td></tr></tbody>
+        </table></div>
+        <div style="padding:0 18px 14px;color:#64748b;font-size:11px;line-height:1.5;">El conteo usa acciones de creación registradas en la auditoría y cuenta cada número de OPA una sola vez por persona y día. No incluye registros creados directamente en SeaTable ni acciones anteriores al historial disponible.</div>
+      </section>
     </div>
   </div>
 
@@ -10842,6 +10863,8 @@
                 totalesGlobales: r.totalesGlobales || {}
               };
 
+              _historialPrepararFiltroProduccion();
+
               const tg = window.__historialCache.totalesGlobales;
               try { const el = document.getElementById('hist-global-usuarios'); if (el) el.textContent = String(tg.totalUsuariosRegistrados ?? 0); } catch(_) {}
               try { const el = document.getElementById('hist-global-acciones'); if (el) el.textContent = String(tg.totalAccionesSistema ?? 0); } catch(_) {}
@@ -10958,6 +10981,72 @@
       body.innerHTML = rows.map(function(r){ return '<tr><td><div style="font-weight:800;">'+escapeHTML(r.nombre)+'</div><div style="font-size:11px;color:#64748b;">@'+escapeHTML(r.username)+'</div></td><td>'+r.creados+'</td><td>'+r.ediciones+'</td><td>'+r.estados+'</td><td>'+r.imagenes+'</td><td>'+r.eliminados+'</td><td>'+Object.keys(r.opas).length+'</td><td style="font-weight:900;color:#1d4ed8;">'+r.total+'</td></tr>'; }).join('');
     }
 
+    function _historialPrepararFiltroProduccion() {
+      const select = document.getElementById('hist-prod-persona');
+      if (!select) return;
+      const anterior = select.value, nombres = {};
+      ((window.__historialCache && window.__historialCache.resumenUsuarios) || []).forEach(function(u) {
+        const username = String(u && u.username || '').trim();
+        if (username) nombres[username] = String(u.nombreCompleto || username);
+      });
+      ((window.__historialCache && window.__historialCache.listado) || []).forEach(function(item) {
+        const username = String(item && item.username || '').trim();
+        if (username && !nombres[username]) nombres[username] = username;
+      });
+      select.innerHTML = '<option value="">Todas las personas</option>' + Object.keys(nombres).sort(function(a,b){ return nombres[a].localeCompare(nombres[b], 'es'); }).map(function(username) {
+        return '<option value="' + escapeAttr(username) + '">' + escapeHTML(nombres[username]) + ' (@' + escapeHTML(username) + ')</option>';
+      }).join('');
+      if (anterior && nombres[anterior]) select.value = anterior;
+      if (!window.__histProdFechasInicializadas) { window.__histProdFechasInicializadas = true; _historialRangoProduccion(30); }
+    }
+
+    function _historialRangoProduccion(rango) {
+      const desde = document.getElementById('hist-prod-desde'), hasta = document.getElementById('hist-prod-hasta');
+      if (!desde || !hasta) return;
+      if (rango === 0 || rango === 'todo') { desde.value = ''; hasta.value = ''; }
+      else {
+        const fin = new Date(), inicio = new Date(fin);
+        if (rango !== 'hoy') inicio.setDate(inicio.getDate() - (Number(rango) - 1));
+        desde.value = _historialFechaBogota(inicio); hasta.value = _historialFechaBogota(fin);
+      }
+      _historialRenderProduccionDiaria();
+    }
+
+    function _historialRenderProduccionDiaria() {
+      const body = document.getElementById('hist-produccion-diaria-body');
+      if (!body) return;
+      const cache = window.__historialCache, listado = cache && Array.isArray(cache.listado) ? cache.listado : [];
+      if (!cache) { body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:#64748b;">Carga el historial para ver la producción diaria.</td></tr>'; return; }
+      const userFilter = String(document.getElementById('hist-prod-persona')?.value || '').trim();
+      const desde = String(document.getElementById('hist-prod-desde')?.value || '').trim(), hasta = String(document.getElementById('hist-prod-hasta')?.value || '').trim();
+      const nombrePorUsuario = {};
+      (cache.resumenUsuarios || []).forEach(function(u) { if (u && u.username) nombrePorUsuario[String(u.username)] = String(u.nombreCompleto || u.username); });
+      const grupos = {};
+      listado.forEach(function(item) {
+        if (String(item && item.tipoAccion || '').toUpperCase().indexOf('CREAR_REGISTRO') < 0) return;
+        const username = String(item.username || 'Sin usuario').trim() || 'Sin usuario';
+        if (userFilter && username !== userFilter) return;
+        const instante = new Date(item.tsISO || '');
+        if (isNaN(instante.getTime())) return;
+        const fecha = _historialFechaBogota(instante);
+        if ((desde && fecha < desde) || (hasta && fecha > hasta)) return;
+        const key = fecha + '\u0000' + username;
+        const group = grupos[key] || (grupos[key] = { fecha:fecha, username:username, nombre:nombrePorUsuario[username] || username, opas:{}, sinNumero:0 });
+        const opa = String(item.opaAfectada || '').trim();
+        if (opa) group.opas[opa] = true; else group.sinNumero++;
+      });
+      const rows = Object.keys(grupos).map(function(key){ return grupos[key]; }).sort(function(a,b){ return b.fecha.localeCompare(a.fecha) || a.nombre.localeCompare(b.nombre, 'es'); });
+      const dias = new Set(rows.map(function(r){ return r.fecha; })).size, personas = new Set(rows.map(function(r){ return r.username; })).size;
+      const total = rows.reduce(function(sum,r){ return sum + Object.keys(r.opas).length + r.sinNumero; }, 0);
+      [['hist-prod-dias',dias],['hist-prod-personas',personas],['hist-prod-opas',total]].forEach(function(pair){ const el=document.getElementById(pair[0]); if(el) el.textContent=Number(pair[1]).toLocaleString('es-CO'); });
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:26px;color:#64748b;font-weight:600;">No hay OPAs creadas con los filtros de fecha y persona seleccionados.</td></tr>'; return; }
+      body.innerHTML = rows.map(function(row) {
+        const opas = Object.keys(row.opas).sort(function(a,b){ return a.localeCompare(b, 'es', {numeric:true}); });
+        const chips = opas.map(function(opa){ return '<span style="display:inline-flex;margin:2px;padding:4px 8px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:11px;font-weight:800;">' + escapeHTML(opa) + '</span>'; }).join('');
+        const sinNumero = row.sinNumero ? '<span title="La auditoría registró la creación, pero no guardó el número de OPA" style="display:inline-flex;margin:2px;padding:4px 8px;border-radius:999px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:11px;font-weight:700;">' + row.sinNumero + ' sin número</span>' : '';
+        return '<tr><td style="white-space:nowrap;font-weight:800;color:#334155;">' + escapeHTML(row.fecha) + '</td><td><div style="font-weight:800;color:#0f172a;">' + escapeHTML(row.nombre) + '</div><div style="font-size:11px;color:#64748b;">@' + escapeHTML(row.username) + '</div></td><td style="text-align:center;"><span style="display:inline-flex;min-width:38px;justify-content:center;padding:5px 10px;border-radius:999px;background:#dcfce7;color:#047857;font-weight:900;">' + (opas.length + row.sinNumero).toLocaleString('es-CO') + '</span></td><td style="min-width:230px;">' + (chips || '<span style="color:#94a3b8;">—</span>') + sinNumero + '</td></tr>';
+      }).join('');
+    }
 
     function _historialRenderResumenUsuarios() {
       try {
