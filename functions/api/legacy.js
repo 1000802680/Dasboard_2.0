@@ -264,7 +264,7 @@ export async function onRequestPost(context) {
           if (latestStage) row[statusColumn] = ESTADOS[Number(latestStage.slice(1)) - 1];
         }
         const result = await createDashboardRow(env, table, row);
-        const rowId = String(result.row_id || result.rowId || result._id || result.id || result.inserted_row_id || result.row?.row_id || result.row?._id || result.row?.id || result.row_ids?.[0] || result.rows?.[0]?.row_id || result.rows?.[0]?._id || result.rows?.[0]?.id || result.inserted_rows?.[0]?.row_id || result.inserted_rows?.[0]?._id || result.inserted_rows?.[0]?.id || "");
+        const rowId = String(result.row_id || result.rowId || result._id || result.id || result.inserted_row_id || result.row?.row_id || result.row?._id || result.row?.id || result.row_ids?.[0] || result.rows?.[0]?.row_id || result.rows?.[0]?._id || result.rows?.[0]?.id || result.inserted_rows?.[0]?.row_id || result.inserted_rows?.[0]?._id || result.inserted_rows?.[0]?.id || result.data?.row_id || result.data?.row_ids?.[0] || result.data?.rows?.[0]?.row_id || "");
         try {
           await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "CREAR_REGISTRO_OPA", detail: { proyecto: p.campos.P || "", tipoProducto: p.campos.T || "", estado: row[statusColumn] || "", campos: Object.keys(row) }, opa: String(p.campos.O), table, row: rowId });
         } catch (auditError) {
