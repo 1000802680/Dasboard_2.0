@@ -3173,6 +3173,7 @@
       display:inline-flex; align-items:center; justify-content:center; min-height:38px;
       padding:7px 14px; border:1px solid #bfdbfe; border-radius:999px;
       background:#fff; color:#1d4ed8; font-weight:850; box-shadow:0 3px 10px rgba(30,64,175,.08);
+      white-space:nowrap; text-align:center; line-height:1.2;
     }
     .opa-search-controls {
       padding:18px !important; gap:12px !important; margin-bottom:15px !important;
@@ -3211,6 +3212,19 @@
       padding:14px 12px !important; border-bottom:1px solid #e8eef6 !important;
       color:#24364f; vertical-align:middle; line-height:1.4;
     }
+    .opa-search-match-summary {
+      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+      padding:12px 16px; border-bottom:1px solid #dbeafe;
+      background:linear-gradient(100deg,#eff6ff,#f8fafc 65%,#ecfeff);
+      color:#334155; font-size:13px; font-weight:700;
+    }
+    .opa-search-match-summary strong { color:#1d4ed8; }
+    .opa-search-match-index {
+      display:inline-flex; align-items:center; margin-top:5px; padding:2px 7px;
+      border:1px solid #bfdbfe; border-radius:999px; background:#eff6ff;
+      color:#1d4ed8; font-size:10px; font-weight:800; white-space:nowrap;
+    }
+    .opa-search-results tbody tr.opa-search-match-row:nth-child(4n+1) > td { background-color:#fbfdff; }
     .opa-search-results tbody tr[data-expand] > td {
       padding:16px 20px 20px !important; border-bottom:1px solid #dce6f2 !important;
       background:linear-gradient(180deg,#f5f8fd 0%,#fff 100%) !important;
@@ -4119,6 +4133,7 @@
       <!-- RESULTADOS BÚSQUEDA -->
       <div id="busca-resultados-wrap" style="display:none;" class="panel opa-search-results"
            style="padding:0;overflow:hidden;border-radius:18px;">
+        <div id="busca-resultados-resumen" class="opa-search-match-summary" style="display:none;"></div>
         <div style="overflow-x:auto;">
           <table class="opa-table" style="min-width:100%;border-collapse:collapse;">
             <thead>
@@ -11789,13 +11804,19 @@
               const resultados = r.resultados || [];
               _opaResultadosActuales = resultados;
               _opaSetVistaPreviaDisponible(resultados.length > 0);
-              if (badge) badge.textContent = (resultados.length.toLocaleString ? resultados.length.toLocaleString('es') : String(resultados.length)) + ' resultados';
+              const totalResultados = resultados.length.toLocaleString ? resultados.length.toLocaleString('es') : String(resultados.length);
+              if (badge) badge.textContent = totalResultados + (resultados.length === 1 ? ' resultado' : ' resultados');
               if (!resultados.length) {
                 _buscarOPA_setStatus('🟡 No se encontró ninguna OPA con ese número/texto en las hojas de datos.', 'error');
                 if (wrap) wrap.style.display = 'none';
                 return;
               }
               _buscarOPA_setStatus('✅ Encontrados ' + (resultados.length) + ' registros para consulta.', 'ok');
+              const resumenResultados = document.getElementById('busca-resultados-resumen');
+              if (resumenResultados) {
+                resumenResultados.style.display = 'flex';
+                resumenResultados.innerHTML = '<span>OPA consultada: <strong>' + escapeHTML(q) + '</strong></span><span>' + totalResultados + (resultados.length === 1 ? ' registro encontrado' : ' registros encontrados; cada fila corresponde a un registro de la base') + '</span>';
+              }
               const tbody = document.getElementById('busca-resultados-body');
               if (tbody) {
                 let html = '';
@@ -11901,10 +11922,10 @@
                         '<div data-opa-product-fields="' + escapeAttr(dataId) + '" style="margin-top:14px;">' + _opaRenderCamposProducto(dataId, rw, haySesion && puedeCambiar) + '</div>' +
                       '</td>' +
                     '</tr>';
-                  html += '<tr>' +
+                  html += '<tr class="opa-search-match-row">' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-flex;padding:3px 9px;border-radius:9999px;background:#0f172a;color:#f8fafc;font-weight:800;font-size:11.5px;">' + escapeHTML(String(rw.hoja || '')) + '</span></td>' +
                     '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-weight:600;">' + escapeHTML(String(rw.fila || '')) + '</td>' +
-                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + _opaValorVisual(rw.numeroOPA) + '</span>' + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + '</td>' +
+                    '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#1e40af;font-weight:900;font-size:14px;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + _opaValorVisual(rw.numeroOPA) + '</span>' + funcionLapiz(dataId, 'O', 'Número OPA', '#️⃣') + (resultados.length > 1 ? '<br><span class="opa-search-match-index">Registro ' + (i + 1).toLocaleString('es') + ' de ' + totalResultados + '</span>' : '') + '</td>' +
                     '<td style="padding:12px;border-bottom:1px solid #f1f5f9;"><span data-opa-field="' + escapeAttr(dataId + ':E') + '" style="display:inline-flex;padding:5px 11px;border-radius:9999px;background:' + (estadoCol ? estadoColor.bg : '#fef2f2') + ';color:' + (estadoCol ? estadoColor.fg : '#b91c1c') + ';border:1px solid ' + (estadoCol ? estadoColor.bd : '#fecaca') + ';font-weight:800;font-size:12px;">' + escapeHTML(estadoCol || 'Sin registrar') + '</span></td>' +
                     '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-weight:600;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + _opaValorVisual(rw.proyecto) + '</span>' + funcionLapiz(dataId, 'P', 'Proyecto', '📁') + '</td>' +
                     '<td style="padding:12px;border-bottom:1px solid #f1f5f9;color:#334155;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + _opaValorVisual(rw.tipoProducto) + '</span>' + funcionLapiz(dataId, 'T', 'Tipo Producto', '📦') + '</td>' +
