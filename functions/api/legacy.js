@@ -257,7 +257,27 @@ export async function onRequestPost(context) {
           if (key === "E" && !ESTADOS.some((item) => item.toLocaleLowerCase() === value.toLocaleLowerCase())) return Response.json({ ok: false, error: "Selecciona un estado válido." }, { status: 400, headers: { "Cache-Control": "no-store" } });
           row[getDashboardColumnName(env, key)] = value;
         }
-        if (!String(p.campos?.O || "").trim()) return Response.json({ ok: false, error: "El número de OPA es obligatorio." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+        const numeroOPA = String(p.campos?.O || "").trim();
+        if (!numeroOPA) return Response.json({ ok: false, error: "El número de OPA es obligatorio." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+        // El dashboard cuenta OPAs únicas; impide crear otra fila con el mismo
+        // número en la misma hoja cuando el usuario reintenta un guardado.
+        try {
+          const existentes = await searchDashboardRecordsByOPA(env, numeroOPA);
+          const duplicado = existentes.find((registro) =>
+            String(registro.H || "").trim() === table &&
+            String(registro.O || "").trim().toLocaleLowerCase() === numeroOPA.toLocaleLowerCase()
+          );
+          if (duplicado) {
+            return Response.json({
+              ok: false,
+              error: `La OPA ${numeroOPA} ya existe en la hoja ${table}. Revisa el registro existente; el dashboard la cuenta una sola vez.`,
+            }, { status: 409, headers: { "Cache-Control": "no-store" } });
+          }
+        } catch (error) {
+          // Si la copia aún no existe durante un arranque frío, no bloquea un
+          // registro legítimo. La validación principal continúa en SeaTable.
+          console.warn("No se pudo comprobar duplicados de OPA en la copia local:", error?.message || error);
+        }
         const statusColumn = getDashboardColumnName(env, "E");
         if (!row[statusColumn]) {
           const latestStage = ["F8", "F7", "F6", "F5", "F4", "F3", "F2", "F1"].find((key) => row[getDashboardColumnName(env, key)]);
