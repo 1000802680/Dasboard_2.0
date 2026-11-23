@@ -4645,6 +4645,7 @@
     let _pollingTimer          = null;
     let _pollingCorriendo      = false;
     let _estaSincronizando     = false;
+    let _pollingFallos          = 0;
     let _analisisEtag          = '';
 
     /* ---- Pestaña Análisis por Días (globals) ---- */
@@ -12601,29 +12602,43 @@
     function iniciarPolling() {
       if (_pollingCorriendo) return;
       _pollingCorriendo = true;
+      _pollingFallos = 0;
       try { _ultimoEtag = localStorage.getItem(ETAG_STORAGE_KEY) || ''; } catch(_){}
-      // Stagger the first poll across browsers so a room of users opening the
-      // dashboard together does not hit Pages Functions in one burst.
-      setTimeout(function(){ if (_pollingCorriendo) _pollingTick(); }, Math.floor(Math.random() * 5000));
-      _pollingTimer = setInterval(_pollingTick, POLL_INTERVAL_MS);
+      // Distribuye las solicitudes iniciales para no golpear Pages en bloque.
+      _pollingTimer = setTimeout(_pollingTick, Math.floor(Math.random() * 5000));
     }
 
     function detenerPolling() {
       _pollingCorriendo = false;
-      if (_pollingTimer) { clearInterval(_pollingTimer); _pollingTimer = null; }
+      if (_pollingTimer) { clearTimeout(_pollingTimer); _pollingTimer = null; }
+    }
+
+    function _pollingProgramarSiguiente() {
+      if (!_pollingCorriendo) return;
+      if (_pollingTimer) clearTimeout(_pollingTimer);
+      const base = Math.max(1000, Number(POLL_INTERVAL_MS) || 15000);
+      const factor = Math.pow(2, Math.min(Math.max(0, _pollingFallos), 4));
+      const delay = Math.min(120000, base * factor) + Math.floor(Math.random() * 1500);
+      _pollingTimer = setTimeout(_pollingTick, delay);
     }
 
     function _pollingTick() {
+      _pollingTimer = null;
       if (!_pollingCorriendo) return;
-      if (_estaSincronizando) return; // debounce
-      if (typeof google === 'undefined' || !google.script) return;
+      if (document.visibilityState === 'hidden') { _pollingProgramarSiguiente(); return; }
+      if (_estaSincronizando) { _pollingProgramarSiguiente(); return; } // debounce
+      if (typeof google === 'undefined' || !google.script) { _pollingProgramarSiguiente(); return; }
 
       _estaSincronizando = true;
       const terminado = { valor: false };
 
-      const onDone = function(){
+      const onDone = function(fallo){
+        if (terminado.valor) return;
         terminado.valor = true;
         _estaSincronizando = false;
+        if (fallo) _pollingFallos = Math.min(_pollingFallos + 1, 8);
+        else _pollingFallos = 0;
+        _pollingProgramarSiguiente();
       };
 
       // El bridge cancela la petición de checksum a los 12 s. Esperamos 13 s
@@ -12631,15 +12646,15 @@
       // mientras el fetch anterior aún está vivo.
       const tiempo = setTimeout(function(){
         if (!terminado.valor) {
-          onDone();
-          try { actualizarSyncStatus('Revisión lenta · se conserva la copia local', true); } catch(_){}
+          onDone(true);
+          try { actualizarSyncStatus('Cloudflare o SeaTable no respondió a tiempo · se conserva la copia local · nuevo intento en ' + Math.min(120, Math.round(POLL_INTERVAL_MS * Math.pow(2, Math.min(_pollingFallos - 1, 4)) / 1000)) + 's', true); } catch(_){}
         }
-      }, 13000);
+      }, 20000);
 
       google.script.run
         .withSuccessHandler(function(resp){
           try { clearTimeout(tiempo); } catch(_){}
-          onDone();
+          onDone(false);
 
           if (!resp || resp.ok === false) return;
 
@@ -12687,13 +12702,14 @@
         })
         .withFailureHandler(function(err){
           try { clearTimeout(tiempo); } catch(_){}
-          onDone();
+          onDone(true);
           const detalle = String(err && err.message || '');
+          const espera = Math.min(120, Math.round(POLL_INTERVAL_MS * Math.pow(2, Math.min(_pollingFallos - 1, 4)) / 1000));
           const estado = /404|no encontró \/api/i.test(detalle)
             ? 'API de Pages no publicada · revisa Functions'
             : (/tardó|timeout|demasiado/i.test(detalle)
-              ? 'Servidor o SeaTable lento · se conserva la copia local'
-              : 'Sin respuesta del servidor · reintento en ' + (POLL_INTERVAL_MS/1000) + 's');
+              ? 'Servidor o SeaTable lento: ' + detalle + ' · se conserva la copia local · reintento en ' + espera + 's'
+              : 'Sin respuesta: ' + (detalle || 'Cloudflare no entregó una respuesta') + ' · se conserva la copia local · reintento en ' + espera + 's');
           try { actualizarSyncStatus(estado, true); } catch(_){}
         })
         .obtenerChecksumDashboard();
