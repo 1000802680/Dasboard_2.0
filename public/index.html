@@ -1658,6 +1658,16 @@
       border-bottom: 1px solid #dbe4ef;
       background: linear-gradient(180deg,#f8fafc,#f1f5f9);
     }
+    #registros-base-table thead tr.registro-filtros th {
+      position: sticky; top: 43px; z-index: 3; padding: 6px 8px; background: #fff;
+      border-bottom: 1px solid #dbe4ef; text-transform: none; letter-spacing: 0;
+    }
+    #registros-base-table .registro-col-filter {
+      box-sizing: border-box; width: 100%; min-width: 92px; padding: 7px 8px;
+      border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a;
+      font: inherit; font-size: 11px; font-weight: 600; outline: none;
+    }
+    #registros-base-table .registro-col-filter:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
     #registros-base-table { border-collapse: separate !important; border-spacing: 0; }
     #registros-base-table thead th:first-child { position: sticky; left: 0; z-index: 7; }
     #registros-base-body .registro-base-row td:first-child { position: sticky; left: 0; z-index: 2; background: inherit; box-shadow: 1px 0 #e2e8f0; }
@@ -4248,15 +4258,24 @@
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <span id="registros-contador" class="badge-total">0 registros</span>
+          <button type="button" class="btn-secondary" onclick="limpiarFiltrosColumnasRegistrosBase()" style="margin:0;">↺ Limpiar filtros de tabla</button>
           <button type="button" class="btn-secondary" onclick="descargarExcelRegistros()" style="margin:0;">⬇️ Descargar Excel</button>
           <button type="button" class="btn-primary" onclick="abrirModalCrearOPA()" style="margin:0;">＋ Agregar datos</button>
         </div>
       </div>
       <div class="panel" style="padding:0;overflow:hidden;">
         <div style="overflow:auto;max-height:72vh;">
-          <table id="registros-base-table" class="opa-table" style="width:100%;min-width:1280px;">
+          <table id="registros-base-table" class="opa-table" style="width:100%;min-width:1530px;">
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
-              <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
+              <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Tipo de producto específico</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
+            </tr><tr class="registro-filtros">
+              <th><input class="registro-col-filter" data-filter-column="O" aria-label="Filtrar número de OPA" placeholder="Filtrar OPA…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><input class="registro-col-filter" data-filter-column="P" aria-label="Filtrar proyecto" placeholder="Filtrar proyecto…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><input class="registro-col-filter" data-filter-column="T" aria-label="Filtrar tipo de producto" placeholder="Filtrar tipo…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><input class="registro-col-filter" data-filter-column="TE" aria-label="Filtrar tipo específico" placeholder="Filtrar específico…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><input class="registro-col-filter" data-filter-column="FOTOS" aria-label="Filtrar fotos" placeholder="Con/sin fotos…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><input class="registro-col-filter" data-filter-column="E" aria-label="Filtrar estado" placeholder="Filtrar estado…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><input class="registro-col-filter" data-filter-column="FECHAS" aria-label="Filtrar fechas de etapas" placeholder="Filtrar fecha…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
             </tr></thead>
             <tbody id="registros-base-body"><tr><td style="text-align:center;padding:24px;color:#64748b;">Cargando registros…</td></tr></tbody>
           </table>
@@ -5989,13 +6008,52 @@
       return true;
     }
 
+    function filtrarColumnaRegistrosBase(input) {
+      if (input && input.dataset && input.dataset.filterColumn) {
+        paginaRegistrosBase = 1;
+        actualizarTablaRegistrosBase();
+      }
+    }
+
+    function limpiarFiltrosColumnasRegistrosBase() {
+      document.querySelectorAll('#registros-base-table .registro-col-filter').forEach(function(input) { input.value = ''; });
+      paginaRegistrosBase = 1;
+      actualizarTablaRegistrosBase();
+    }
+
+    function _registrosTextoFiltro(valor) {
+      return limpiarTexto(valor).toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function _registrosCoincideFiltroColumna(row, columna, filtro) {
+      const buscar = _registrosTextoFiltro(filtro);
+      if (!buscar) return true;
+      let valor = '';
+      if (columna === 'FOTOS') {
+        const adjuntos = Array.isArray(row.GE) ? row.GE.map(function(item) { return typeof item === 'string' ? item : (item && (item.name || item.url || item.path)) || ''; }).join(' ') : String(row.GE || '');
+        valor = [row.LF, adjuntos].filter(Boolean).join(' ');
+        if (buscar === 'con' || buscar === 'con fotos') return !!valor.trim();
+        if (buscar === 'sin' || buscar === 'sin fotos') return !valor.trim();
+      } else if (columna === 'FECHAS') {
+        valor = ['F','F1','F2','F3','F4','F5','F6','F7','F8','FM'].map(function(key) { return row[key] || ''; }).join(' ');
+      } else {
+        valor = row[columna] || '';
+      }
+      return _registrosTextoFiltro(valor).includes(buscar);
+    }
+
     function actualizarTablaRegistrosBase() {
       const body = document.getElementById('registros-base-body');
       if (!body) return;
       // Registros de base solo muestra filas que tienen número de OPA.
       // La carga general también contiene filas vacías de algunas hojas.
+      const filtrosColumna = Array.from(document.querySelectorAll('#registros-base-table .registro-col-filter')).map(function(input) {
+        return { columna: input.dataset.filterColumn, valor: input.value };
+      }).filter(function(item) { return String(item.valor || '').trim() !== ''; });
       const rows = Array.isArray(datosFiltrados) ? datosFiltrados.filter(function(row) {
         return String(row && row.O || '').trim() !== '';
+      }).filter(function(row) {
+        return filtrosColumna.every(function(item) { return _registrosCoincideFiltroColumna(row, item.columna, item.valor); });
       }) : [];
       rows.sort(function(a, b) {
         const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
@@ -6013,7 +6071,7 @@
       if (contador) contador.textContent = total.toLocaleString() + (total === 1 ? ' registro' : ' registros');
       if (info) info.textContent = total ? 'Mostrando ' + (desde + 1).toLocaleString() + '–' + Math.min(desde + REGISTROS_POR_PAGINA, total).toLocaleString() + ' de ' + total.toLocaleString() + ' · Página ' + paginaRegistrosBase + ' de ' + maxPagina : 'No hay registros para los filtros seleccionados.';
       if (!pagina.length) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
         return;
       }
       const puedeEditar = !!(_authSesionActual && _authSesionActual.token && (!_authSesionActual.permisos || _authSesionActual.permisos.cambiar_estado !== false) && !window.CLOUD_READ_ONLY);
@@ -6065,6 +6123,7 @@
           '<td style="min-width:145px;padding:10px;border-bottom:1px solid #e2e8f0;font-weight:900;color:#1e40af;"><span data-opa-field="' + escapeAttr(dataId + ':O') + '">' + escapeHTML(row.O || '—') + '</span>' + lapiz('O','Número OPA','#️⃣') + '<button type="button" data-opa-number="' + escapeAttr(row.O || '') + '" onclick="_copiarOPADesdeBoton(event,this)" title="Copiar número OPA" aria-label="Copiar número OPA" style="display:inline-flex;align-items:center;justify-content:center;margin-left:5px;width:28px;height:28px;border:1px solid #bfdbfe;border-radius:50%;background:#eff6ff;color:#1d4ed8;cursor:pointer;vertical-align:middle;box-shadow:0 1px 2px rgba(30,64,175,.08);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3"/></svg></button></td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(row.P || '—') + '</span>' + lapiz('P','Proyecto','📁') + '</td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(row.T || '—') + '</span>' + lapiz('T','Tipo de producto','🏷️') + '</td>' +
+          '<td style="min-width:190px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':TE') + '">' + escapeHTML(row.TE || '—') + '</span>' + lapiz('TE','Tipo de producto específico','🔎') + '</td>' +
           '<td style="min-width:150px;max-width:220px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:flex;flex-wrap:wrap;align-items:center;">' + photos + '</div></td>' +
           '<td style="min-width:210px;padding:10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + estado + '</td>' +
           '<td style="min-width:650px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:grid;grid-template-columns:repeat(3,minmax(145px,1fr));gap:6px;">' + dateCards + '</div></td>' +
