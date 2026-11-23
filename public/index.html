@@ -3426,12 +3426,12 @@
         Actualizar datos
       </button>
 
-      <button id="btnAdminRecuperarConexion" class="btn-secondary" style="display:none" onclick="recuperarConexionAdmin()" title="Comprueba la sesión y vuelve a leer los datos de SeaTable">
+      <button id="btnAdminRecuperarConexion" class="btn-secondary" style="display:none" onclick="recuperarConexionAdmin()" title="Comprueba Cloudflare y SeaTable, y solicita una sincronización nueva">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path>
           <path d="M5.6 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.4-3"></path>
         </svg>
-        Reconectar (admin)
+        Diagnosticar y reconectar
       </button>
     </div>
 
@@ -8615,12 +8615,38 @@
         mostrarError('La recuperación manual está disponible solo para administradores.');
         return;
       }
-      try { actualizarSyncStatus('Comprobando sesión y releyendo SeaTable...', false); } catch (_) {}
-      recargarDatos(function(ok) {
-        if (ok) {
-          try { actualizarSyncStatus('Conexión comprobada · copia actualizada en este servidor', false); } catch (_) {}
-        }
-      }, true);
+      if (window.__reconectarAdminEnCurso) return;
+      window.__reconectarAdminEnCurso = true;
+      const button = document.getElementById('btnAdminRecuperarConexion');
+      if (button) { button.disabled = true; button.setAttribute('aria-busy','true'); }
+      try { actualizarSyncStatus('Verificando Cloudflare y SeaTable...', false); } catch (_) {}
+      fetch('/api/health', { method:'GET', cache:'no-store', headers:{'Accept':'application/json'} })
+        .then(async function(response) {
+          const body = await response.json().catch(function(){ return {}; });
+          if (!response.ok || !body.ok) {
+            const ray = response.headers.get('cf-ray');
+            const rayText = ray ? ' · Ray ID ' + ray : '';
+            throw new Error(String(body.message || body.error || ('Cloudflare respondió HTTP ' + response.status)) + rayText);
+          }
+          return new Promise(function(resolve) {
+            try { actualizarSyncStatus('Cloudflare responde y SeaTable está disponible · solicitando sincronización...', false); } catch (_) {}
+            recargarDatos(function(ok, result) { resolve({ ok:ok, result:result }); }, false);
+          });
+        })
+        .then(function(outcome) {
+          if (!outcome.ok) throw new Error(outcome.result && outcome.result.message || 'La conexión respondió, pero no se pudo completar la sincronización.');
+          const background = outcome.result && outcome.result.actualizandoEnSegundoPlano === true;
+          try { actualizarSyncStatus(background ? 'Servicios conectados · SeaTable está sincronizando en segundo plano' : 'Cloudflare y SeaTable conectados · datos actualizados', false); } catch (_) {}
+        })
+        .catch(function(error) {
+          const message = String(error && error.message || error || 'No se pudo comprobar la conexión.');
+          try { actualizarSyncStatus('No se pudo reconectar · ' + message, true); } catch (_) {}
+          try { mostrarError(message); } catch (_) {}
+        })
+        .finally(function() {
+          window.__reconectarAdminEnCurso = false;
+          if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+        });
     }
 
 
