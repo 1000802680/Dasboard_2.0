@@ -31,7 +31,7 @@ const DEFAULT_COLUMNS = {
 };
 
 const EMPTY_OPA = new Set(["", "N/A", "NA", "N.A.", "-", "SIN OPA", "NINGUNO", "NINGUNA"]);
-const DASHBOARD_DATA_VERSION = "all-rows-v2";
+const DASHBOARD_DATA_VERSION = "all-rows-v3-search-duplicates";
 
 function dashboardDataCacheKey(env) {
   return [DASHBOARD_DATA_VERSION, env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
@@ -375,14 +375,14 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         if (Number(shared.updatedAt || 0) < Number(lock.startedAt || 0)) {
           // La carga normal devuelve la copia existente de inmediato; el lease
           // indica que otro usuario ya está preparando la versión nueva.
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
           return shared.records;
         } else {
-          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
+          globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
           return shared.records;
         }
       } else {
-        globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames, updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
         return shared.records;
       }
     }
@@ -393,7 +393,10 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     const durable = await readDurableDashboardSnapshot(env);
     if (durable) {
       const restoredAt = Number(durable.updatedAt || Date.now());
-      cached = { key: cacheKey, records: durable.records, tableNames: durable.tableNames, revision: durable.revision || "", updatedAt: restoredAt, expiresAt: Date.now() + 60_000 };
+      cached = { key: cacheKey, records: durable.records,
+        duplicateRecords: durable.duplicateRecords || durable.records,
+        duplicateRecords: durable.duplicateRecords || durable.records,
+        duplicateRecords: durable.duplicateRecords || durable.records, tableNames: durable.tableNames, revision: durable.revision || "", updatedAt: restoredAt, expiresAt: Date.now() + 60_000 };
       globalThis.__dashboardRowsCache = cached;
       if (sharedCache) {
         try {
@@ -418,7 +421,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       // brevemente a que el primer lector la publique, en vez de esperar 75 s.
       const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()), 24_000);
       if (refreshed) {
-        globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, tableNames: refreshed.tableNames, updatedAt: refreshed.updatedAt, expiresAt: Date.now() + 60_000 };
+        globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, duplicateRecords: refreshed.duplicateRecords || refreshed.records, tableNames: refreshed.tableNames, updatedAt: refreshed.updatedAt, expiresAt: Date.now() + 60_000 };
         return refreshed.records;
       }
       // La actualización del otro usuario falló o venció el lease; intentar una.
@@ -442,7 +445,8 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     const schemaByTable = new Map();
     const latest = new Map();
     const withoutOPA = [];
-    const allRecords = includeDuplicates ? [] : null;
+    const allRecords = [];
+    const opaRecords = [];
     let rowCount = 0;
     const detectedTableNames = await forEachSeaTableRow(env, (row, tableName) => {
       rowCount++;
@@ -453,9 +457,10 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         schemaByTable.set(tableName, sourceKeyMap);
       }
       const record = toInternalRecord(row, tableName, sourceKeyMap);
-      if (allRecords) allRecords.push(record);
+      allRecords.push(record);
       const opa = String(record.O || "").trim();
       if (!opa) { withoutOPA.push(record); return; }
+      opaRecords.push(record);
       const project = String(record.P || "").trim().toLocaleUpperCase();
       const key = `${project}\u0000${opa}`;
       const current = latest.get(key);
@@ -470,10 +475,10 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     // it must catch up; discarding every scan during active work can starve the
     // shared cache forever when several people are editing at once.
     const updatedAt = Date.now();
-    globalThis.__dashboardRowsCache = { key: cacheKey, records, tableNames: detectedTableNames, revision: scanRevision, updatedAt, expiresAt: updatedAt + 60_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records, duplicateRecords: opaRecords, tableNames: detectedTableNames, revision: scanRevision, updatedAt, expiresAt: updatedAt + 60_000 };
     if (sharedCache) {
       try {
-        await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, tableNames: detectedTableNames, revision: scanRevision, updatedAt }), {
+        await sharedCache.put(sharedRequest, new Response(JSON.stringify({ records, duplicateRecords: opaRecords, tableNames: detectedTableNames, revision: scanRevision, updatedAt }), {
           // Keep a usable snapshot available while a newer scan runs. Freshness
           // is controlled by updatedAt/revision below, not by Cache API expiry.
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
@@ -481,8 +486,8 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
         await writeSharedDashboardMetadata(sharedCache, env, { records, revision: scanRevision, updatedAt });
       } catch (_) {}
     }
-    await writeDurableDashboardSnapshot(env, { records, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
-    return allRecords || records;
+    await writeDurableDashboardSnapshot(env, { records, duplicateRecords: opaRecords, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
+    return includeDuplicates ? allRecords : records;
   })().finally(async () => {
     if (ownsRefreshLease && sharedCache) {
       try { await sharedCache.delete(dashboardCacheRequest(env, "refresh-lock")); } catch (_) {}
@@ -497,7 +502,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
 export async function searchDashboardRecordsByOPA(env, query) {
   const cacheKey = dashboardDataCacheKey(env);
   let records = globalThis.__dashboardRowsCache?.key === cacheKey
-    ? globalThis.__dashboardRowsCache.records
+    ? (globalThis.__dashboardRowsCache.duplicateRecords || globalThis.__dashboardRowsCache.records)
     : null;
 
   // La búsqueda no debe iniciar un escaneo completo de SeaTable en una
@@ -507,10 +512,11 @@ export async function searchDashboardRecordsByOPA(env, query) {
     const sharedCache = getSharedDashboardCache(env);
     const snapshot = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
     if (snapshot) {
-      records = snapshot.records;
+      records = snapshot.duplicateRecords || snapshot.records;
       globalThis.__dashboardRowsCache = {
         key: cacheKey,
-        records,
+        records: snapshot.records,
+        duplicateRecords: records,
         tableNames: snapshot.tableNames,
         revision: snapshot.revision || "",
         updatedAt: snapshot.updatedAt,
@@ -567,6 +573,7 @@ async function writeDurableDashboardSnapshot(env, snapshot) {
     const serialized = JSON.stringify({
       version: DASHBOARD_DATA_VERSION,
       records: snapshot.records,
+      duplicateRecords: snapshot.duplicateRecords || snapshot.records,
       tableNames: snapshot.tableNames,
       revision: snapshot.revision || "",
       updatedAt: Number(snapshot.updatedAt || Date.now()),
@@ -574,6 +581,7 @@ async function writeDurableDashboardSnapshot(env, snapshot) {
     const digestSource = JSON.stringify({
       version: DASHBOARD_DATA_VERSION,
       records: snapshot.records,
+      duplicateRecords: snapshot.duplicateRecords || snapshot.records,
       tableNames: snapshot.tableNames,
       revision: snapshot.revision || "",
     });
@@ -791,7 +799,7 @@ async function publishCreatedDashboardRecord(env, tableName, canonicalValues, ro
   let snapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
   if (!snapshot && globalThis.__dashboardRowsCache?.key === cacheKey && Array.isArray(globalThis.__dashboardRowsCache.records)) {
     const local = globalThis.__dashboardRowsCache;
-    snapshot = { records: local.records, tableNames: local.tableNames || [], revision: local.revision || "", updatedAt: local.updatedAt || 0 };
+    snapshot = { records: local.records, duplicateRecords: local.duplicateRecords || local.records, tableNames: local.tableNames || [], revision: local.revision || "", updatedAt: local.updatedAt || 0 };
   }
   if (!snapshot) snapshot = await readDurableDashboardSnapshot(env);
   if (!snapshot || !Array.isArray(snapshot.records)) return;
@@ -810,9 +818,14 @@ async function publishCreatedDashboardRecord(env, tableName, canonicalValues, ro
   const records = snapshot.records.slice();
   if (existingIndex >= 0) records[existingIndex] = internalRow;
   else records.push(internalRow);
+  const duplicateRecords = (snapshot.duplicateRecords || snapshot.records).slice();
+  const duplicateIndex = rowId ? duplicateRecords.findIndex((record) => String(record._id || "") === rowId && String(record.H || "") === tableName) : -1;
+  if (duplicateIndex >= 0) duplicateRecords[duplicateIndex] = internalRow;
+  else duplicateRecords.push(internalRow);
   const now = Date.now();
   const updated = {
     records,
+    duplicateRecords,
     tableNames: Array.from(new Set([...(snapshot.tableNames || []), tableName])),
     revision: `${now}-${Math.random().toString(36).slice(2)}`,
     updatedAt: now,
@@ -954,7 +967,7 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
 
   if (shared) {
     const revision = await readDashboardSnapshotRevision(sharedCache, env);
-    globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, tableNames: shared.tableNames, revision: shared.revision || "", updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames, revision: shared.revision || "", updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
 
     // Mutations and periodic refreshes only mark the snapshot stale. Return it
     // now, then let Pages finish the full SeaTable scan after the response.
@@ -997,7 +1010,7 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
       if (sharedCache) {
         try {
           await sharedCache.put(dashboardCacheRequest(env), new Response(JSON.stringify({
-            records: cached.records, tableNames: cached.tableNames, revision: cached.revision, updatedAt: cached.updatedAt,
+            records: cached.records, duplicateRecords: cached.duplicateRecords || cached.records, tableNames: cached.tableNames, revision: cached.revision, updatedAt: cached.updatedAt,
           }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" } }));
         } catch (_) {}
       }
