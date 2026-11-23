@@ -6298,6 +6298,9 @@
         try { procesarDatos(); } catch(err) {
           try { console.warn('procesarDatos err:', err && err.message ? err.message : err); } catch(_) {}
         }
+        // Registros de base comparte la fuente filtrada del dashboard.
+        // Repintarla tras cada carga evita conservar filas de una versión anterior.
+        try { actualizarTablaRegistrosBase(); } catch(_) {}
         setTimeout(function() {
           try { actualizarTarjetas(); } catch(_) {}
           // actualizarEstados(); — desactivado (panel Estado Plataforma retirado)
