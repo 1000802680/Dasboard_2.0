@@ -26,12 +26,28 @@
           : (functionName === "obtenerChecksumDashboard" ? 12_000
             : (functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 80_000 : 30_000));
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
-        return fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ functionName: String(property), args }),
-        signal: controller.signal,
-        }).then(async (response) => {
+        const sendRequest = async () => {
+          let response;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ functionName, args }),
+                signal: controller.signal,
+              });
+            } catch (error) {
+              if (functionName !== "loginUser" || attempt > 0 || controller.signal.aborted || error.name === "AbortError") throw error;
+              await new Promise((resolve) => setTimeout(resolve, 900));
+              continue;
+            }
+            if (functionName !== "loginUser" || attempt > 0 || ![503, 504].includes(response.status)) break;
+            try { await response.body?.cancel(); } catch (_) {}
+            await new Promise((resolve) => setTimeout(resolve, 900));
+          }
+          return response;
+        };
+        return sendRequest().then(async (response) => {
         const responseText = await response.text().catch(() => "");
         let body = {};
         try { body = responseText ? JSON.parse(responseText) : {}; } catch (_) {}
@@ -43,7 +59,9 @@
             const isHtml = contentType.includes("text/html") || /^\s*<!doctype html|^\s*<html/i.test(responseText);
             const detail = String(body.error || (!isHtml ? responseText : "")).replace(/\s+/g, " ").trim().slice(0, 220);
             const message = isHtml && response.status === 503
-              ? `Cloudflare no pudo ejecutar ${functionName} (HTTP 503). Revisa los registros de Pages Functions usando el Ray ID.`
+              ? (functionName === "loginUser"
+                ? "Cloudflare no pudo completar el inicio de sesión (HTTP 503), incluso después de reintentar. Intenta de nuevo en unos segundos y revisa Pages Functions con el Ray ID si continúa."
+                : `Cloudflare no pudo ejecutar ${functionName} (HTTP 503). Revisa los registros de Pages Functions usando el Ray ID.`)
               : (body.error || `Error del servidor (${response.status})`);
             throw new Error(`${message}${trace}${detail && !body.error && !isHtml ? ` · ${detail}` : ""}`);
           }
