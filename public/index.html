@@ -4269,12 +4269,12 @@
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
               <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Tipo de producto específico</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
             </tr><tr class="registro-filtros">
-              <th><input class="registro-col-filter" data-filter-column="O" aria-label="Filtrar número de OPA" placeholder="Filtrar OPA…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
-              <th><input class="registro-col-filter" data-filter-column="P" aria-label="Filtrar proyecto" placeholder="Filtrar proyecto…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
-              <th><input class="registro-col-filter" data-filter-column="T" aria-label="Filtrar tipo de producto" placeholder="Filtrar tipo…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><select class="registro-col-filter" data-filter-column="O" aria-label="Filtrar número de OPA" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todas las OPAs</option></select></th>
+              <th><select class="registro-col-filter" data-filter-column="P" aria-label="Filtrar proyecto" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los proyectos</option></select></th>
+              <th><select class="registro-col-filter" data-filter-column="T" aria-label="Filtrar tipo de producto" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los tipos</option></select></th>
               <th><select class="registro-col-filter" data-filter-column="TE" aria-label="Filtrar tipo específico" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los tipos específicos</option></select></th>
-              <th><input class="registro-col-filter" data-filter-column="FOTOS" aria-label="Filtrar fotos" placeholder="Con/sin fotos…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
-              <th><input class="registro-col-filter" data-filter-column="E" aria-label="Filtrar estado" placeholder="Filtrar estado…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
+              <th><select class="registro-col-filter" data-filter-column="FOTOS" aria-label="Filtrar fotos" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todas las fotos</option><option value="Con fotos">Con fotos</option><option value="Sin fotos">Sin fotos</option></select></th>
+              <th><select class="registro-col-filter" data-filter-column="E" aria-label="Filtrar estado" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los estados</option></select></th>
               <th><input class="registro-col-filter" data-filter-column="FECHAS" aria-label="Filtrar fechas de etapas" placeholder="Filtrar fecha…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
             </tr></thead>
             <tbody id="registros-base-body"><tr><td style="text-align:center;padding:24px;color:#64748b;">Cargando registros…</td></tr></tbody>
@@ -6008,17 +6008,23 @@
       return true;
     }
 
-    function _registrosActualizarFiltroEspecifico() {
-      const select = document.querySelector('#registros-base-table [data-filter-column="TE"]');
-      if (!select) return;
-      const seleccionado = String(select.value || '');
-      const valores = Array.from(new Set((Array.isArray(datosFiltrados) ? datosFiltrados : []).map(function(row) {
-        return limpiarTexto(row && row.TE);
-      }).filter(Boolean))).sort(function(a,b) { return a.localeCompare(b, 'es', { sensitivity: 'base' }); });
-      select.innerHTML = '<option value="">Todos los tipos específicos</option>' + valores.map(function(valor) {
-        return '<option value="' + escapeAttr(valor) + '">' + escapeHTML(valor) + '</option>';
-      }).join('');
-      if (valores.indexOf(seleccionado) >= 0) select.value = seleccionado;
+    function _registrosActualizarFiltrosDesplegables() {
+      const valoresPorColumna = {
+        O: { todos: 'Todas las OPAs' }, P: { todos: 'Todos los proyectos' }, T: { todos: 'Todos los tipos' },
+        TE: { todos: 'Todos los tipos específicos' }, E: { todos: 'Todos los estados' }
+      };
+      const origen = Array.isArray(datosFiltrados) ? datosFiltrados : [];
+      Object.keys(valoresPorColumna).forEach(function(columna) {
+        const select = document.querySelector('#registros-base-table [data-filter-column="' + columna + '"]');
+        if (!select) return;
+        const seleccionado = String(select.value || '');
+        const valores = Array.from(new Set(origen.map(function(row) { return limpiarTexto(row && row[columna]); }).filter(Boolean)))
+          .sort(function(a,b) { return a.localeCompare(b, 'es', { sensitivity: 'base', numeric: columna === 'O' }); });
+        select.innerHTML = '<option value="">' + escapeHTML(valoresPorColumna[columna].todos) + '</option>' + valores.map(function(valor) {
+          return '<option value="' + escapeAttr(valor) + '">' + escapeHTML(valor) + '</option>';
+        }).join('');
+        if (valores.indexOf(seleccionado) >= 0) select.value = seleccionado;
+      });
     }
 
     function filtrarColumnaRegistrosBase(input) {
@@ -6038,7 +6044,7 @@
       return limpiarTexto(valor).toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
 
-    function _registrosCoincideFiltroColumna(row, columna, filtro) {
+    function _registrosCoincideFiltroColumna(row, columna, filtro, exacto) {
       const buscar = _registrosTextoFiltro(filtro);
       if (!buscar) return true;
       let valor = '';
@@ -6052,22 +6058,23 @@
       } else {
         valor = row[columna] || '';
       }
-      return _registrosTextoFiltro(valor).includes(buscar);
+      const texto = _registrosTextoFiltro(valor);
+      return exacto ? texto === buscar : texto.includes(buscar);
     }
 
     function actualizarTablaRegistrosBase() {
       const body = document.getElementById('registros-base-body');
       if (!body) return;
-      _registrosActualizarFiltroEspecifico();
+      _registrosActualizarFiltrosDesplegables();
       // Registros de base solo muestra filas que tienen número de OPA.
       // La carga general también contiene filas vacías de algunas hojas.
       const filtrosColumna = Array.from(document.querySelectorAll('#registros-base-table .registro-col-filter')).map(function(input) {
-        return { columna: input.dataset.filterColumn, valor: input.value };
+        return { columna: input.dataset.filterColumn, valor: input.value, exacto: input.tagName === 'SELECT' };
       }).filter(function(item) { return String(item.valor || '').trim() !== ''; });
       const rows = Array.isArray(datosFiltrados) ? datosFiltrados.filter(function(row) {
         return String(row && row.O || '').trim() !== '';
       }).filter(function(row) {
-        return filtrosColumna.every(function(item) { return _registrosCoincideFiltroColumna(row, item.columna, item.valor); });
+        return filtrosColumna.every(function(item) { return _registrosCoincideFiltroColumna(row, item.columna, item.valor, item.exacto); });
       }) : [];
       rows.sort(function(a, b) {
         const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
