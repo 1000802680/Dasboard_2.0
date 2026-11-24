@@ -3865,7 +3865,7 @@
     </div>
 
     <div class="footer" id="footerSyncInfo">
-      Dashboard COL-FT-001 · Sincronización automática cada 60s · SeaTable
+      Dashboard COL-FT-001 · Sincronización automática cada 30s · SeaTable
     </div>
 
   </div> <!-- cierra tab-dashboard (contenido original) -->
@@ -4704,7 +4704,7 @@
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 30000;  // Menos consultas al endpoint; SeaTable se refresca mediante la caché compartida.
+    const POLL_INTERVAL_MS      = 15000;  // El checksum consulta metadatos ligeros; acelerar la detección sin volver a leer todas las filas.
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
@@ -5151,7 +5151,7 @@
               try {
                 actualizarSyncStatus(
                   'Caché local · ' + _timestampHumano(ts) + ' (refrescando en segundo plano...)',
-                  false
+                  true
                 );
               } catch(_) {}
 
@@ -5183,7 +5183,7 @@
         datos = snapshot.registros;
         try { _invalidateMemo(); llenarFiltroHoja(); actualizarListasYDashboard(); } catch (_) {}
         try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch (_) {}
-        try { actualizarSyncStatus('Copia local · ' + _timestampHumano(Number(snapshot._ts || 0)) + ' (sincronizando...)', false); } catch (_) {}
+        try { actualizarSyncStatus('Copia local · ' + _timestampHumano(Number(snapshot._ts || 0)) + ' (sincronizando...)', true); } catch (_) {}
       }).catch(function() {});
 
       try { actualizarSyncStatus('Sincronizando con SeaTable...', false); } catch(_) {}
@@ -5260,18 +5260,34 @@
             terminado = true;
             if (!respuesta) throw new Error('No se recibieron datos.');
 
-            datos = respuesta.registros || [];
+            const refreshPending = respuesta.actualizandoEnSegundoPlano === true;
+            const incomingRecords = Array.isArray(respuesta.registros) ? respuesta.registros : [];
+            let localSnapshotTs = 0;
+            try { localSnapshotTs = Number(JSON.parse(localStorage.getItem(STORAGE_CACHE_KEY) || '{}')._ts || 0); } catch(_) {}
+            const incomingSnapshotTs = Number(respuesta.updatedAt || 0);
+            // Una respuesta que solo contiene la copia previa no debe pisar los
+            // cambios locales ni recibir una marca de tiempo nueva: eso hacía
+            // parecer reciente una copia vieja después de recargar la página.
+            if (!refreshPending || !Array.isArray(datos) || !datos.length || incomingSnapshotTs >= localSnapshotTs) {
+              datos = incomingRecords;
+            }
+            _dashboardRefreshPending = refreshPending;
 
-            const serverTs = Date.now();
-            _dashboardLastServerSuccessAt = serverTs;
-            _guardarCacheDashboard({ _ts: serverTs, registros: datos });
+            const serverTs = incomingSnapshotTs || Date.now();
+            _dashboardLastServerSuccessAt = Date.now();
+            if (!refreshPending) _guardarCacheDashboard({ _ts: serverTs, registros: datos });
 
             llenarFiltroHoja();
             actualizarListasYDashboard();
             // ✅ Carga de servidor EXITOSA → OCULTAR banner rojo inmediatamente
             try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch(_){}
             try {
-              actualizarSyncStatus('Conectado a la hoja · ' + _timestampHumano(serverTs), false);
+              actualizarSyncStatus(
+                refreshPending
+                  ? 'SeaTable respondió · terminando de sincronizar los cambios · se conserva la última copia confirmada'
+                  : 'Conectado a la hoja · datos actualizados ' + _timestampHumano(serverTs),
+                refreshPending
+              );
             } catch(_) {}
 
             // 1) Si el servidor ya mandó analisis en el mismo payload → lo usamos (0 llamadas extra!)
@@ -5309,6 +5325,7 @@
                 try { iniciarPolling(); } catch(_) {}
               }
             } catch(_) {}
+            if (refreshPending) setTimeout(function() { try { _pollingSolicitarInmediato(); } catch(_) {} }, 250);
 
           } catch(error) {
             if (mostrarErrores) mostrarError(error.message);

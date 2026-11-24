@@ -32,6 +32,9 @@ const DEFAULT_COLUMNS = {
 
 const EMPTY_OPA = new Set(["", "N/A", "NA", "N.A.", "-", "SIN OPA", "NINGUNO", "NINGUNA"]);
 const DASHBOARD_DATA_VERSION = "all-rows-v3-search-duplicates";
+// Reconciliar ediciones hechas directamente en SeaTable, sin escanear toda la
+// base en cada sondeo ligero del dashboard.
+const DASHBOARD_SNAPSHOT_MAX_AGE_MS = 30_000;
 
 function dashboardDataCacheKey(env) {
   return [DASHBOARD_DATA_VERSION, env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
@@ -694,9 +697,9 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   const ageMs = Date.now() - Number(metadata.updatedAt || 0);
   const revision = await readDashboardSnapshotRevision(sharedCache, env);
   // Si una escritura invalidó el snapshot y no se pudo propagar, reconciliarla
-  // en el siguiente sondeo en vez de esperar otros 30 segundos.
+  // en el siguiente sondeo en vez de esperar a que venza el snapshot.
   const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
-  const stale = ageMs >= 60_000 || changedWhileEditing;
+  const stale = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
   let refreshLock = null;
   if (sharedCache) {
     try {
@@ -1084,22 +1087,13 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
     // Bound refresh frequency independently of the number of writes. This lets
     // the snapshot advance during continuous team activity without launching a
     // full-table scan for each individual save; direct SeaTable edits are still
-    // caught by the 60 second periodic refresh.
-    const isStale = forceRefresh || ageMs >= 60_000 || changedWhileEditing;
+    // reconciled by the periodic snapshot refresh.
+    const isStale = forceRefresh || ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
     const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
     if (isStale && !lock && context && typeof context.waitUntil === "function") {
-      const pending = globalThis.__dashboardBackgroundRefresh;
-      // Una promesa de otra solicitud no se puede reutilizar con waitUntil
-      // bajo handle_cross_request_promise_resolution. La solicitud original
-      // ya mantiene vivo su propio refresco; esta solo devuelve el snapshot.
-      if (!pending || pending.key !== cacheKey) {
-        const promise = loadDashboardRecords(env, { forceRefresh: true })
-          .catch((error) => console.warn("Dashboard background refresh failed:", error?.message || error));
-        globalThis.__dashboardBackgroundRefresh = { key: cacheKey, promise };
-        context.waitUntil(promise.finally(() => {
-          if (globalThis.__dashboardBackgroundRefresh?.promise === promise) globalThis.__dashboardBackgroundRefresh = null;
-        }));
-      }
+      // Usar el mismo lease compartido que el checksum evita que varias
+      // solicitudes de usuarios distintos inicien escaneos completos a la vez.
+      await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
     }
     return { records: shared.records, updatedAt: Number(shared.updatedAt || 0), refreshing: isStale };
   }
@@ -1130,15 +1124,9 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
   // refresh them in the background instead of blocking the user's request.
   if (cached?.key === cacheKey) {
     const ageMs = Date.now() - Number(cached.updatedAt || 0);
-    const isStale = forceRefresh || ageMs >= 60_000;
-    const pending = globalThis.__dashboardBackgroundRefresh;
-    if (isStale && context && typeof context.waitUntil === "function" && (!pending || pending.key !== cacheKey)) {
-      const promise = loadDashboardRecords(env, { forceRefresh: true })
-        .catch((error) => console.warn("Dashboard background refresh failed:", error?.message || error));
-      globalThis.__dashboardBackgroundRefresh = { key: cacheKey, promise };
-      context.waitUntil(promise.finally(() => {
-        if (globalThis.__dashboardBackgroundRefresh?.promise === promise) globalThis.__dashboardBackgroundRefresh = null;
-      }));
+    const isStale = forceRefresh || ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS;
+    if (isStale && context && typeof context.waitUntil === "function") {
+      await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
     }
     return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: isStale };
   }

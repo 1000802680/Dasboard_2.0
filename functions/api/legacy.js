@@ -58,7 +58,8 @@ export async function onRequestPost(context) {
           registros,
           totalRegistros: registros.length,
           etag: fastEtag(registros, snapshot.updatedAt),
-          fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
+          updatedAt: Number(snapshot.updatedAt) || 0,
+          fechaActualizacion: snapshot.updatedAt ? new Date(snapshot.updatedAt).toLocaleString("es-CO", { timeZone: "America/Bogota" }) : "",
           actualizandoEnSegundoPlano: snapshot.refreshing,
         };
         break;
