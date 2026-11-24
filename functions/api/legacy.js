@@ -128,22 +128,23 @@ export async function onRequestPost(context) {
         // dispositivo conserve un snapshot antiguo. Una lectura sirve para LF
         // y GE de la misma fila.
         const freshRows = new Map();
-        await mapWithConcurrency([...rowRequests.entries()], 6, async ([rowKey, item]) => {
+        await mapWithConcurrency([...rowRequests.entries()], 8, async ([rowKey, item]) => {
           freshRows.set(rowKey, await getDashboardRow(env, item.table, item.rowId));
         });
-        const work = [];
+        const imageTasks = [];
         for (const target of normalizedTargets) {
           const row = freshRows.get(target.rowKey) || {};
           const column = getDashboardColumnName(env, target.columnKey);
           const attachments = row[column] ?? row[target.columnKey];
           const normalized = target.columnKey === "GE" ? normalizeGuideValue(attachments).photos : normalizeImageAttachments(attachments);
-          work.push({ key: target.key, attachments: normalized });
+          imagenesPorFila[target.key] = new Array(normalized.length);
+          normalized.forEach((attachment, index) => imageTasks.push({ key: target.key, index, attachment }));
         }
-        const previews = await mapWithConcurrency(work, 6, async (item) => ({
-          key: item.key,
-          images: await Promise.all(item.attachments.map((attachment) => makeImagePreview(env, attachment))),
-        }));
-        for (const item of previews) imagenesPorFila[item.key] = item.images;
+        // Limitar globalmente la concurrencia: antes se abría una ola de
+        // solicitudes por fila y todas las filas esperaban el último enlace.
+        await mapWithConcurrency(imageTasks, 8, async (task) => {
+          imagenesPorFila[task.key][task.index] = await makeImagePreview(env, task.attachment);
+        });
         value = { ok: true, imagenesPorFila };
         break;
       }
