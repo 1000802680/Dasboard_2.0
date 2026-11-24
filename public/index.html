@@ -12303,6 +12303,12 @@
       form.append('rowId', row.rowId || '');
       form.append('numeroOPA', row.numeroOPA || '');
       form.append('columnKey', columnKey);
+      form.append('proyecto', row.proyecto || '');
+      form.append('tipoProducto', row.tipoProducto || '');
+      form.append('tipoProductoEspecifico', row.todasLasFechas && row.todasLasFechas.TE || '');
+      form.append('territorio', row.territorio || '');
+      form.append('subOpa', row.subOpa || '');
+      form.append('personaje', row.personaje || '');
       files.forEach(function(file) { form.append('files', file, file.name); });
       setStatus('Subiendo ' + files.length + ' imagen' + (files.length === 1 ? '' : 'es') + ' a SeaTable…', false);
       const button = document.querySelector('label[for="opa-files-' + columnKey + '-' + dataId + '"]');
@@ -12311,6 +12317,7 @@
         const response = await fetch('/api/upload-opa-image', { method: 'POST', body: form });
         const result = await response.json().catch(function() { return {}; });
         if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las fotos.');
+        if (result.rowId) row.rowId = String(result.rowId);
         if (columnKey === 'GE') {
           row.guiaImagenes = Array.isArray(result.imagenes) ? result.imagenes : row.guiaImagenes;
           row.guiaEnlace = String(result.enlaceGuia || row.guiaEnlace || '');
@@ -12320,8 +12327,17 @@
         try {
           const baseKey = String(row.hoja || '') + '::' + String(row.rowId || '');
           if (window._registrosImagenesCache) delete window._registrosImagenesCache[baseKey];
-          const mainRecord = Array.isArray(datos) ? datos.find(function(item) { return String(item.H || '') === String(row.hoja || '') && String(item._id || '') === String(row.rowId || ''); }) : null;
+          let mainRecord = Array.isArray(datos) ? datos.find(function(item) { return String(item.H || '') === String(row.hoja || '') && String(item._id || '') === String(row.rowId || ''); }) : null;
+          if (!mainRecord && Array.isArray(datos)) {
+            const matches = datos.filter(function(item) {
+              return String(item.H || '') === String(row.hoja || '') &&
+                String(item.O || '').trim() === String(row.numeroOPA || '').trim() &&
+                String(item.P || '').trim() === String(row.proyecto || '').trim();
+            });
+            if (matches.length === 1) mainRecord = matches[0];
+          }
           if (mainRecord) {
+            if (row.rowId) mainRecord._id = String(row.rowId);
             mainRecord[columnKey] = result.valorGuardado;
             _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
             _invalidateMemo();
