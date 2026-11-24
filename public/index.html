@@ -11660,6 +11660,15 @@
                 if (!es) return;
                 const inp = t.id === 'inp-busca-opa' ? t : (t.closest && t.closest('#inp-busca-opa'));
                 if (!inp) return;
+                // Este listener global está en fase capture y detiene el evento
+                // antes de que llegue al handler del input. Por eso Enter debe
+                // iniciar la consulta aquí mismo.
+                if (nombreEv === 'keydown' && (ev.key === 'Enter' || ev.keyCode === 13) && !ev.isComposing) {
+                  try { ev.preventDefault && ev.preventDefault(); } catch(_) {}
+                  try { _buscarOPA(); } catch(_) {}
+                  try { ev.stopImmediatePropagation && ev.stopImmediatePropagation(); } catch(_) {}
+                  return;
+                }
                 // Forzar siempre NO readonly ni disabled
                 inp.readOnly = false;
                 inp.disabled = false;
