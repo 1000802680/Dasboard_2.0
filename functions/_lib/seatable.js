@@ -729,7 +729,7 @@ async function waitForSharedDashboardRefresh(cache, snapshotRequest, lockRequest
   return null;
 }
 
-export async function updateDashboardRow(env, tableName, rowId, values) {
+export async function updateDashboardRow(env, tableName, rowId, values, context = null) {
   assertConfig(env);
   if (!tableName || !rowId || !values || typeof values !== "object" || !Object.keys(values).length) {
     throw new Error("Falta la tabla, el identificador de fila o el valor que se guardará.");
@@ -750,13 +750,19 @@ export async function updateDashboardRow(env, tableName, rowId, values) {
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no guardó los cambios en ${tableName} (HTTP ${response.status}). Verifica que SEATABLE_API_TOKEN tenga permiso de lectura y escritura.${detail ? ` ${detail}` : ""}`);
   }
-  try {
-    const published = await publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues);
-    if (!published) await invalidateDashboardSnapshot(env);
-  } catch (error) {
-    console.warn("No se pudo propagar el cambio a la copia del dashboard:", error?.message || error);
-    await invalidateDashboardSnapshot(env);
-  }
+  const publishUpdate = async () => {
+    try {
+      const published = await publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues);
+      if (!published) await invalidateDashboardSnapshot(env);
+    } catch (error) {
+      console.warn("No se pudo propagar el cambio a la copia del dashboard:", error?.message || error);
+      await invalidateDashboardSnapshot(env);
+    }
+  };
+  // El guardado en SeaTable ya terminó. La propagación al snapshot puede
+  // serializar miles de filas; no debe convertir un guardado exitoso en 503.
+  if (typeof context?.waitUntil === "function") context.waitUntil(publishUpdate());
+  else await publishUpdate();
   return body;
 }
 
@@ -907,7 +913,8 @@ async function publishUpdatedDashboardRecord(env, tableName, rowId, canonicalVal
       }));
     } catch (_) {}
   }
-  await writeDurableDashboardSnapshot(env, updated);
+  // La copia de Cache API es la ruta rápida para el polling. La copia durable
+  // se renueva en el escaneo periódico para evitar escribir R2 en cada edición.
   return true;
 }
 

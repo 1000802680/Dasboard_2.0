@@ -131,7 +131,7 @@ export async function onRequestPost(context) {
       else merged.push({ name: item.name, size: item.size, type: "file", url: item.path });
     }
     const storedValue = fileType === "text" ? JSON.stringify({ version: 1, link: requestedGuideLink || existingGuide.link, photos: merged }) : merged;
-    await updateDashboardRow(env, tableName, selectedRowId, { [columnName]: storedValue });
+    await updateDashboardRow(env, tableName, selectedRowId, { [columnName]: storedValue }, context);
     const auditTask = recordBusinessAudit(env, {
       username: user.username, role: user.rol, action: columnKey === "GE" ? "ADJUNTAR_FOTOS_GUIA_ENVIO" : "ADJUNTAR_IMAGENES",
       detail: { columna: columnName, archivos: saved.map((item) => item.name) },
@@ -178,7 +178,7 @@ async function removeAttachedImage(context, env, user, form, tableName, rowId, c
   const storedValue = fileType === "text"
     ? JSON.stringify({ version: 1, link: existingGuide.link, photos: remaining })
     : remaining;
-  await updateDashboardRow(env, tableName, rowId, { [columnName]: storedValue });
+  await updateDashboardRow(env, tableName, rowId, { [columnName]: storedValue }, context);
 
   const removedName = typeof removed === "string"
     ? removed.split("/").pop()

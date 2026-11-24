@@ -220,8 +220,7 @@ export async function onRequestPost(context) {
           const columnType = await getDashboardColumnType(env, String(table), columnName);
           if (["image", "file"].includes(columnType)) return Response.json({ ok: false, error: "La columna de guía es de adjuntos. Usa el botón ‘Adjuntar foto’ para guardar imágenes; el enlace web no se puede guardar en esa columna." }, { status: 400, headers: { "Cache-Control": "no-store" } });
           if (["text", "long-text", "long text"].includes(columnType)) {
-            const currentRow = await getDashboardRow(env, String(table), String(rowId || ""));
-            const existing = normalizeGuideValue(getRowValueForField(currentRow, columnName) ?? currentRow.GE);
+            const existing = normalizeGuideValue(getRowValueForField(oldRow, columnName) ?? oldRow.GE);
             updates[columnName] = JSON.stringify({ version: 1, link: newValue, photos: existing.photos });
           }
         }
@@ -229,7 +228,7 @@ export async function onRequestPost(context) {
         let estadoActualizado = "";
         if (stageIndex >= 0 && newValue) {
           const statusColumn = getDashboardColumnName(env, "E");
-          const currentRow = await getDashboardRow(env, String(table), String(rowId || ""));
+          const currentRow = oldRow;
           const currentState = String(getRowValueForField(currentRow, statusColumn) || currentRow.E || "").trim();
           const statusStage = ESTADOS.findIndex((estado) => estado.toLocaleLowerCase() === currentState.toLocaleLowerCase());
           let furthestStage = statusStage >= 0 && statusStage < 8 ? statusStage : -1;
@@ -245,7 +244,7 @@ export async function onRequestPost(context) {
             estadoActualizado = ESTADOS[furthestStage];
           }
         }
-        await updateDashboardRow(env, String(table), String(rowId || ""), updates);
+        await updateDashboardRow(env, String(table), String(rowId || ""), updates, context);
         await scheduleBusinessAudit(context, env, { username: user.username, role: user.rol, action: "EDITAR_CAMPO", detail: { campo: columnName, valorAnterior: oldValue, valorNuevo: newValue, ...(estadoActualizado ? { estado: estadoActualizado } : {}) }, opa: String(args[5] || ""), table: String(table), row: String(rowId || "") });
         value = { ok: true, campo: columnName, valorNuevo: newValue, ...(key === "GE" ? { valorAlmacenado: updates[columnName] } : {}), ...(estadoActualizado ? { estado: estadoActualizado } : {}) };
         break;
@@ -296,7 +295,7 @@ export async function onRequestPost(context) {
         const stageKey = stageIndex >= 0 && stageIndex < 8 ? `F${stageIndex + 1}` : "";
         const fechaEscrita = stageKey && p.fechaElegida ? await formatDateForSeaTable(env, table, stageKey, p.fechaElegida) : "";
         if (fechaEscrita) updates[getDashboardColumnName(env, stageKey)] = fechaEscrita;
-        await updateDashboardRow(env, table, selectedRowId, updates);
+        await updateDashboardRow(env, table, selectedRowId, updates, context);
         let excelSyncWarning = "";
         try { await updateExcelIndexRecord(env, table, selectedRowId, { E: state, ...(stageKey && fechaEscrita ? { [stageKey]: fechaEscrita } : {}) }); }
         catch (error) { excelSyncWarning = `SeaTable guardó el cambio, pero el Excel no se actualizó: ${error.message}`; }
