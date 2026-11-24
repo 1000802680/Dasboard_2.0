@@ -16,7 +16,6 @@ export async function onRequestPost(context) {
     const tableName = String(form.get("table") || "").trim();
     const rowId = String(form.get("rowId") || "").trim();
     const columnKey = String(form.get("columnKey") || "LF").trim().toUpperCase();
-    const isNewRow = String(form.get("newRow") || "") === "1";
     if (!["LF", "GE"].includes(columnKey)) return json({ ok: false, error: "Solo puedes adjuntar fotos del producto o de la guía de envío." }, 400);
     if (!tableName || !rowId) return json({ ok: false, error: "Falta identificar la hoja y la fila de la OPA." }, 400);
     if (!(await discoverTableNames(env)).includes(tableName)) return json({ ok: false, error: "La hoja indicada no pertenece a las hojas de datos del dashboard." }, 400);
@@ -42,39 +41,50 @@ export async function onRequestPost(context) {
     const columnType = await getDashboardColumnType(env, tableName, columnName);
     let selectedRowId = rowId;
     let currentRow = {};
-    if (!isNewRow) {
-      try {
-        currentRow = await getDashboardRow(env, tableName, selectedRowId);
-      } catch (error) {
-        if (!/HTTP 404/.test(String(error?.message || error))) throw error;
-        const records = await loadDashboardRecords(env, { forceRefresh: true, includeDuplicates: true });
-        let candidates = records.filter((record) =>
-          String(record.H || "").trim() === tableName &&
-          String(record.O || "").trim() === String(form.get("numeroOPA") || "").trim()
-        );
-        const identityFields = [
-          ["P", form.get("proyecto")], ["T", form.get("tipoProducto")],
-          ["TE", form.get("tipoProductoEspecifico")], ["TR", form.get("territorio")],
-          ["SO", form.get("subOpa")], ["PJ", form.get("personaje")],
-        ];
-        const normalizeIdentity = (value) => String(value || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleUpperCase().replace(/[^A-Z0-9]/g, "");
-        for (const [key, value] of identityFields) {
-          if (String(value || "").trim()) {
-            const expected = normalizeIdentity(value);
-            candidates = candidates.filter((record) => normalizeIdentity(record[key]) === expected);
-          }
-        }
-        if (candidates.length !== 1 || !String(candidates[0]?._id || "").trim()) {
-          return json({ ok: false, error: candidates.length
-            ? `Hay varias filas indistinguibles para la OPA ${String(form.get("numeroOPA") || "")} en ${tableName}. Vuelve a buscar y elige el registro correcto.`
-            : `La fila seleccionada ya no existe en SeaTable. Vuelve a buscar la OPA ${String(form.get("numeroOPA") || "")} y selecciona el registro actualizado.`
-          }, 409);
-        }
-        currentRow = candidates[0];
-        selectedRowId = String(currentRow._id);
+    const expectedOPA = String(form.get("numeroOPA") || "").trim();
+    const identityFields = [
+      ["P", form.get("proyecto")], ["T", form.get("tipoProducto")],
+      ["TE", form.get("tipoProductoEspecifico")], ["TR", form.get("territorio")],
+      ["SO", form.get("subOpa")], ["PJ", form.get("personaje")],
+    ];
+    const normalizeIdentity = (value) => String(value || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleUpperCase().replace(/[^A-Z0-9]/g, "");
+    const currentRowMatches = (record) => {
+      const opaColumn = getDashboardColumnName(env, "O");
+      if (expectedOPA && normalizeIdentity(record?.[opaColumn] ?? record?.O) !== normalizeIdentity(expectedOPA)) return false;
+      for (const [key, value] of identityFields) {
+        if (!String(value || "").trim()) continue;
+        const actualColumn = getDashboardColumnName(env, key);
+        if (normalizeIdentity(record?.[actualColumn] ?? record?.[key]) !== normalizeIdentity(value)) return false;
       }
+      return true;
+    };
+    try {
+      currentRow = await getDashboardRow(env, tableName, selectedRowId);
+      if (!currentRowMatches(currentRow)) throw new Error("La fila identificada no coincide con la OPA solicitada (HTTP 404).");
+    } catch (error) {
+      if (!/HTTP 404/.test(String(error?.message || error))) throw error;
+      // Un formulario recién guardado o una búsqueda puede traer un ID que
+      // SeaTable no reconoce. Releer la base y recuperar una coincidencia única.
+      const records = await loadDashboardRecords(env, { forceRefresh: true, includeDuplicates: true });
+      let candidates = records.filter((record) =>
+        String(record.H || "").trim() === tableName &&
+        normalizeIdentity(record.O) === normalizeIdentity(expectedOPA)
+      );
+      for (const [key, value] of identityFields) {
+        if (!String(value || "").trim()) continue;
+        const expected = normalizeIdentity(value);
+        candidates = candidates.filter((record) => normalizeIdentity(record[key]) === expected);
+      }
+      if (candidates.length !== 1 || !String(candidates[0]?._id || "").trim()) {
+        return json({ ok: false, error: candidates.length
+          ? `Hay varias filas indistinguibles para la OPA ${expectedOPA} en ${tableName}. La OPA ya se creó; búscala y adjunta las fotos desde su registro.`
+          : `La OPA ya se creó, pero SeaTable no permitió localizar su fila para guardar las fotos. No vuelvas a crearla; búscala en el dashboard y adjunta las fotos desde el registro.`
+        }, 409);
+      }
+      currentRow = candidates[0];
+      selectedRowId = String(currentRow._id);
     }
-    const normalizedColumnType = columnType.replace(/[\s_-]/g, "");
+        const normalizedColumnType = columnType.replace(/[\s_-]/g, "");
     const fileType = columnType === "image" ? "image" : columnType === "file" ? "file" : columnKey === "GE" && ["text", "longtext"].includes(normalizedColumnType) ? "text" : "";
     if (!fileType) return json({ ok: false, error: `La columna "${columnName}" debe ser de tipo Imagen o Archivo${columnKey === "GE" ? " o Texto largo" : ""} para guardar fotos.` }, 400);
 
