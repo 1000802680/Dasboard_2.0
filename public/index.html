@@ -4637,6 +4637,8 @@
     let _dashboardCacheDbPromise = null;
     let _dashboardLastServerSuccessAt = 0;
     let _dashboardManualRefreshInFlight = false;
+    let _dashboardRenderRevision = 0;
+    let _proyectosRenderVersion = 0;
 
     function _abrirCacheDashboard() {
       if (!window.indexedDB) return Promise.resolve(null);
@@ -5152,9 +5154,6 @@
                 );
               } catch(_) {}
 
-              // GRÁFICAS LOCALES INMEDIATAS (no esperar 2da llamada servidor)
-              try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_) {}
-
               try {
                 if (!window._pollingArranqueHecho) {
                   window._pollingArranqueHecho = true;
@@ -5182,7 +5181,6 @@
         if (_dashboardLastServerSuccessAt > cacheReadServerMark) return;
         datos = snapshot.registros;
         try { _invalidateMemo(); llenarFiltroHoja(); actualizarListasYDashboard(); } catch (_) {}
-        try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch (_) {}
         try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch (_) {}
         try { actualizarSyncStatus('Copia local · ' + _timestampHumano(Number(snapshot._ts || 0)) + ' (sincronizando...)', false); } catch (_) {}
       }).catch(function() {});
@@ -5200,7 +5198,6 @@
               try { actualizarListasYDashboard(); } catch(_) {}
               // ✅ Fallback caché ante error → OCULTAR banner rojo; tenemos datos que mostrar
               try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch(_){}
-              try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_){}
               try {
                 actualizarSyncStatus(
                   'Usando copia local · ' + _timestampHumano(Number(parsed._ts || 0)) + ' (error al contactar servidor)',
@@ -5233,8 +5230,6 @@
               datos = parsed.registros;
               llenarFiltroHoja();
               actualizarListasYDashboard();
-              // Render LOCAL de gráficas (no depende de servidor)
-              try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_) {}
               // ✅ Timeout pero tenemos caché pintada → OCULTAR banner rojo
               try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch(_){}
               try {
@@ -5289,9 +5284,8 @@
                 analisisUsado = true;
               }
             } catch(_) {}
-            // 2) Si no vino → render LOCAL inmediato (no esperar otra llamada al servidor!)
+            // El pipeline visible del dashboard pinta el análisis local una sola vez.
             if (!analisisUsado) {
-              try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_) {}
               // 3) Segundo plano: actualizar desde servidor SOLO si aún no lo tenemos
               setTimeout(function(){
                 try {
@@ -5406,7 +5400,8 @@
 
       // Los filtros modifican el universo de OPAs; no reutilizar conteos memoizados.
       _invalidateMemo();
-      actualizarTablaRegistrosBase();
+      const registrosTab = document.getElementById('tab-registros');
+      if (registrosTab && registrosTab.classList.contains('active')) actualizarTablaRegistrosBase();
     }
 
     function _dashboardFechaISOEnZona(fecha) {
@@ -5744,6 +5739,8 @@
         const xmlEscape = function(value) { return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); };
         const cellValue = function(row,key) {
           let value = row[key];
+          if (key === 'LF' && value == null && row._hasLF) return 'Tiene adjuntos';
+          if (key === 'GE' && value == null && row._hasGE) return 'Tiene adjuntos';
           if (key === 'GE' && typeof value === 'string') {
             try { const parsed = JSON.parse(value); if (parsed && !Array.isArray(parsed)) value = [parsed.link || parsed.enlace || '', ...(parsed.photos || parsed.fotos || parsed.attachments || []).map(function(item){ return item && (item.name || item.path || item.url) || item; })].filter(Boolean).join(' | '); } catch(_) {}
           }
@@ -6037,6 +6034,8 @@
         if ((key === 'LF' || key === 'GE') && Array.isArray(campos[key])) registro[key] = campos[key];
         else registro[key] = (key === 'MR' || key === 'ME') ? Number(campos[key]) || 0 : String(campos[key]).trim();
       });
+      registro._hasLF = _dashboardTieneAdjunto(registro.LF);
+      registro._hasGE = _dashboardTieneAdjunto(registro.GE);
       if (!registro.E) {
         const latestStage = ['F8','F7','F6','F5','F4','F3','F2','F1'].find(function(key) { return registro[key]; });
         if (latestStage) registro.E = _estadosOpcionesDefault[Number(latestStage.slice(1)) - 1] || '';
@@ -6050,7 +6049,6 @@
       try { _invalidateMemo(); } catch(_) {}
       try { _guardarCacheDashboard({ _ts: Date.now(), registros: datos }); } catch(_) {}
       try { llenarFiltroHoja(); actualizarListasYDashboard(); } catch(_) {}
-      try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_) {}
       return true;
     }
 
@@ -6090,15 +6088,34 @@
       return limpiarTexto(valor).toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
 
+    function _dashboardTieneAdjunto(value) {
+      if (Array.isArray(value)) return value.length > 0;
+      if (value && typeof value === 'object') return Object.keys(value).length > 0;
+      const text = String(value || '').trim();
+      if (!text) return false;
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed.length > 0;
+        if (parsed && typeof parsed === 'object') {
+          const attachments = parsed.photos || parsed.fotos || parsed.attachments || parsed.archivos;
+          if (Array.isArray(attachments)) return attachments.length > 0 || Boolean(parsed.link || parsed.enlace);
+          if (parsed.link || parsed.enlace) return true;
+          return Object.keys(parsed).length > 0;
+        }
+      } catch(_) {}
+      return true;
+    }
+
     function _registrosCoincideFiltroColumna(row, columna, filtro, exacto) {
       const buscar = _registrosTextoFiltro(filtro);
       if (!buscar) return true;
       let valor = '';
       if (columna === 'FOTOS') {
+        const hasPhotos = Boolean(row._hasLF || row._hasGE || _dashboardTieneAdjunto(row.LF) || _dashboardTieneAdjunto(row.GE));
+        if (buscar === 'con' || buscar === 'con fotos') return hasPhotos;
+        if (buscar === 'sin' || buscar === 'sin fotos') return !hasPhotos;
         const adjuntos = Array.isArray(row.GE) ? row.GE.map(function(item) { return typeof item === 'string' ? item : (item && (item.name || item.url || item.path)) || ''; }).join(' ') : String(row.GE || '');
         valor = [row.LF, adjuntos].filter(Boolean).join(' ');
-        if (buscar === 'con' || buscar === 'con fotos') return !!valor.trim();
-        if (buscar === 'sin' || buscar === 'sin fotos') return !valor.trim();
       } else if (columna === 'FECHAS') {
         valor = ['F','F1','F2','F3','F4','F5','F6','F7','F8','FM'].map(function(key) { return row[key] || ''; }).join(' ');
       } else {
@@ -6325,6 +6342,27 @@
 
 
     function actualizarDashboard() {
+      const renderRevision = ++_dashboardRenderRevision;
+      _proyectosRenderVersion++;
+      const dashboardTab = document.getElementById('tab-dashboard');
+      const renderIsCurrent = function() {
+        return renderRevision === _dashboardRenderRevision && (!dashboardTab || dashboardTab.classList.contains('active'));
+      };
+      if (dashboardTab && !dashboardTab.classList.contains('active')) {
+        window.__dashboardVistaPendiente = true;
+        const registrosTab = document.getElementById('tab-registros');
+        const diasTab = document.getElementById('tab-analisis-dias');
+        if (registrosTab && registrosTab.classList.contains('active')) {
+          try { procesarDatos(); } catch(_) {}
+        } else if (diasTab && diasTab.classList.contains('active')) {
+          setTimeout(function() {
+            try { actualizarAnalisisPorDiasPaginado(); } catch(_) {}
+            try { _renderChartsAnalisisDias(); } catch(_) {}
+          }, 0);
+        }
+        return;
+      }
+      window.__dashboardVistaPendiente = false;
       /* =============================================
          RENDIMIENTO EXTREMO: pipeline de renders ASÍNCRONO por fases con yields.
          Cualquier bloque que tenga >30ms de trabajo va envuelto en setTimeout 0,
@@ -6339,18 +6377,18 @@
       } catch(_) {}
 
       setTimeout(function() {
+        if (!renderIsCurrent()) return;
         try { procesarDatos(); } catch(err) {
           try { console.warn('procesarDatos err:', err && err.message ? err.message : err); } catch(_) {}
         }
-        // Registros de base comparte la fuente filtrada del dashboard.
-        // Repintarla tras cada carga evita conservar filas de una versión anterior.
-        try { actualizarTablaRegistrosBase(); } catch(_) {}
         setTimeout(function() {
+          if (!renderIsCurrent()) return;
           try { actualizarTarjetas(); } catch(_) {}
           // actualizarEstados(); — desactivado (panel Estado Plataforma retirado)
 
           // FASE 1 (yield 1): Recuento por Proyecto (bloque pesado si 100+ proyectos)
           setTimeout(function() {
+            if (!renderIsCurrent()) return;
             try { actualizarProyectosLazy(); } catch(err) {
               try { console.warn('actualizarProyectosLazy err:', err && err.message ? err.message : err); } catch(_) {}
               // fallback si falla el lazy: intentar el normal
@@ -6359,15 +6397,21 @@
 
             // FASE 2 (yield 2): Análisis OPA PAGINADO — RETIRADO (panel oculto). No ejecutar para no malgastar CPU.
             setTimeout(function() {
+              if (!renderIsCurrent()) return;
               // actualizarAnalisisOPAPaginado(); // — RETIRADO (usuario solicitó quitar Análisis OPA del dashboard)
               // Fallback comentado también.
 
               // FASE 3 (yield 3): filtros info
               setTimeout(function() {
+                if (!renderIsCurrent()) return;
                 try { actualizarInfoFiltros(); } catch(_) {}
+                try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_) {}
 
-                // FASE 4 (yield 4): Pestaña Análisis por Días — procesamiento matriz días×estados
+                // El análisis por días es costoso y solo se calcula cuando la pestaña está abierta.
                 setTimeout(function() {
+                  if (!renderIsCurrent()) return;
+                  const diasTab = document.getElementById('tab-analisis-dias');
+                  if (diasTab && !diasTab.classList.contains('active')) return;
                   try { actualizarAnalisisPorDiasPaginado(); } catch(err) {
                     try { console.warn('actualizarAnalisisPorDias err:', err && err.message ? err.message : err); } catch(_) {}
                   }
@@ -6852,6 +6896,7 @@
        Si hay > 160 proyectos, NO construye todos a la vez.
        Previene: bloqueo > 30s Chrome → "La página no responde" */
     function actualizarProyectosLazy() {
+      const renderVersion = ++_proyectosRenderVersion;
       const tabla = document.getElementById('tablaProyectos');
       if (!tabla) return;
 
@@ -7026,6 +7071,7 @@
       }
 
       function siguienteLote() {
+        if (renderVersion !== _proyectosRenderVersion) return;
         const start = i;
         const end = Math.min(i + BATCH, listaRenderPlan.length);
         htmlAcumulado += armarBatchRowStr(start, end);
@@ -8745,7 +8791,6 @@
               try { localStorage.setItem(ANALISIS_STORAGE_KEY, JSON.stringify({ _ts: serverTs, d: respuesta.analisis })); } catch(_) {}
               _aplicarAnalisis(respuesta.analisis);
             } else {
-              try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch(_) {}
             }
 
             if (respuesta.etag) {
@@ -8767,7 +8812,6 @@
             if (!snapshot || !Array.isArray(snapshot.registros) || !snapshot.registros.length) return;
             datos = snapshot.registros;
             try { _invalidateMemo(); llenarFiltroHoja(); actualizarListasYDashboard(); } catch (_) {}
-            try { actualizarAnalisisDashboard({ forzarServidor: false }); } catch (_) {}
             try { actualizarSyncStatus('Sin conexión · mostrando la última copia local ' + _timestampHumano(Number(snapshot._ts || 0)), true); } catch (_) {}
           }).catch(function() {});
 
@@ -9024,6 +9068,11 @@
 
     function cambiarTab(tabKey) {
       try {
+        if (tabKey !== 'dashboard') {
+          window.__dashboardVistaPendiente = true;
+          _dashboardRenderRevision++;
+          _proyectosRenderVersion++;
+        }
         const allBtns = document.querySelectorAll('.app-tabs .tab-btn');
         allBtns.forEach(function(b) {
           try {
@@ -9042,6 +9091,9 @@
         });
         if (tabKey === 'dashboard') {
           if (tDash) tDash.classList.add('active');
+          if (window.__dashboardVistaPendiente) {
+            try { actualizarDashboard(); } catch(_) {}
+          }
         } else if (tabKey === 'dias') {
           if (tDias) tDias.classList.add('active');
           setTimeout(function(){
@@ -9056,8 +9108,9 @@
           if (inp && !inp.value) try { inp.focus(); } catch(_) {}
         } else if (tabKey === 'historial') {
           if (tHist) tHist.classList.add('active');
-          // Cargar historial solo si no hay datos cargados (evitar spam)
-          if (!window.__historialYaCargadoUnaVez) {
+          // Refresca al volver a la pestaña, con una ventana de 60 s para no
+          // repetir la lectura de hasta 10.000 eventos en cada cambio de tab.
+          if (!window.__historialYaCargadoUnaVez || Date.now() - Number(window.__historialUltimaCarga || 0) > 60_000) {
             window.__historialYaCargadoUnaVez = true;
             setTimeout(function(){ try { _historialCargar(); } catch(_) {} }, 80);
           }
@@ -10975,9 +11028,12 @@
 
     window.__historialCache = null;
     window.__historialYaCargadoUnaVez = false;
+    window.__historialUltimaCarga = 0;
+    window.__historialCargaEnCurso = false;
 
     function _historialCargar() {
       try {
+        if (window.__historialCargaEnCurso) return;
         const contenido = document.getElementById('contenido-tab-historial-logueado');
         if (!contenido) return;
 
@@ -11002,8 +11058,10 @@
           return;
         }
 
+        window.__historialCargaEnCurso = true;
         google.script.run
           .withSuccessHandler(function(r) {
+            window.__historialCargaEnCurso = false;
             try {
               if (!r || !r.ok) {
                 if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(r && r.error || 'Error al cargar historial.')) + '</td></tr>';
@@ -11016,6 +11074,7 @@
                 listado: Array.isArray(r.listado) ? r.listado : [],
                 totalesGlobales: r.totalesGlobales || {}
               };
+              window.__historialUltimaCarga = Date.now();
 
               _historialPrepararFiltroProduccion();
 
@@ -11055,12 +11114,14 @@
             }
           })
           .withFailureHandler(function(err) {
+            window.__historialCargaEnCurso = false;
             if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
             if (resumenWrap) resumenWrap.innerHTML = '<div style="color:#b91c1c;padding:20px;text-align:center;font-weight:700;font-size:13px;">❌ ' + escapeHTML(String(err && err.message || err)) + '</div>';
           })
           .adminObtenerHistorialYEstadisticas(_authSesionActual.token);
 
       } catch(err) {
+        window.__historialCargaEnCurso = false;
         try {
           const tbody = document.getElementById('hist-detalle-body');
           if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px 18px;color:#b91c1c;font-weight:700;">❌ ' + escapeHTML(String(err && err.message || err)) + '</td></tr>';
@@ -12295,6 +12356,7 @@
           const mainRecord = Array.isArray(datos) ? datos.find(function(item) { return String(item.H || '') === String(row.hoja || '') && String(item._id || '') === String(row.rowId || ''); }) : null;
           if (mainRecord) {
             mainRecord[columnKey] = result.valorGuardado;
+            mainRecord[columnKey === 'GE' ? '_hasGE' : '_hasLF'] = _dashboardTieneAdjunto(result.valorGuardado);
             _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
             _invalidateMemo();
             actualizarDashboard();
@@ -12394,6 +12456,7 @@
           if (mainRecord) {
             if (row.rowId) mainRecord._id = String(row.rowId);
             mainRecord[columnKey] = result.valorGuardado;
+            mainRecord[columnKey === 'GE' ? '_hasGE' : '_hasLF'] = _dashboardTieneAdjunto(result.valorGuardado);
             _guardarCacheDashboard({ _ts: Date.now(), registros: datos });
             _invalidateMemo();
             actualizarDashboard();
@@ -13269,48 +13332,6 @@
        🔗 HOOK: actualizar análisis DESPUÉS de actualizar el dashboard
        — LOCAL PRIMERO (sin esperar servidor) —
     ============================================================ */
-    (function _hookActualizarDashboard(){
-      try {
-        const orig = window.actualizarDashboard;
-        if (typeof orig !== 'function') return;
-        window.actualizarDashboard = function(){
-          try { orig.apply(this, arguments); } catch(err){
-            try { console.warn('orig actualizarDashboard err:', err.message || err); } catch(_){}
-          }
-          try {
-            // Render LOCAL de inmediato
-            setTimeout(function(){ actualizarAnalisisDashboard({ forzarServidor: false }); }, 60);
-          } catch(_){}
-        };
-      } catch(_){}
-
-      try {
-        const origL = window.actualizarListasYDashboard;
-        if (typeof origL === 'function') {
-          window.actualizarListasYDashboard = function(){
-            try { origL.apply(this, arguments); } catch(err){}
-            try {
-              setTimeout(function(){ actualizarAnalisisDashboard({ forzarServidor: false }); }, 60);
-            } catch(_){}
-          };
-        }
-      } catch(_){}
-
-      // RecargarDatos: local 50ms → servidor 1.5s
-      try {
-        const origR = window.recargarDatos;
-        if (typeof origR === 'function') {
-          window.recargarDatos = function(){
-            try { origR.apply(this, arguments); } catch(_){}
-            try {
-              setTimeout(function(){ actualizarAnalisisDashboard({ forzarServidor: false }); }, 50);
-            } catch(_){}
-          };
-        }
-      } catch(_){}
-    })();
-
-
     (function bootstrapSeguro() {
       /* ===================== WATCHDOG 2.5s ANTI-PANTALLA-BLANCA =====================
          Si pasan 2.5 segundos desde que carga el DOM y el dashboard sigue sin tener

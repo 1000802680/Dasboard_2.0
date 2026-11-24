@@ -25,7 +25,7 @@ export async function onRequestPost(context) {
         if (!isAdmin) return Response.json({ ok: false, error: "Esta acción está disponible solo para administradores." }, { status: 403, headers: { "Cache-Control": "no-store" } });
         // Acción manual y explícita: valida la sesión contra la base y fuerza
         // una lectura fresca. No reinicia Cloudflare ni borra la caché de otros POP.
-        const registros = await loadDashboardRecords(env, { forceRefresh: true });
+        const registros = recordsForBrowser(await loadDashboardRecords(env, { forceRefresh: true }));
         value = {
           ok: true,
           registros,
@@ -41,7 +41,7 @@ export async function onRequestPost(context) {
         // snapshot immediately. A full SeaTable scan can exceed the Pages request
         // lifetime and produce HTTP 503; the checksum poll will pick up its ETag.
         const snapshot = await refreshForNewTables(env, context, { forceRefresh: functionName === "actualizarDashboardDatos" });
-        const registros = snapshot.records;
+        const registros = recordsForBrowser(snapshot.records);
         value = {
           registros,
           totalRegistros: registros.length,
@@ -108,11 +108,22 @@ export async function onRequestPost(context) {
         const user = await getAuthenticatedUser(sessionToken, env);
         if (!user) return Response.json({ ok: false, error: "Inicia sesión para ver las fotos de producto." }, { status: 401, headers: { "Cache-Control": "no-store" } });
         const requested = Array.isArray(targets) ? targets.slice(0, 100) : [];
-        const tableNames = await discoverTableNames(env);
-        const allowedTables = new Set(tableNames);
+        // Reutiliza el snapshot compartido del dashboard. Consultar una fila
+        // de SeaTable por cada resultado al abrir Registros generaba decenas
+        // de solicitudes por usuario y saturaba la base con el equipo conectado.
+        await loadDashboardRecords(env);
+        const snapshot = globalThis.__dashboardRowsCache;
+        const snapshotRows = snapshot?.duplicateRecords || snapshot?.records || [];
+        const allowedTables = new Set(snapshot?.tableNames || []);
         const imagenesPorFila = {};
         const normalizedTargets = [];
         const rowRequests = new Map();
+        const freshRows = new Map();
+        const snapshotRowsById = new Map();
+        for (const record of snapshotRows) {
+          const rowKey = `${String(record.H || "").trim()}\u001f${String(record._id || "").trim()}`;
+          if (String(record._id || "").trim()) snapshotRowsById.set(rowKey, record);
+        }
         for (const target of requested) {
           const table = String(target?.hoja || "").trim();
           const rowId = String(target?.rowId || "").trim();
@@ -126,13 +137,14 @@ export async function onRequestPost(context) {
             tipoProducto: String(target?.tipoProducto || ""), tipoProductoEspecifico: String(target?.tipoProductoEspecifico || ""),
             territorio: String(target?.territorio || ""), subOpa: String(target?.subOpa || ""), personaje: String(target?.personaje || ""),
           });
-          if (!rowRequests.has(rowKey)) rowRequests.set(rowKey, { table, rowId });
+          const cachedRow = snapshotRowsById.get(rowKey);
+          if (cachedRow) {
+            const current = freshRows.get(rowKey);
+            if (!current) freshRows.set(rowKey, cachedRow);
+          } else if (!rowRequests.has(rowKey)) rowRequests.set(rowKey, { table, rowId });
         }
-        // Leer las filas actuales, no los adjuntos que venían en una copia del
-        // dashboard. Las fotos subidas por otra sesión así aparecen aunque el
-        // dispositivo conserve un snapshot antiguo. Una lectura sirve para LF
-        // y GE de la misma fila.
-        const freshRows = new Map();
+        // Solo consultar SeaTable cuando un ID no está en el snapshot; en la
+        // gran mayoría de aperturas no se hacen lecturas individuales por fila.
         const staleRows = [];
         const rowErrors = new Map();
         await mapWithConcurrency([...rowRequests.entries()], 8, async ([rowKey, item]) => {
@@ -549,6 +561,35 @@ function fastEtag(records, updatedAt = Date.now()) {
   // Recalcular un hash recorriendo todas las filas en cada sondeo de 15 s
   // agotaba el límite de CPU de Cloudflare y terminaba en HTTP 503.
   return `snapshot-v3-${records.length}-${Number(updatedAt) || Date.now()}`;
+}
+
+function recordsForBrowser(records) {
+  // Las rutas de imágenes ya consultan los adjuntos bajo demanda. Evita enviar
+  // miles de rutas de archivos en cada carga y guardarlas en el navegador.
+  return records.map((record) => {
+    const projected = { ...record, _hasLF: hasAttachment(record.LF), _hasGE: hasAttachment(record.GE) };
+    delete projected.LF;
+    delete projected.GE;
+    return projected;
+  });
+}
+
+function hasAttachment(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value).length > 0;
+  const text = String(value || "").trim();
+  if (!text) return false;
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.length > 0;
+    if (parsed && typeof parsed === "object") {
+      const attachments = parsed.photos || parsed.fotos || parsed.attachments || parsed.archivos;
+      if (Array.isArray(attachments)) return attachments.length > 0 || Boolean(parsed.link || parsed.enlace);
+      if (parsed.link || parsed.enlace) return true;
+      return Object.keys(parsed).length > 0;
+    }
+  } catch (_) {}
+  return true;
 }
 
 
