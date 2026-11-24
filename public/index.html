@@ -6196,13 +6196,19 @@
       if (!_authSesionActual || !_authSesionActual.token || typeof google === 'undefined' || !google.script || !google.script.run) return;
       const cache = window._registrosImagenesCache || (window._registrosImagenesCache = {});
       const pending = window._registrosImagenesPendientes || (window._registrosImagenesPendientes = {});
+      const retryAt = window._registrosImagenesReintento || (window._registrosImagenesReintento = {});
       const targets = [];
       pagina.forEach(function(row) {
         if (row && row._pendingCreate) return;
         const key = _registrosClaveImagen(row);
-        if (!Object.prototype.hasOwnProperty.call(cache, key) && !pending[key] && row._id) {
+        const needsLoad = !Object.prototype.hasOwnProperty.call(cache, key) || (cache[key] === null && Date.now() >= Number(retryAt[key] || 0));
+        if (needsLoad && !pending[key] && row._id) {
           pending[key] = true;
-          targets.push({ key: key, hoja: row.H, rowId: row._id });
+          targets.push({
+            key: key, hoja: row.H, rowId: row._id, numeroOPA: row.O || "",
+            proyecto: row.P || "", tipoProducto: row.T || "", tipoProductoEspecifico: row.TE || "",
+            territorio: row.TR || "", subOpa: row.SO || "", personaje: row.PJ || ""
+          });
         }
       });
       if (!targets.length) return;
@@ -6210,12 +6216,15 @@
         .withSuccessHandler(function(result) {
           targets.forEach(function(target) {
             pending[target.key] = false;
-            cache[target.key] = result && result.ok && result.imagenesPorFila && Array.isArray(result.imagenesPorFila[target.key]) ? result.imagenesPorFila[target.key] : null;
+            const images = result && result.ok && result.imagenesPorFila && result.imagenesPorFila[target.key];
+            cache[target.key] = Array.isArray(images) ? images : null;
+            if (cache[target.key] === null) retryAt[target.key] = Date.now() + 15000;
+            else delete retryAt[target.key];
           });
           actualizarTablaRegistrosBase();
         })
         .withFailureHandler(function() {
-          targets.forEach(function(target) { pending[target.key] = false; cache[target.key] = null; });
+          targets.forEach(function(target) { pending[target.key] = false; cache[target.key] = null; retryAt[target.key] = Date.now() + 15000; });
           actualizarTablaRegistrosBase();
         })
         .getOPAImagesForRows(_authSesionActual.token, targets);
