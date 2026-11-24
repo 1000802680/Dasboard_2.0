@@ -1,5 +1,4 @@
 import { discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardWorkspaceId, loadDashboardRecords, updateDashboardRow } from "../_lib/seatable.js";
-import { updateExcelIndexRecord } from "../_lib/excel-index.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const MAX_IMAGES = 6;
@@ -123,8 +122,6 @@ export async function onRequestPost(context) {
     }
     const storedValue = fileType === "text" ? JSON.stringify({ version: 1, link: requestedGuideLink || existingGuide.link, photos: merged }) : merged;
     await updateDashboardRow(env, tableName, selectedRowId, { [columnName]: storedValue });
-    try { await updateExcelIndexRecord(env, tableName, selectedRowId, { [columnKey]: storedValue }); }
-    catch (error) { console.warn("No se pudo actualizar el índice Excel tras subir imágenes:", error?.message || error); }
     const auditTask = recordBusinessAudit(env, {
       username: user.username, role: user.rol, action: columnKey === "GE" ? "ADJUNTAR_FOTOS_GUIA_ENVIO" : "ADJUNTAR_IMAGENES",
       detail: { columna: columnName, archivos: saved.map((item) => item.name) },
