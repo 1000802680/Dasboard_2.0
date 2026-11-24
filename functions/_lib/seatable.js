@@ -707,6 +707,30 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   };
 }
 
+// Inicia una lectura manual sin volver a descargar el snapshot completo en la
+// solicitud del botón. El cliente conserva su copia visible y el checksum
+// detecta la nueva versión cuando termina el escaneo en segundo plano.
+export async function requestDashboardRefresh(env, context = null) {
+  const cacheKey = dashboardDataCacheKey(env);
+  const sharedCache = getSharedDashboardCache(env);
+  let metadata = await readSharedDashboardMetadata(sharedCache, env);
+  if (!metadata && globalThis.__dashboardSnapshotMetadata?.key === cacheKey) metadata = globalThis.__dashboardSnapshotMetadata;
+  if (!metadata && globalThis.__dashboardRowsCache?.key === cacheKey) {
+    const local = globalThis.__dashboardRowsCache;
+    metadata = { recordCount: local.records.length, updatedAt: Number(local.updatedAt) || 0, revision: String(local.revision || "") };
+  }
+  if (!metadata) metadata = await readDurableDashboardMetadata(env);
+
+  if (context && typeof context.waitUntil === "function") {
+    await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
+    return { totalRegistros: Number(metadata?.recordCount || 0), updatedAt: Number(metadata?.updatedAt || 0), refreshing: true };
+  }
+
+  const records = await loadDashboardRecords(env, { forceRefresh: true });
+  const refreshed = globalThis.__dashboardRowsCache;
+  return { totalRegistros: records.length, updatedAt: Number(refreshed?.updatedAt || Date.now()), refreshing: false };
+}
+
 
 async function readDashboardSnapshotRevision(cache, env) {
   if (!cache) return "";

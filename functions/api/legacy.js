@@ -1,4 +1,4 @@
-import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardSnapshotStatus, loadDashboardRecords, refreshForNewTables, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
+import { createDashboardRow, discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardSnapshotStatus, loadDashboardRecords, refreshForNewTables, requestDashboardRefresh, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const ESTADOS = [
@@ -23,24 +23,36 @@ export async function onRequestPost(context) {
         if (!user) return Response.json({ ok: false, error: "Inicia sesión como administrador para recuperar la sincronización." }, { status: 401, headers: { "Cache-Control": "no-store" } });
         const isAdmin = String(user.rol || "").toUpperCase() === "ADMINISTRADOR" || user.permisos?.panel_admin === true;
         if (!isAdmin) return Response.json({ ok: false, error: "Esta acción está disponible solo para administradores." }, { status: 403, headers: { "Cache-Control": "no-store" } });
-        // Acción manual y explícita: valida la sesión contra la base y fuerza
-        // una lectura fresca. No reinicia Cloudflare ni borra la caché de otros POP.
-        const registros = recordsForBrowser(await loadDashboardRecords(env, { forceRefresh: true }));
+        // La sesión se valida aquí; el escaneo se ejecuta en segundo plano para
+        // no bloquear Pages serializando miles de filas en la solicitud manual.
+        const refresh = await requestDashboardRefresh(env, context);
+        const registros = [];
         value = {
           ok: true,
           registros,
-          totalRegistros: registros.length,
-          etag: fastEtag(registros),
+          totalRegistros: refresh.totalRegistros,
+          etag: `snapshot-v4-${refresh.totalRegistros}-${refresh.updatedAt}`,
+          actualizandoEnSegundoPlano: refresh.refreshing,
           fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
         };
         break;
       }
       case "obtenerDatosDashboard":
       case "actualizarDashboardDatos": {
-        // Manual refresh starts a shared background scan and returns the current
-        // snapshot immediately. A full SeaTable scan can exceed the Pages request
-        // lifetime and produce HTTP 503; the checksum poll will pick up its ETag.
-        const snapshot = await refreshForNewTables(env, context, { forceRefresh: functionName === "actualizarDashboardDatos" });
+        if (functionName === "actualizarDashboardDatos") {
+          // El usuario ya ve su copia local. No volver a enviar miles de filas;
+          // aceptar el escaneo y dejar que el sondeo recoja el nuevo snapshot.
+          const refresh = await requestDashboardRefresh(env, context);
+          value = {
+            registros: [],
+            totalRegistros: refresh.totalRegistros,
+            etag: `snapshot-v4-${refresh.totalRegistros}-${refresh.updatedAt}`,
+            fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
+            actualizandoEnSegundoPlano: refresh.refreshing,
+          };
+          break;
+        }
+        const snapshot = await refreshForNewTables(env, context);
         const registros = recordsForBrowser(snapshot.records);
         value = {
           registros,
