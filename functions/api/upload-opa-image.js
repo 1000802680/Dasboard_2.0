@@ -1,4 +1,5 @@
-import { discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardWorkspaceId, updateDashboardRow } from "../_lib/seatable.js";
+import { discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardWorkspaceId, loadDashboardRecords, updateDashboardRow } from "../_lib/seatable.js";
+import { updateExcelIndexRecord } from "../_lib/excel-index.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const MAX_IMAGES = 6;
@@ -39,10 +40,41 @@ export async function onRequestPost(context) {
     if (!apiToken) throw new Error("Falta configurar el API token de SeaTable para subir imágenes.");
 
     const columnName = getDashboardColumnName(env, columnKey);
-    const [columnType, currentRow] = await Promise.all([
-      getDashboardColumnType(env, tableName, columnName),
-      isNewRow ? Promise.resolve({}) : getDashboardRow(env, tableName, rowId),
-    ]);
+    const columnType = await getDashboardColumnType(env, tableName, columnName);
+    let selectedRowId = rowId;
+    let currentRow = {};
+    if (!isNewRow) {
+      try {
+        currentRow = await getDashboardRow(env, tableName, selectedRowId);
+      } catch (error) {
+        if (!/HTTP 404/.test(String(error?.message || error))) throw error;
+        const records = await loadDashboardRecords(env, { forceRefresh: true, includeDuplicates: true });
+        let candidates = records.filter((record) =>
+          String(record.H || "").trim() === tableName &&
+          String(record.O || "").trim() === String(form.get("numeroOPA") || "").trim()
+        );
+        const identityFields = [
+          ["P", form.get("proyecto")], ["T", form.get("tipoProducto")],
+          ["TE", form.get("tipoProductoEspecifico")], ["TR", form.get("territorio")],
+          ["SO", form.get("subOpa")], ["PJ", form.get("personaje")],
+        ];
+        const normalizeIdentity = (value) => String(value || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleUpperCase().replace(/[^A-Z0-9]/g, "");
+        for (const [key, value] of identityFields) {
+          if (String(value || "").trim()) {
+            const expected = normalizeIdentity(value);
+            candidates = candidates.filter((record) => normalizeIdentity(record[key]) === expected);
+          }
+        }
+        if (candidates.length !== 1 || !String(candidates[0]?._id || "").trim()) {
+          return json({ ok: false, error: candidates.length
+            ? `Hay varias filas indistinguibles para la OPA ${String(form.get("numeroOPA") || "")} en ${tableName}. Vuelve a buscar y elige el registro correcto.`
+            : `La fila seleccionada ya no existe en SeaTable. Vuelve a buscar la OPA ${String(form.get("numeroOPA") || "")} y selecciona el registro actualizado.`
+          }, 409);
+        }
+        currentRow = candidates[0];
+        selectedRowId = String(currentRow._id);
+      }
+    }
     const normalizedColumnType = columnType.replace(/[\s_-]/g, "");
     const fileType = columnType === "image" ? "image" : columnType === "file" ? "file" : columnKey === "GE" && ["text", "longtext"].includes(normalizedColumnType) ? "text" : "";
     if (!fileType) return json({ ok: false, error: `La columna "${columnName}" debe ser de tipo Imagen o Archivo${columnKey === "GE" ? " o Texto largo" : ""} para guardar fotos.` }, 400);
@@ -90,11 +122,13 @@ export async function onRequestPost(context) {
       else merged.push({ name: item.name, size: item.size, type: "file", url: item.path });
     }
     const storedValue = fileType === "text" ? JSON.stringify({ version: 1, link: requestedGuideLink || existingGuide.link, photos: merged }) : merged;
-    await updateDashboardRow(env, tableName, rowId, { [columnName]: storedValue });
+    await updateDashboardRow(env, tableName, selectedRowId, { [columnName]: storedValue });
+    try { await updateExcelIndexRecord(env, tableName, selectedRowId, { [columnKey]: storedValue }); }
+    catch (error) { console.warn("No se pudo actualizar el índice Excel tras subir imágenes:", error?.message || error); }
     const auditTask = recordBusinessAudit(env, {
       username: user.username, role: user.rol, action: columnKey === "GE" ? "ADJUNTAR_FOTOS_GUIA_ENVIO" : "ADJUNTAR_IMAGENES",
       detail: { columna: columnName, archivos: saved.map((item) => item.name) },
-      opa: String(form.get("numeroOPA") || ""), table: tableName, row: rowId,
+      opa: String(form.get("numeroOPA") || ""), table: tableName, row: selectedRowId,
     });
     if (typeof context?.waitUntil === "function") context.waitUntil(auditTask);
     else await auditTask;
@@ -105,7 +139,7 @@ export async function onRequestPost(context) {
       try { return { name, url: await getDashboardFileDownloadLink(env, pathToImagePath(path)), attachmentKey: path }; }
       catch (_) { return { name, url: "", attachmentKey: path }; }
     }));
-    return json({ ok: true, columna: columnKey, imagenes: images, cantidad: saved.length, valorGuardado: storedValue, enlaceGuia: requestedGuideLink || existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
+    return json({ ok: true, columna: columnKey, rowId: selectedRowId, imagenes: images, cantidad: saved.length, valorGuardado: storedValue, enlaceGuia: requestedGuideLink || existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
   } catch (error) {
     return json({ ok: false, error: error.message || "No se pudieron subir las imágenes." }, 502);
   }
