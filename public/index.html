@@ -5924,14 +5924,14 @@
           if (productFiles.length && result.rowId) {
             _crearOPAStatus('OPA creada. Subiendo las fotos del producto…', false);
             try {
-              const upload = await _crearOPASubirColumna(_authSesionActual.token, hoja, result.rowId, campos.O, 'LF', '', productFiles);
+              const upload = await _crearOPASubirColumna(_authSesionActual.token, hoja, result.rowId, campos.O, 'LF', '', productFiles, campos);
               campos.LF = upload.valorGuardado;
             } catch (error) { uploadWarnings.push('Fotos del producto: ' + String(error && error.message || error)); }
           } else if (productFiles.length) uploadWarnings.push('SeaTable no devolvió el ID de fila para guardar las fotos del producto.');
           if (guideFiles.length && result.rowId) {
             _crearOPAStatus('OPA creada. Subiendo la guía de envío…', false);
             try {
-              const upload = await _crearOPASubirColumna(_authSesionActual.token, hoja, result.rowId, campos.O, 'GE', guideLink, guideFiles);
+              const upload = await _crearOPASubirColumna(_authSesionActual.token, hoja, result.rowId, campos.O, 'GE', guideLink, guideFiles, campos);
               campos.GE = upload.valorGuardado;
             } catch (error) { uploadWarnings.push('Fotos de la guía: ' + String(error && error.message || error)); }
           } else if (guideFiles.length) uploadWarnings.push('SeaTable no devolvió el ID de fila para guardar las fotos de la guía.');
@@ -5963,7 +5963,7 @@
         .crearRegistroOPA({ token: _authSesionActual.token, hoja: hoja, campos: campos });
     }
 
-    async function _crearOPASubirColumna(token, table, rowId, numeroOPA, columnKey, guideLink, files) {
+    async function _crearOPASubirColumna(token, table, rowId, numeroOPA, columnKey, guideLink, files, fields) {
       const form = new FormData();
       form.append('token', token);
       form.append('table', table);
@@ -5971,6 +5971,13 @@
       form.append('numeroOPA', numeroOPA);
       form.append('columnKey', columnKey);
       form.append('newRow', '1');
+      fields = fields || {};
+      form.append('proyecto', fields.P || '');
+      form.append('tipoProducto', fields.T || '');
+      form.append('tipoProductoEspecifico', fields.TE || '');
+      form.append('territorio', fields.TR || '');
+      form.append('subOpa', fields.SO || '');
+      form.append('personaje', fields.PJ || '');
       if (guideLink) form.append('guideLink', guideLink);
       files.forEach(function(file) { form.append('files', file, file.name); });
       const response = await fetch('/api/upload-opa-image', { method:'POST', body:form });
