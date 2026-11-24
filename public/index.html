@@ -289,9 +289,9 @@
       letter-spacing: -0.01em;
     }
 
-    /* El diagnóstico de sincronización es información operativa para admins. */
-    #syncStatus { display: none !important; }
-    .es-admin-dashboard #syncStatus { display: inline-flex !important; }
+    /* Todos ven el estado y el color; el diagnóstico detallado queda para admins. */
+    #syncStatus { display: inline-flex !important; }
+    html:not(.es-admin-dashboard) #syncTime { display: none !important; }
 
     .sync-status.sync-offline {
       background: linear-gradient(180deg, rgba(245,158,11,.08), rgba(245,158,11,.02));
@@ -4714,6 +4714,7 @@
     let _pollingCorriendo      = false;
     let _estaSincronizando     = false;
     let _pollingFallos          = 0;
+    let _dashboardRefreshPending = false;
     let _analisisEtag          = '';
 
     /* ---- Pestaña Análisis por Días (globals) ---- */
@@ -8767,14 +8768,17 @@
             // scans SeaTable in the background. Keep the visible/local copy and
             // let the checksum poll reload it once the new snapshot is published.
             if (respuesta.actualizandoEnSegundoPlano === true) {
+              _dashboardRefreshPending = true;
               try { actualizarSyncStatus('Actualización iniciada en segundo plano · todavía no está confirmada; se conserva la copia actual', true); } catch(_) {}
               finishRefresh(true, respuesta);
+              _pollingSolicitarInmediato();
               return;
             }
 
             // El endpoint ya hizo la lectura fresca. Pintar esa misma respuesta
             // directamente evita una segunda llamada completa a Sheets.
             datos = respuesta.registros;
+            _dashboardRefreshPending = false;
             _invalidateMemo();
             const serverTs = Date.now();
             _dashboardLastServerSuccessAt = serverTs;
@@ -12985,9 +12989,26 @@
       if (_pollingTimer) clearTimeout(_pollingTimer);
       const base = Math.max(1000, Number(POLL_INTERVAL_MS) || 15000);
       const factor = Math.pow(2, Math.min(Math.max(0, _pollingFallos), 4));
-      const delay = Math.min(120000, base * factor) + Math.floor(Math.random() * 1500);
+      const delay = _dashboardRefreshPending
+        ? 15000 + Math.floor(Math.random() * 1500)
+        : Math.min(120000, base * factor) + Math.floor(Math.random() * 1500);
       _pollingTimer = setTimeout(_pollingTick, delay);
     }
+
+    function _pollingSolicitarInmediato() {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      _pollingFallos = 0;
+      if (!_pollingCorriendo) { iniciarPolling(); return; }
+      if (_estaSincronizando || document.visibilityState === 'hidden') return;
+      if (_pollingTimer) clearTimeout(_pollingTimer);
+      _pollingTimer = setTimeout(_pollingTick, 300);
+    }
+
+    window.addEventListener('online', _pollingSolicitarInmediato);
+    window.addEventListener('focus', _pollingSolicitarInmediato);
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') _pollingSolicitarInmediato();
+    });
 
     function _pollingTick() {
       _pollingTimer = null;
@@ -13021,9 +13042,15 @@
       google.script.run
         .withSuccessHandler(function(resp){
           try { clearTimeout(tiempo); } catch(_){}
+          _dashboardRefreshPending = !!(resp && resp.actualizandoEnSegundoPlano === true);
           onDone(false);
 
           if (!resp || resp.ok === false) return;
+
+          if (_dashboardRefreshPending) {
+            try { actualizarSyncStatus('Sincronización en curso · se conserva la copia local', true); } catch(_){}
+            return;
+          }
 
           const nuevoEtag = resp.etag || '';
           if (!nuevoEtag) return;

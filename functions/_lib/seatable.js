@@ -697,7 +697,14 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   // en el siguiente sondeo en vez de esperar otros 30 segundos.
   const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
   const stale = ageMs >= 60_000 || changedWhileEditing;
-  const refreshing = stale ? await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey) : false;
+  let refreshLock = null;
+  if (sharedCache) {
+    try {
+      refreshLock = await sharedCache.match(dashboardCacheRequest(env, "checksum-refresh-lock"))
+        || await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
+    } catch (_) {}
+  }
+  const refreshing = !!refreshLock || (stale ? await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey) : false);
   const version = String(metadata.revision || metadata.contentHash || "");
   return {
     etag: `snapshot-v4-${Number(metadata.recordCount) || 0}-${Number(metadata.updatedAt) || 0}-${version}`,
