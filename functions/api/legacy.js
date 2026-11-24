@@ -120,7 +120,12 @@ export async function onRequestPost(context) {
           const columnKey = String(target?.columnKey || "LF").toUpperCase() === "GE" ? "GE" : "LF";
           if (!key || !rowId || !allowedTables.has(table)) continue;
           const rowKey = `${table}\u001f${rowId}`;
-          normalizedTargets.push({ key, table, rowId, columnKey, rowKey });
+          normalizedTargets.push({
+            key, table, rowId, columnKey, rowKey,
+            numeroOPA: String(target?.numeroOPA || ""), proyecto: String(target?.proyecto || ""),
+            tipoProducto: String(target?.tipoProducto || ""), tipoProductoEspecifico: String(target?.tipoProductoEspecifico || ""),
+            territorio: String(target?.territorio || ""), subOpa: String(target?.subOpa || ""), personaje: String(target?.personaje || ""),
+          });
           if (!rowRequests.has(rowKey)) rowRequests.set(rowKey, { table, rowId });
         }
         // Leer las filas actuales, no los adjuntos que venían en una copia del
@@ -128,24 +133,61 @@ export async function onRequestPost(context) {
         // dispositivo conserve un snapshot antiguo. Una lectura sirve para LF
         // y GE de la misma fila.
         const freshRows = new Map();
+        const staleRows = [];
+        const rowErrors = new Map();
         await mapWithConcurrency([...rowRequests.entries()], 8, async ([rowKey, item]) => {
-          freshRows.set(rowKey, await getDashboardRow(env, item.table, item.rowId));
+          try {
+            freshRows.set(rowKey, await getDashboardRow(env, item.table, item.rowId));
+          } catch (error) {
+            if (/HTTP 404/.test(String(error?.message || error))) staleRows.push({ rowKey, ...item });
+            else rowErrors.set(rowKey, String(error?.message || error || "No se pudo leer la fila."));
+          }
         });
+        // Una fila eliminada o recreada puede dejar un ID viejo en la copia del
+        // navegador. Refresca solo en ese caso y busca la fila por sus datos.
+        if (staleRows.length) {
+          try {
+            const currentRecords = await loadDashboardRecords(env, { forceRefresh: true, includeDuplicates: true });
+            for (const stale of staleRows) {
+              const target = normalizedTargets.find((item) => item.rowKey === stale.rowKey);
+              const normalize = (value) => String(value || "").trim().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLocaleUpperCase().replace(/[^A-Z0-9]/g, "");
+              const matches = currentRecords.filter((record) => {
+                if (String(record.H || "").trim() !== stale.table) return false;
+                if (target?.numeroOPA && normalize(record.O) !== normalize(target.numeroOPA)) return false;
+                const identity = [["P", target?.proyecto], ["T", target?.tipoProducto], ["TE", target?.tipoProductoEspecifico], ["TR", target?.territorio], ["SO", target?.subOpa], ["PJ", target?.personaje]];
+                return identity.every(([key, expected]) => !String(expected || "").trim() || normalize(record[key]) === normalize(expected));
+              });
+              if (matches.length === 1 && String(matches[0]._id || "").trim()) freshRows.set(stale.rowKey, matches[0]);
+              else rowErrors.set(stale.rowKey, matches.length ? "Hay varias filas coincidentes; vuelve a buscar la OPA." : "No se encontró la fila actualizada en SeaTable.");
+            }
+          } catch (error) {
+            for (const stale of staleRows) rowErrors.set(stale.rowKey, String(error?.message || error || "No se pudo actualizar la lista de filas."));
+          }
+        }
         const imageTasks = [];
         for (const target of normalizedTargets) {
-          const row = freshRows.get(target.rowKey) || {};
+          const row = freshRows.get(target.rowKey);
+          if (!row) {
+            imagenesPorFila[target.key] = null;
+            continue;
+          }
           const column = getDashboardColumnName(env, target.columnKey);
           const attachments = row[column] ?? row[target.columnKey];
           const normalized = target.columnKey === "GE" ? normalizeGuideValue(attachments).photos : normalizeImageAttachments(attachments);
           imagenesPorFila[target.key] = new Array(normalized.length);
           normalized.forEach((attachment, index) => imageTasks.push({ key: target.key, index, attachment }));
         }
-        // Limitar globalmente la concurrencia: antes se abría una ola de
-        // solicitudes por fila y todas las filas esperaban el último enlace.
+        // Limitar solicitudes de enlaces temporales y no dejar que un ID obsoleto
+        // invalide las fotos de las demás filas del lote.
         await mapWithConcurrency(imageTasks, 8, async (task) => {
           imagenesPorFila[task.key][task.index] = await makeImagePreview(env, task.attachment);
         });
-        value = { ok: true, imagenesPorFila };
+        const erroresPorFila = {};
+        for (const target of normalizedTargets) {
+          const error = rowErrors.get(target.rowKey);
+          if (error) erroresPorFila[target.key] = error;
+        }
+        value = { ok: true, imagenesPorFila, erroresPorFila };
         break;
       }
       case "editarCampoOPA": {
