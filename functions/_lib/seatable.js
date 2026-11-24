@@ -395,8 +395,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       const restoredAt = Number(durable.updatedAt || Date.now());
       cached = { key: cacheKey, records: durable.records,
         duplicateRecords: durable.duplicateRecords || durable.records,
-        duplicateRecords: durable.duplicateRecords || durable.records,
-        duplicateRecords: durable.duplicateRecords || durable.records, tableNames: durable.tableNames, revision: durable.revision || "", updatedAt: restoredAt, expiresAt: Date.now() + 60_000 };
+        tableNames: durable.tableNames, revision: durable.revision || "", updatedAt: restoredAt, expiresAt: Date.now() + 60_000 };
       globalThis.__dashboardRowsCache = cached;
       if (sharedCache) {
         try {
