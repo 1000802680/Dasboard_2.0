@@ -4341,7 +4341,18 @@
           <label style="font-size:12px;font-weight:800;color:#334155;">SKU B2C<input id="crear-opa-B2C" maxlength="200" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras recibidas<input id="crear-opa-MR" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
           <label style="font-size:12px;font-weight:800;color:#334155;">Cantidad muestras enviadas<input id="crear-opa-ME" type="number" min="0" step="1" style="display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
-          <div style="font-size:12px;font-weight:800;color:#334155;">Enlace o fotos de la guía de envío<input id="crear-opa-GE" type="url" maxlength="500" placeholder="https://… (opcional)" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">El enlace y las imágenes se guardan en ENLACE GUÍA DE ENVÍO.</span><button type="button" onclick="document.getElementById('crear-opa-GE-files').click()" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:40px;margin-top:7px;padding:8px 11px;border:1px dashed #60a5fa;border-radius:10px;background:#eff6ff;color:#1d4ed8;font:inherit;font-size:12px;cursor:pointer;">📎 Adjuntar fotos de la guía</button><input id="crear-opa-GE-files" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_crearOPAPreviewGuia(this)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"><span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">JPG, PNG, WEBP o GIF · hasta 6 fotos, máximo 8 MB cada una.</span><div id="crear-opa-GE-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div></div>
+          <div style="font-size:12px;font-weight:800;color:#334155;">Fotos del producto
+            <button type="button" onclick="document.getElementById('crear-opa-LF-files').click()" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:40px;margin-top:5px;padding:8px 11px;border:1px dashed #60a5fa;border-radius:10px;background:#eff6ff;color:#1d4ed8;font:inherit;font-size:12px;cursor:pointer;">📎 Adjuntar foto(s) del producto</button>
+            <input id="crear-opa-LF-files" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_crearOPAPreviewColumna(this,'LF')" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
+            <span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Se guardan en LINK O FOTO PRODUCTO · hasta 6 fotos, máximo 8 MB cada una.</span><div id="crear-opa-LF-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div>
+          </div>
+          <div style="font-size:12px;font-weight:800;color:#334155;">Enlace o fotos de la guía de envío
+            <input id="crear-opa-GE" type="url" maxlength="500" placeholder="Pega el enlace de guía (opcional)" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;">
+            <span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">Puedes pegar el enlace, adjuntar fotos de la guía o hacer ambas cosas.</span>
+            <button type="button" onclick="document.getElementById('crear-opa-GE-files').click()" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:40px;margin-top:7px;padding:8px 11px;border:1px dashed #60a5fa;border-radius:10px;background:#eff6ff;color:#1d4ed8;font:inherit;font-size:12px;cursor:pointer;">📎 Adjuntar fotos de la guía</button>
+            <input id="crear-opa-GE-files" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onchange="_crearOPAPreviewColumna(this,'GE')" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
+            <span style="display:block;margin-top:4px;color:#64748b;font-size:10.5px;font-weight:500;">JPG, PNG, WEBP o GIF · hasta 6 fotos, máximo 8 MB cada una.</span><div id="crear-opa-GE-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div>
+          </div>
           <label style="grid-column:1/-1;font-size:12px;font-weight:800;color:#334155;">Descripción ERP<input id="crear-opa-D" maxlength="1000" style="display:block;width:100%;margin-top:5px;padding:10px 11px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box;"></label>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap;">
@@ -5891,11 +5902,15 @@
       if (!hoja) { _crearOPAStatus('Selecciona la hoja / marca donde se guardará el registro.', true); return; }
       if (!campos.O) { _crearOPAStatus('El número de OPA es obligatorio.', true); return; }
       if (_opaSubOpaItems(campos.SO || '').length > 10) { _crearOPAStatus('Puedes asociar máximo 10 sub-OPAs al mismo número de OPA.', true); return; }
+      const productFilesInput = document.getElementById('crear-opa-LF-files');
+      const productFiles = Array.from(productFilesInput && productFilesInput.files || []);
       const guideFilesInput = document.getElementById('crear-opa-GE-files');
       const guideFiles = Array.from(guideFilesInput && guideFilesInput.files || []);
       const guideLink = String(campos.GE || '').trim();
-      if (guideFiles.length > 6) { _crearOPAStatus('Puedes adjuntar hasta 6 imágenes de guía por registro.', true); return; }
-      if (guideFiles.length) delete campos.GE; // El endpoint de carga decide cómo almacenar archivos según el tipo de columna.
+      for (const file of productFiles.concat(guideFiles)) {
+        if (file.size > 8 * 1024 * 1024) { _crearOPAStatus('Cada imagen puede pesar máximo 8 MB.', true); return; }
+      }
+      if (productFiles.length > 6 || guideFiles.length > 6) { _crearOPAStatus('Puedes adjuntar hasta 6 fotos por cada campo.', true); return; }
       _crearOPAStatus('Guardando el registro en SeaTable…', false);
       if (button) button.disabled = true;
       google.script.run
@@ -5905,22 +5920,26 @@
             _crearOPAStatus(result && result.error || 'No se pudo crear el registro.', true);
             return;
           }
-          let uploadWarning = '';
+          const uploadWarnings = [];
+          if (productFiles.length && result.rowId) {
+            _crearOPAStatus('OPA creada. Subiendo las fotos del producto…', false);
+            try {
+              const upload = await _crearOPASubirColumna(_authSesionActual.token, hoja, result.rowId, campos.O, 'LF', '', productFiles);
+              campos.LF = upload.valorGuardado;
+            } catch (error) { uploadWarnings.push('Fotos del producto: ' + String(error && error.message || error)); }
+          } else if (productFiles.length) uploadWarnings.push('SeaTable no devolvió el ID de fila para guardar las fotos del producto.');
           if (guideFiles.length && result.rowId) {
             _crearOPAStatus('OPA creada. Subiendo la guía de envío…', false);
             try {
-              const upload = await _crearOPASubirGuia(_authSesionActual.token, hoja, result.rowId, campos.O, guideLink, guideFiles);
+              const upload = await _crearOPASubirColumna(_authSesionActual.token, hoja, result.rowId, campos.O, 'GE', guideLink, guideFiles);
               campos.GE = upload.valorGuardado;
-            } catch (error) {
-              uploadWarning = String(error && error.message || error);
-            }
-          } else if (guideFiles.length) {
-            uploadWarning = 'La OPA se creó, pero SeaTable no devolvió el identificador para asociar las imágenes. Busca la OPA y adjunta la guía desde sus acciones.';
-          }
+            } catch (error) { uploadWarnings.push('Fotos de la guía: ' + String(error && error.message || error)); }
+          } else if (guideFiles.length) uploadWarnings.push('SeaTable no devolvió el ID de fila para guardar las fotos de la guía.');
+          const uploadWarning = uploadWarnings.join(' · ');
           const agregadoLocal = _agregarRegistroCreadoLocal(hoja, campos, result);
           if (button) button.disabled = false;
           if (uploadWarning) _mostrarAvisoOPAguardada('OPA creada, pero no se pudieron guardar las fotos de la guía: ' + uploadWarning, true);
-          else _mostrarAvisoOPAguardada(guideFiles.length ? '✅ OPA e imágenes de guía guardadas en SeaTable.' : (result.mensaje || '✅ OPA guardada correctamente en SeaTable.'));
+          else _mostrarAvisoOPAguardada((productFiles.length || guideFiles.length) ? '✅ OPA y archivos adjuntos guardados en SeaTable.' : (result.mensaje || '✅ OPA guardada correctamente en SeaTable.'));
           if (!agregadoLocal) {
             _crearOPAStatus(uploadWarning ? 'OPA guardada. La carga de la guía falló; no vuelvas a crear la OPA. Búscala y adjunta la guía.' : '✅ OPA guardada en SeaTable. Usa “Actualizar datos” para cargarla en la tabla.', !!uploadWarning, !uploadWarning);
           } else {
@@ -5944,32 +5963,30 @@
         .crearRegistroOPA({ token: _authSesionActual.token, hoja: hoja, campos: campos });
     }
 
-    async function _crearOPASubirGuia(token, table, rowId, numeroOPA, guideLink, files) {
+    async function _crearOPASubirColumna(token, table, rowId, numeroOPA, columnKey, guideLink, files) {
       const form = new FormData();
       form.append('token', token);
       form.append('table', table);
       form.append('rowId', rowId);
       form.append('numeroOPA', numeroOPA);
-      form.append('columnKey', 'GE');
+      form.append('columnKey', columnKey);
       form.append('newRow', '1');
       if (guideLink) form.append('guideLink', guideLink);
       files.forEach(function(file) { form.append('files', file, file.name); });
       const response = await fetch('/api/upload-opa-image', { method:'POST', body:form });
       const result = await response.json().catch(function() { return {}; });
-      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las imágenes de guía.');
+      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar los archivos adjuntos.');
       return result;
     }
 
-    function _crearOPAPreviewGuia(input) {
-      const wrap = document.getElementById('crear-opa-GE-preview');
+    function _crearOPAPreviewColumna(input, columnKey) {
+      const wrap = document.getElementById('crear-opa-' + columnKey + '-preview');
       if (!wrap) return;
-      (window.__crearOPAObjectUrls || []).forEach(function(url) { try { URL.revokeObjectURL(url); } catch(_) {} });
-      window.__crearOPAObjectUrls = [];
-      const files = Array.from(input && input.files || []).slice(0, 6);
-      if (input && input.files && input.files.length > 6) _crearOPAStatus('Solo se permiten 6 imágenes de guía por registro.', true);
-      wrap.innerHTML = files.map(function(file) {
+      const files = Array.from(input && input.files || []);
+      if (files.length > 6) _crearOPAStatus('Solo se permiten 6 imágenes por campo.', true);
+      wrap.innerHTML = files.slice(0, 6).map(function(file) {
         const url = URL.createObjectURL(file);
-        window.__crearOPAObjectUrls.push(url);
+        (window.__crearOPAObjectUrls || (window.__crearOPAObjectUrls = [])).push(url);
         return '<div title="' + escapeAttr(file.name) + '" style="width:72px;height:72px;border:1px solid #bfdbfe;border-radius:10px;overflow:hidden;background:#f8fafc;"><img src="' + escapeAttr(url) + '" alt="' + escapeAttr(file.name) + '" style="width:100%;height:100%;object-fit:cover;"></div>';
       }).join('');
     }
@@ -5983,7 +6000,7 @@
       const registro = { H: tabla, _id: rowIdServidor || ('local-pending:' + tabla + ':' + numeroOPA), _ctime: marcaTiempo, _mtime: marcaTiempo, _pendingCreate: !rowIdServidor };
       Object.keys(campos || {}).forEach(function(key) {
         if (campos[key] == null || String(campos[key]).trim() === '') return;
-        if (key === 'GE' && Array.isArray(campos[key])) registro[key] = campos[key];
+        if ((key === 'LF' || key === 'GE') && Array.isArray(campos[key])) registro[key] = campos[key];
         else registro[key] = (key === 'MR' || key === 'ME') ? Number(campos[key]) || 0 : String(campos[key]).trim();
       });
       if (!registro.E) {
