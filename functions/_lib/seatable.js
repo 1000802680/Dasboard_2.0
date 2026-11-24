@@ -34,7 +34,10 @@ const EMPTY_OPA = new Set(["", "N/A", "NA", "N.A.", "-", "SIN OPA", "NINGUNO", "
 const DASHBOARD_DATA_VERSION = "all-rows-v3-search-duplicates";
 // Reconciliar ediciones hechas directamente en SeaTable, sin escanear toda la
 // base en cada sondeo ligero del dashboard.
-const DASHBOARD_SNAPSHOT_MAX_AGE_MS = 30_000;
+// Los cambios hechos desde la aplicación se publican en Cache API al guardar.
+// La reconciliación completa solo hace falta para ediciones directas en SeaTable;
+// cinco minutos evita escanear todas las hojas repetidamente bajo carga.
+const DASHBOARD_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
 
 function dashboardDataCacheKey(env) {
   return [DASHBOARD_DATA_VERSION, env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
@@ -194,7 +197,7 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   const pageSize = 1000;
   // Las hojas son independientes; limitamos la concurrencia para acelerar la
   // carga sin disparar cientos de solicitudes a SeaTable.
-  const maxConcurrentTables = Math.min(8, tableNames.length);
+  const maxConcurrentTables = Math.min(12, tableNames.length);
   let nextTableIndex = 0;
   async function readTableWithRowsAPI(tableName) {
     const tableRows = [];
@@ -419,9 +422,17 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
     let lockResponse = await sharedCache.match(lockRequest);
     if (lockResponse) {
       const lock = await lockResponse.json().catch(() => ({}));
+      if (Date.now() - Number(lock.startedAt || Date.now()) >= 150_000) {
+        // Recupera un candado abandonado por una lectura de fondo cancelada.
+        try { await sharedCache.delete(lockRequest); } catch (_) {}
+        lockResponse = await sharedCache.match(lockRequest);
+      }
+    }
+    if (lockResponse) {
+      const lock = await lockResponse.json().catch(() => ({}));
       // En el primer arranque puede no existir aún una copia compartida. Espera
-      // brevemente a que el primer lector la publique, en vez de esperar 75 s.
-      const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()), 24_000);
+      // a que el lector activo publique la nueva copia.
+      const refreshed = await waitForSharedDashboardRefresh(sharedCache, sharedRequest, lockRequest, Number(lock.startedAt || Date.now()), 120_000);
       if (refreshed) {
         globalThis.__dashboardRowsCache = { key: cacheKey, records: refreshed.records, duplicateRecords: refreshed.duplicateRecords || refreshed.records, tableNames: refreshed.tableNames, updatedAt: refreshed.updatedAt, expiresAt: Date.now() + 60_000 };
         return refreshed.records;
@@ -434,7 +445,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
       const startedAt = Date.now();
       try {
         await sharedCache.put(lockRequest, new Response(JSON.stringify({ startedAt }), {
-          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=90" },
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=180" },
         }));
         ownsRefreshLease = true;
       } catch (_) {}
@@ -655,30 +666,6 @@ async function readDurableDashboardMetadata(env) {
   } catch (_) { return null; }
 }
 
-async function scheduleDashboardBackgroundRefresh(env, context, cache, cacheKey) {
-  if (!context || typeof context.waitUntil !== "function") return false;
-  const pending = globalThis.__dashboardBackgroundRefresh;
-  if (pending?.key === cacheKey) return true;
-  const lockRequest = dashboardCacheRequest(env, "checksum-refresh-lock");
-  if (cache) {
-    try {
-      if (await cache.match(lockRequest)) return true;
-      await cache.put(lockRequest, new Response(JSON.stringify({ startedAt: Date.now() }), {
-        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=90" },
-      }));
-    } catch (_) {}
-  }
-  const promise = loadDashboardRecords(env, { forceRefresh: true })
-    .catch((error) => console.warn("Dashboard background refresh failed:", error?.message || error))
-    .finally(async () => {
-      if (cache) { try { await cache.delete(lockRequest); } catch (_) {} }
-      if (globalThis.__dashboardBackgroundRefresh?.promise === promise) globalThis.__dashboardBackgroundRefresh = null;
-    });
-  globalThis.__dashboardBackgroundRefresh = { key: cacheKey, promise };
-  context.waitUntil(promise);
-  return true;
-}
-
 // El checksum lee únicamente metadatos pequeños; no descarga ni parsea miles de filas.
 export async function getDashboardSnapshotStatus(env, context = null) {
   const cacheKey = dashboardDataCacheKey(env);
@@ -691,23 +678,26 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   }
   if (!metadata) metadata = await readDurableDashboardMetadata(env);
   if (!metadata) {
-    const refreshing = await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
-    return { etag: "snapshot-v4-pending", totalRegistros: 0, updatedAt: 0, refreshing };
+    const refresh = await requestDashboardRefresh(env);
+    if (refresh.refreshing) return { etag: "snapshot-v4-pending", totalRegistros: 0, updatedAt: 0, refreshing: true };
+    metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || await readDurableDashboardMetadata(env);
+    if (!metadata) throw new Error("SeaTable terminó la lectura, pero no publicó la copia del dashboard.");
   }
-  const ageMs = Date.now() - Number(metadata.updatedAt || 0);
-  const revision = await readDashboardSnapshotRevision(sharedCache, env);
-  // Si una escritura invalidó el snapshot y no se pudo propagar, reconciliarla
-  // en el siguiente sondeo en vez de esperar a que venza el snapshot.
+  let revision = await readDashboardSnapshotRevision(sharedCache, env);
+  let ageMs = Date.now() - Number(metadata.updatedAt || 0);
+  let refreshing = false;
   const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
   const stale = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
-  let refreshLock = null;
-  if (sharedCache) {
-    try {
-      refreshLock = await sharedCache.match(dashboardCacheRequest(env, "checksum-refresh-lock"))
-        || await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
-    } catch (_) {}
+  if (stale) {
+    const refresh = await requestDashboardRefresh(env);
+    refreshing = refresh.refreshing;
+    if (!refreshing) {
+      metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || metadata;
+      revision = await readDashboardSnapshotRevision(sharedCache, env);
+      ageMs = Date.now() - Number(metadata.updatedAt || 0);
+      refreshing = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || Boolean(revision && String(metadata.revision || "") !== revision);
+    }
   }
-  const refreshing = !!refreshLock || (stale ? await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey) : false);
   const version = String(metadata.revision || metadata.contentHash || "");
   return {
     etag: `snapshot-v4-${Number(metadata.recordCount) || 0}-${Number(metadata.updatedAt) || 0}-${version}`,
@@ -731,14 +721,32 @@ export async function requestDashboardRefresh(env, context = null) {
   }
   if (!metadata) metadata = await readDurableDashboardMetadata(env);
 
-  if (context && typeof context.waitUntil === "function") {
-    await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
+  const active = globalThis.__dashboardRefreshRequest;
+  if (active?.key === cacheKey && Date.now() - Number(active.startedAt || 0) < 150_000) {
     return { totalRegistros: Number(metadata?.recordCount || 0), updatedAt: Number(metadata?.updatedAt || 0), refreshing: true };
   }
+  const lockRequest = dashboardCacheRequest(env, "refresh-lock");
+  if (sharedCache) {
+    const lockResponse = await sharedCache.match(lockRequest);
+    if (lockResponse) {
+      const lock = await lockResponse.json().catch(() => ({}));
+      if (Date.now() - Number(lock.startedAt || Date.now()) < 150_000) {
+        return { totalRegistros: Number(metadata?.recordCount || 0), updatedAt: Number(metadata?.updatedAt || 0), refreshing: true };
+      }
+      // Recupera un lease abandonado por una tarea de fondo cancelada.
+      try { await sharedCache.delete(lockRequest); } catch (_) {}
+    }
+  }
 
-  const records = await loadDashboardRecords(env, { forceRefresh: true });
-  const refreshed = globalThis.__dashboardRowsCache;
-  return { totalRegistros: records.length, updatedAt: Number(refreshed?.updatedAt || Date.now()), refreshing: false };
+  const state = { key: cacheKey, startedAt: Date.now() };
+  globalThis.__dashboardRefreshRequest = state;
+  try {
+    const records = await loadDashboardRecords(env, { forceRefresh: true });
+    const refreshed = globalThis.__dashboardRowsCache;
+    return { totalRegistros: records.length, updatedAt: Number(refreshed?.updatedAt || Date.now()), refreshing: false };
+  } finally {
+    if (globalThis.__dashboardRefreshRequest === state) globalThis.__dashboardRefreshRequest = null;
+  }
 }
 
 
@@ -1080,8 +1088,8 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
     const revision = await readDashboardSnapshotRevision(sharedCache, env);
     globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames, revision: shared.revision || "", updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
 
-    // Mutations and periodic refreshes only mark the snapshot stale. Return it
-    // now, then let Pages finish the full SeaTable scan after the response.
+    // Las mutaciones de la aplicación ya publican su fila en la copia común.
+    // Esta lectura entrega la copia compartida sin bloquear la navegación.
     const ageMs = Date.now() - Number(shared.updatedAt || 0);
     const changedWhileEditing = String(shared.revision || "") !== revision;
     // Bound refresh frequency independently of the number of writes. This lets
@@ -1090,12 +1098,7 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
     // reconciled by the periodic snapshot refresh.
     const isStale = forceRefresh || ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
     const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
-    if (isStale && !lock && context && typeof context.waitUntil === "function") {
-      // Usar el mismo lease compartido que el checksum evita que varias
-      // solicitudes de usuarios distintos inicien escaneos completos a la vez.
-      await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
-    }
-    return { records: shared.records, updatedAt: Number(shared.updatedAt || 0), refreshing: isStale };
+    return { records: shared.records, updatedAt: Number(shared.updatedAt || 0), refreshing: isStale || !!lock };
   }
 
   // La memoria del isolate y Cache API pueden estar vacías en una región nueva.
@@ -1120,15 +1123,12 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
   }
 
   // A Cache API snapshot can be absent in a newly routed isolate/colo even
-  // though this isolate already has usable rows. Keep those rows visible and
-  // refresh them in the background instead of blocking the user's request.
+  // though this isolate already has usable rows. Keep those rows visible.
   if (cached?.key === cacheKey) {
     const ageMs = Date.now() - Number(cached.updatedAt || 0);
     const isStale = forceRefresh || ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS;
-    if (isStale && context && typeof context.waitUntil === "function") {
-      await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey);
-    }
-    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: isStale };
+    const refreshLock = sharedCache ? await sharedCache.match(dashboardCacheRequest(env, "refresh-lock")) : null;
+    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: isStale || !!refreshLock };
   }
 
   // Cold start for a region with no shared or isolate snapshot: one full read

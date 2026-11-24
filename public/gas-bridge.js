@@ -23,8 +23,7 @@
         // una región fría. No cortar al segundo 18 una consulta que el backend
         // limita a 10 s solo en su fase SQL.
         const timeoutMs = functionName === "searchOPAByNumber" ? 32_000
-          : (functionName === "obtenerChecksumDashboard" ? 12_000
-            : (functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 80_000 : 30_000));
+          : (functionName === "obtenerChecksumDashboard" || functionName === "actualizarDashboardDatos" || functionName === "obtenerDatosDashboard" ? 180_000 : 30_000);
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
         const sendRequest = async () => {
           let response;

@@ -5247,7 +5247,7 @@
           }
           try { actualizarSyncStatus('Timeout de conexión · usa copia local', true); } catch(_) {}
         } catch(_) {}
-      }, 50000);
+      }, 170000);
 
       const onDone = function() {
         clearTimeout(tiempo);
@@ -8784,7 +8784,7 @@
         try { actualizarSyncStatus('SeaTable sigue tardando · se conserva la copia local', true); } catch (_) {}
         try { mostrarError(message); } catch (_) {}
         finishRefresh(false, new Error(message));
-      }, 75_000);
+      }, 185_000);
 
       _invalidateMemo();
       if (!Array.isArray(datos) || !datos.length) { try { mostrarLoading(); } catch(_) {} }
@@ -8805,6 +8805,17 @@
               try { actualizarSyncStatus('Actualización iniciada en segundo plano · todavía no está confirmada; se conserva la copia actual', true); } catch(_) {}
               finishRefresh(true, respuesta);
               _pollingSolicitarInmediato();
+              return;
+            }
+
+            if (respuesta.actualizado === true && Array.isArray(respuesta.registros) && respuesta.registros.length === 0) {
+              _dashboardRefreshPending = false;
+              if (respuesta.etag) {
+                _ultimoEtag = String(respuesta.etag);
+                try { localStorage.setItem(ETAG_STORAGE_KEY, _ultimoEtag); } catch(_) {}
+              }
+              finishRefresh(true, respuesta);
+              setTimeout(function() { try { cargarDatos(); } catch(_) {} }, 0);
               return;
             }
 
@@ -13062,19 +13073,19 @@
         _pollingProgramarSiguiente();
       };
 
-      // El bridge cancela la petición de checksum a los 12 s. Esperamos 13 s
-      // antes de liberar el candado del sondeo para no iniciar otra petición
-      // mientras el fetch anterior aún está vivo.
+      // El sondeo puede mantener abierta la petición mientras SeaTable termina
+      // una lectura completa; el bridge la corta a los 180 s.
       const tiempo = setTimeout(function(){
         if (!terminado.valor) {
           onDone(true);
           try { actualizarSyncStatus('Cloudflare o SeaTable no respondió a tiempo · se conserva la copia local · nuevo intento en ' + Math.min(120, Math.round(POLL_INTERVAL_MS * Math.pow(2, Math.min(_pollingFallos - 1, 4)) / 1000)) + 's', true); } catch(_){}
         }
-      }, 20000);
+      }, 185000);
 
       google.script.run
         .withSuccessHandler(function(resp){
           try { clearTimeout(tiempo); } catch(_){}
+          const estabaPendiente = _dashboardRefreshPending;
           _dashboardRefreshPending = !!(resp && resp.actualizandoEnSegundoPlano === true);
           onDone(false);
 
@@ -13087,6 +13098,20 @@
 
           const nuevoEtag = resp.etag || '';
           if (!nuevoEtag) return;
+
+          if (estabaPendiente && !_dashboardRefreshPending) {
+            try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch(_) {}
+            try {
+              actualizarSyncStatus('Conectado a la hoja · sincronización terminada · ' + _timestampHumano(Number(resp.updatedAt || Date.now())), false);
+            } catch(_) {}
+            // Si el checksum no cambió (por ejemplo, un campo fuera de la
+            // proyección del dashboard), vuelve a confirmar la copia servida
+            // para retirar el estado pendiente en todos los dispositivos.
+            if (_ultimoEtag === nuevoEtag) {
+              setTimeout(function() { try { cargarDatos(); } catch(_) {} }, 0);
+              return;
+            }
+          }
 
           // ✅ Seed PRIMER TICK: NO disparar 2da cargarDatos() redundante (ROOT CAUSE TimeOut doble!)
           if (!_ultimoEtag) {

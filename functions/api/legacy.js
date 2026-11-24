@@ -23,8 +23,8 @@ export async function onRequestPost(context) {
         if (!user) return Response.json({ ok: false, error: "Inicia sesión como administrador para recuperar la sincronización." }, { status: 401, headers: { "Cache-Control": "no-store" } });
         const isAdmin = String(user.rol || "").toUpperCase() === "ADMINISTRADOR" || user.permisos?.panel_admin === true;
         if (!isAdmin) return Response.json({ ok: false, error: "Esta acción está disponible solo para administradores." }, { status: 403, headers: { "Cache-Control": "no-store" } });
-        // La sesión se valida aquí; el escaneo se ejecuta en segundo plano para
-        // no bloquear Pages serializando miles de filas en la solicitud manual.
+        // La sesión se valida aquí; la actualización queda ligada a esta
+        // solicitud para que Cloudflare no cancele la tarea al vencer waitUntil.
         const refresh = await requestDashboardRefresh(env, context);
         const registros = [];
         value = {
@@ -33,6 +33,7 @@ export async function onRequestPost(context) {
           totalRegistros: refresh.totalRegistros,
           etag: `snapshot-v4-${refresh.totalRegistros}-${refresh.updatedAt}`,
           actualizandoEnSegundoPlano: refresh.refreshing,
+          actualizado: !refresh.refreshing,
           fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
         };
         break;
@@ -40,8 +41,8 @@ export async function onRequestPost(context) {
       case "obtenerDatosDashboard":
       case "actualizarDashboardDatos": {
         if (functionName === "actualizarDashboardDatos") {
-          // El usuario ya ve su copia local. No volver a enviar miles de filas;
-          // aceptar el escaneo y dejar que el sondeo recoja el nuevo snapshot.
+          // Mantener esta solicitud abierta durante el escaneo: una tarea
+          // waitUntil se cancela a los 30 segundos y dejaba el badge pendiente.
           const refresh = await requestDashboardRefresh(env, context);
           value = {
             registros: [],
@@ -49,6 +50,7 @@ export async function onRequestPost(context) {
             etag: `snapshot-v4-${refresh.totalRegistros}-${refresh.updatedAt}`,
             fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
             actualizandoEnSegundoPlano: refresh.refreshing,
+            actualizado: !refresh.refreshing,
           };
           break;
         }
