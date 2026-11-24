@@ -609,6 +609,11 @@ async function writeDurableDashboardSnapshot(env, snapshot) {
       httpMetadata: { contentType: "application/json; charset=utf-8" },
       customMetadata: { recordCount: String(snapshot.records.length), snapshotAt: String(snapshot.updatedAt || Date.now()), revision: String(snapshot.revision || ""), contentHash },
     });
+    globalThis.__dashboardDurableMetadataCache = {
+      key: dashboardDataCacheKey(env),
+      metadata: { recordCount: snapshot.records.length, updatedAt: Number(snapshot.updatedAt || Date.now()), revision: String(snapshot.revision || ""), contentHash },
+      expiresAt: Date.now() + 2_000,
+    };
   } catch (error) {
     // R2 mejora la recuperación tras un cold start, pero no debe hacer fallar
     // una lectura correcta de SeaTable si la copia durable no puede guardarse.
@@ -666,6 +671,40 @@ async function readDurableDashboardMetadata(env) {
   } catch (_) { return null; }
 }
 
+async function readDashboardDurableMetadataCached(env) {
+  const key = dashboardDataCacheKey(env);
+  const cached = globalThis.__dashboardDurableMetadataCache;
+  if (cached?.key === key && cached.expiresAt > Date.now()) return cached.metadata;
+  const metadata = await readDurableDashboardMetadata(env);
+  globalThis.__dashboardDurableMetadataCache = { key, metadata, expiresAt: Date.now() + 2_000 };
+  return metadata;
+}
+
+async function publishDurableSnapshotToRegion(cache, env, snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.records) || !cache) return;
+  try {
+    await cache.put(dashboardCacheRequest(env), new Response(JSON.stringify(snapshot), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+    }));
+    await writeSharedDashboardMetadata(cache, env, snapshot);
+    await cache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({
+      revision: String(snapshot.revision || ""), updatedAt: Number(snapshot.updatedAt || 0),
+    }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" } }));
+  } catch (error) {
+    console.warn("No se pudo actualizar la copia regional del dashboard:", error?.message || error);
+  }
+  globalThis.__dashboardRowsCache = { key: dashboardDataCacheKey(env), ...snapshot, expiresAt: Date.now() + 60_000 };
+}
+
+async function refreshSharedSnapshotFromDurable(env, cache, currentUpdatedAt) {
+  const metadata = await readDashboardDurableMetadataCached(env);
+  if (!metadata || Number(metadata.updatedAt || 0) <= Number(currentUpdatedAt || 0)) return null;
+  const snapshot = await readDurableDashboardSnapshot(env);
+  if (!snapshot || Number(snapshot.updatedAt || 0) <= Number(currentUpdatedAt || 0)) return null;
+  await publishDurableSnapshotToRegion(cache, env, snapshot);
+  return snapshot;
+}
+
 // El checksum lee únicamente metadatos pequeños; no descarga ni parsea miles de filas.
 export async function getDashboardSnapshotStatus(env, context = null) {
   const cacheKey = dashboardDataCacheKey(env);
@@ -676,11 +715,19 @@ export async function getDashboardSnapshotStatus(env, context = null) {
     const local = globalThis.__dashboardRowsCache;
     metadata = { recordCount: local.records.length, updatedAt: Number(local.updatedAt) || 0, revision: String(local.revision || "") };
   }
-  if (!metadata) metadata = await readDurableDashboardMetadata(env);
+  if (!metadata) metadata = await readDashboardDurableMetadataCached(env);
+  else {
+    const durableSnapshot = await refreshSharedSnapshotFromDurable(env, sharedCache, metadata.updatedAt);
+    if (durableSnapshot) metadata = {
+      recordCount: durableSnapshot.records.length,
+      updatedAt: Number(durableSnapshot.updatedAt || 0),
+      revision: String(durableSnapshot.revision || ""),
+    };
+  }
   if (!metadata) {
     const refresh = await requestDashboardRefresh(env);
     if (refresh.refreshing) return { etag: "snapshot-v4-pending", totalRegistros: 0, updatedAt: 0, refreshing: true };
-    metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || await readDurableDashboardMetadata(env);
+    metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || await readDashboardDurableMetadataCached(env);
     if (!metadata) throw new Error("SeaTable terminó la lectura, pero no publicó la copia del dashboard.");
   }
   let revision = await readDashboardSnapshotRevision(sharedCache, env);
@@ -801,10 +848,9 @@ export async function updateDashboardRow(env, tableName, rowId, values, context 
       await invalidateDashboardSnapshot(env);
     }
   };
-  // El guardado en SeaTable ya terminó. La propagación al snapshot puede
-  // serializar miles de filas; no debe convertir un guardado exitoso en 503.
-  if (typeof context?.waitUntil === "function") context.waitUntil(publishUpdate());
-  else await publishUpdate();
+  // Confirmar el guardado solo después de publicar la edición en la copia que
+  // consultan el dashboard y las demás regiones. waitUntil podía ser cancelado.
+  await publishUpdate();
   return body;
 }
 
@@ -828,11 +874,9 @@ export async function createDashboardRow(env, tableName, values, context = null)
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
   }
-  const snapshotUpdate = publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body))
+  await publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body))
     .then(async (published) => { if (!published) await invalidateDashboardSnapshot(env); })
     .catch((error) => console.warn("No se pudo propagar la nueva OPA a la copia compartida:", error?.message || error));
-  if (typeof context?.waitUntil === "function") context.waitUntil(snapshotUpdate);
-  else await snapshotUpdate;
   return body;
 }
 
@@ -955,8 +999,9 @@ async function publishUpdatedDashboardRecord(env, tableName, rowId, canonicalVal
       }));
     } catch (_) {}
   }
-  // La copia de Cache API es la ruta rápida para el polling. La copia durable
-  // se renueva en el escaneo periódico para evitar escribir R2 en cada edición.
+  // Cache API acelera la región actual; R2 permite que las demás regiones
+  // reciban la fila actualizada al siguiente sondeo, sin reescanear SeaTable.
+  await writeDurableDashboardSnapshot(env, updated);
   return true;
 }
 
@@ -1085,20 +1130,22 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
   const shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
 
   if (shared) {
+    const durableSnapshot = await refreshSharedSnapshotFromDurable(env, sharedCache, shared.updatedAt);
+    const current = durableSnapshot || shared;
     const revision = await readDashboardSnapshotRevision(sharedCache, env);
-    globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records, duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames, revision: shared.revision || "", updatedAt: shared.updatedAt, expiresAt: Date.now() + 60_000 };
+    globalThis.__dashboardRowsCache = { key: cacheKey, records: current.records, duplicateRecords: current.duplicateRecords || current.records, tableNames: current.tableNames, revision: current.revision || "", updatedAt: current.updatedAt, expiresAt: Date.now() + 60_000 };
 
     // Las mutaciones de la aplicación ya publican su fila en la copia común.
     // Esta lectura entrega la copia compartida sin bloquear la navegación.
-    const ageMs = Date.now() - Number(shared.updatedAt || 0);
-    const changedWhileEditing = String(shared.revision || "") !== revision;
+    const ageMs = Date.now() - Number(current.updatedAt || 0);
+    const changedWhileEditing = String(current.revision || "") !== revision;
     // Bound refresh frequency independently of the number of writes. This lets
     // the snapshot advance during continuous team activity without launching a
     // full-table scan for each individual save; direct SeaTable edits are still
     // reconciled by the periodic snapshot refresh.
     const isStale = forceRefresh || ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
     const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
-    return { records: shared.records, updatedAt: Number(shared.updatedAt || 0), refreshing: isStale || !!lock };
+    return { records: current.records, updatedAt: Number(current.updatedAt || 0), refreshing: isStale || !!lock };
   }
 
   // La memoria del isolate y Cache API pueden estar vacías en una región nueva.
