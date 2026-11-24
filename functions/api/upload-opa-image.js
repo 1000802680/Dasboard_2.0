@@ -7,6 +7,7 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/g
 
 export async function onRequestPost(context) {
   const { request, env } = context;
+  let stage = "validando solicitud";
   try {
     const form = await request.formData();
     const user = await getAuthenticatedUser(String(form.get("token") || ""), env);
@@ -37,6 +38,7 @@ export async function onRequestPost(context) {
     const apiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : dashboardToken;
     if (!apiToken) throw new Error("Falta configurar el API token de SeaTable para subir imágenes.");
 
+    stage = "verificando la fila de la OPA";
     const columnName = getDashboardColumnName(env, columnKey);
     const columnType = await getDashboardColumnType(env, tableName, columnName);
     let selectedRowId = rowId;
@@ -89,6 +91,7 @@ export async function onRequestPost(context) {
     if (!fileType) return json({ ok: false, error: `La columna "${columnName}" debe ser de tipo Imagen o Archivo${columnKey === "GE" ? " o Texto largo" : ""} para guardar fotos.` }, 400);
 
     const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
+    stage = "solicitando enlace de carga a SeaTable";
     const linkResponse = await fetch(`${server}/api/v2.1/dtable/app-upload-link/`, {
       headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" },
     });
@@ -100,6 +103,7 @@ export async function onRequestPost(context) {
     if (!relativePath || !uploadInfo.parent_path || !workspaceId) throw new Error("SeaTable devolvió datos incompletos para guardar la imagen.");
     const saved = [];
     for (const file of files) {
+      stage = `subiendo ${file.name}`;
       const uploadForm = new FormData();
       uploadForm.append("file", file, file.name);
       uploadForm.append("parent_dir", uploadInfo.parent_path);
@@ -124,14 +128,22 @@ export async function onRequestPost(context) {
 
     const existingGuide = fileType === "text" ? normalizeTextGuide(currentRow[columnName]) : null;
     const requestedGuideLink = String(form.get("guideLink") || "").trim();
-    const existing = fileType === "text" ? existingGuide.photos : normalizeExisting(currentRow[columnName], fileType);
-    const merged = [...existing];
+    stage = "guardando las fotos en la fila de SeaTable";
+    // Leer justo antes de combinar los adjuntos: la primera lectura pudo quedar
+    // antigua mientras se cargaban archivos grandes o varios usuarios trabajaban.
+    try { currentRow = await getDashboardRow(env, tableName, selectedRowId); } catch (_) {}
+    const latestExisting = fileType === "text"
+      ? normalizeTextGuide(currentRow[columnName]).photos
+      : normalizeExisting(currentRow[columnName], fileType);
+    const latestMerged = [...latestExisting];
     for (const item of saved) {
-      if (fileType === "image" || fileType === "text") merged.push(item.path);
-      else merged.push({ name: item.name, size: item.size, type: "file", url: item.path });
+      if (fileType === "image" || fileType === "text") latestMerged.push(item.path);
+      else latestMerged.push({ name: item.name, size: item.size, type: "file", url: item.path });
     }
-    const storedValue = fileType === "text" ? JSON.stringify({ version: 1, link: requestedGuideLink || existingGuide.link, photos: merged }) : merged;
-    await updateDashboardRow(env, tableName, selectedRowId, { [columnName]: storedValue }, context);
+    const finalValue = fileType === "text"
+      ? JSON.stringify({ version: 1, link: requestedGuideLink || normalizeTextGuide(currentRow[columnName]).link || existingGuide.link, photos: latestMerged })
+      : latestMerged;
+    await updateDashboardRow(env, tableName, selectedRowId, { [columnName]: finalValue }, context);
     const auditTask = recordBusinessAudit(env, {
       username: user.username, role: user.rol, action: columnKey === "GE" ? "ADJUNTAR_FOTOS_GUIA_ENVIO" : "ADJUNTAR_IMAGENES",
       detail: { columna: columnName, archivos: saved.map((item) => item.name) },
@@ -139,16 +151,18 @@ export async function onRequestPost(context) {
     });
     if (typeof context?.waitUntil === "function") context.waitUntil(auditTask);
     else await auditTask;
-    const images = await Promise.all(merged.map(async (item) => {
+    stage = "preparando la vista previa de las fotos";
+    const images = await Promise.all(latestMerged.map(async (item) => {
       const path = typeof item === "string" ? item : String(item.url || item.path || "");
       const name = typeof item === "string" ? item.split("/").pop() : item.name || path.split("/").pop();
       if (/^https?:\/\//i.test(path)) return { name, url: path, attachmentKey: path };
       try { return { name, url: await getDashboardFileDownloadLink(env, pathToImagePath(path)), attachmentKey: path }; }
       catch (_) { return { name, url: "", attachmentKey: path }; }
     }));
-    return json({ ok: true, columna: columnKey, rowId: selectedRowId, imagenes: images, cantidad: saved.length, valorGuardado: storedValue, enlaceGuia: requestedGuideLink || existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
+    return json({ ok: true, columna: columnKey, rowId: selectedRowId, imagenes: images, cantidad: saved.length, valorGuardado: finalValue, enlaceGuia: requestedGuideLink || existingGuide?.link || "", mensaje: `${saved.length} imagen${saved.length === 1 ? "" : "es"} guardada${saved.length === 1 ? "" : "s"} en ${columnName}.` });
   } catch (error) {
-    return json({ ok: false, error: error.message || "No se pudieron subir las imágenes." }, 502);
+    const rayId = String(request.headers.get("cf-ray") || "").trim();
+    return json({ ok: false, error: `${error.message || "No se pudieron subir las imágenes."} (etapa: ${stage})${rayId ? `. Ray ID ${rayId}` : ""}` }, 502);
   }
 }
 

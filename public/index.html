@@ -5907,9 +5907,6 @@
       const guideFilesInput = document.getElementById('crear-opa-GE-files');
       const guideFiles = Array.from(guideFilesInput && guideFilesInput.files || []);
       const guideLink = String(campos.GE || '').trim();
-      for (const file of productFiles.concat(guideFiles)) {
-        if (file.size > 8 * 1024 * 1024) { _crearOPAStatus('Cada imagen puede pesar máximo 8 MB.', true); return; }
-      }
       if (productFiles.length > 6 || guideFiles.length > 6) { _crearOPAStatus('Puedes adjuntar hasta 6 fotos por cada campo.', true); return; }
       _crearOPAStatus('Guardando el registro en SeaTable…', false);
       if (button) button.disabled = true;
@@ -5963,6 +5960,33 @@
         .crearRegistroOPA({ token: _authSesionActual.token, hoja: hoja, campos: campos });
     }
 
+    async function _optimizarImagenAdjunto(file) {
+      if (!file || !String(file.type || '').startsWith('image/')) return file;
+      try {
+        const bitmap = await createImageBitmap(file);
+        const maxSide = 2200;
+        const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+        if (scale >= 1 && file.size <= 2 * 1024 * 1024) { bitmap.close(); return file; }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { bitmap.close(); return file; }
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        const blob = await new Promise(function(resolve) { canvas.toBlob(resolve, 'image/webp', 0.82); });
+        if (!blob || blob.size >= file.size) return file;
+        return new File([blob], String(file.name || 'imagen').replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp', lastModified: file.lastModified || Date.now() });
+      } catch (_) { return file; }
+    }
+
+    function _opaErrorRespuesta(response, result, fallback) {
+      if (result && result.error) return String(result.error);
+      const rayId = response && (response.headers.get('cf-ray') || response.headers.get('cf-request-id'));
+      const status = response && response.status ? 'HTTP ' + response.status : 'sin respuesta';
+      return fallback + ' (' + status + ').' + (rayId ? ' Ray ID ' + rayId + '.' : ' Revisa la conexión y vuelve a intentar.');
+    }
+
     async function _crearOPASubirColumna(token, table, rowId, numeroOPA, columnKey, guideLink, files, fields) {
       const form = new FormData();
       form.append('token', token);
@@ -5979,10 +6003,13 @@
       form.append('subOpa', fields.SO || '');
       form.append('personaje', fields.PJ || '');
       if (guideLink) form.append('guideLink', guideLink);
-      files.forEach(function(file) { form.append('files', file, file.name); });
+      const optimizedFiles = await Promise.all(files.map(_optimizarImagenAdjunto));
+      const tooLarge = optimizedFiles.find(function(file) { return file.size > 8 * 1024 * 1024; });
+      if (tooLarge) throw new Error('La imagen "' + tooLarge.name + '" supera 8 MB incluso después de optimizarla.');
+      optimizedFiles.forEach(function(file) { form.append('files', file, file.name); });
       const response = await fetch('/api/upload-opa-image', { method:'POST', body:form });
       const result = await response.json().catch(function() { return {}; });
-      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar los archivos adjuntos.');
+      if (!response.ok || !result.ok) throw new Error(_opaErrorRespuesta(response, result, 'No se pudieron guardar los archivos adjuntos'));
       return result;
     }
 
@@ -12322,7 +12349,6 @@
         status.textContent = message;
       };
       if (files.length > 6) { setStatus('Selecciona hasta 6 imágenes por carga.', true); input.value = ''; return; }
-      if (files.some(function(file) { return file.size > 8 * 1024 * 1024; })) { setStatus('Cada imagen puede pesar máximo 8 MB.', true); input.value = ''; return; }
       const form = new FormData();
       form.append('token', _authSesionActual.token);
       form.append('table', row.hoja || '');
@@ -12335,14 +12361,17 @@
       form.append('territorio', row.territorio || '');
       form.append('subOpa', row.subOpa || '');
       form.append('personaje', row.personaje || '');
-      files.forEach(function(file) { form.append('files', file, file.name); });
-      setStatus('Subiendo ' + files.length + ' imagen' + (files.length === 1 ? '' : 'es') + ' a SeaTable…', false);
+      setStatus('Optimizando y subiendo ' + files.length + ' imagen' + (files.length === 1 ? '' : 'es') + '…', false);
       const button = document.querySelector('label[for="opa-files-' + columnKey + '-' + dataId + '"]');
       if (button) { button.style.opacity = '.55'; button.style.pointerEvents = 'none'; }
       try {
+        const optimizedFiles = await Promise.all(files.map(_optimizarImagenAdjunto));
+        const tooLarge = optimizedFiles.find(function(file) { return file.size > 8 * 1024 * 1024; });
+        if (tooLarge) throw new Error('La imagen "' + tooLarge.name + '" supera 8 MB incluso después de optimizarla. Reduce su tamaño e intenta de nuevo.');
+        optimizedFiles.forEach(function(file) { form.append('files', file, file.name); });
         const response = await fetch('/api/upload-opa-image', { method: 'POST', body: form });
         const result = await response.json().catch(function() { return {}; });
-        if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudieron guardar las fotos.');
+        if (!response.ok || !result.ok) throw new Error(_opaErrorRespuesta(response, result, 'No se pudieron guardar las fotos'));
         if (result.rowId) row.rowId = String(result.rowId);
         if (columnKey === 'GE') {
           row.guiaImagenes = Array.isArray(result.imagenes) ? result.imagenes : row.guiaImagenes;
