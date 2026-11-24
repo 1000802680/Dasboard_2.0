@@ -6197,6 +6197,14 @@
       const cache = window._registrosImagenesCache || (window._registrosImagenesCache = {});
       const pending = window._registrosImagenesPendientes || (window._registrosImagenesPendientes = {});
       const retryAt = window._registrosImagenesReintento || (window._registrosImagenesReintento = {});
+      const scheduleRetry = function() {
+        if (window._registrosFotosRetryTimer) return;
+        window._registrosFotosRetryTimer = setTimeout(function() {
+          window._registrosFotosRetryTimer = null;
+          const tab = document.getElementById('tab-registros');
+          if (tab && tab.classList.contains('active')) _registrosCargarFotos(pagina);
+        }, 15000);
+      };
       const targets = [];
       pagina.forEach(function(row) {
         if (row && row._pendingCreate) return;
@@ -6222,10 +6230,12 @@
             else delete retryAt[target.key];
           });
           actualizarTablaRegistrosBase();
+          if (targets.some(function(target) { return cache[target.key] === null; })) scheduleRetry();
         })
         .withFailureHandler(function() {
           targets.forEach(function(target) { pending[target.key] = false; cache[target.key] = null; retryAt[target.key] = Date.now() + 15000; });
           actualizarTablaRegistrosBase();
+          scheduleRetry();
         })
         .getOPAImagesForRows(_authSesionActual.token, targets);
     }
