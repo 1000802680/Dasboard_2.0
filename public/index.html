@@ -6463,7 +6463,10 @@
           continue;
         }
 
-        if (idx >= 0) totalConceptos++;
+        // Toda OPA válida que no esté cancelada cuenta como activa, incluso
+        // cuando aún no tiene un estado reconocido. Así las tarjetas usan la
+        // misma base que la matriz y el recuento por proyecto.
+        totalConceptos++;
         if (idx >= 1 && idx <= 6) totalEnProceso++;
         if (idx === 7) totalFinalizados++;
       }
