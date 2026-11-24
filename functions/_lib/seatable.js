@@ -1043,7 +1043,9 @@ export async function getDashboardFileDownloadLink(env, path) {
   const url = new URL(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-download-link/`);
   url.searchParams.set("path", path);
   const promise = (async () => {
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } });
+    // Las vistas previas no deben mantener abierta la carga de archivos si
+    // SeaTable tarda en generar un enlace temporal.
+    const response = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } }, 6_000);
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`SeaTable no pudo generar el enlace de la imagen (HTTP ${response.status}).`);
     const link = body.download_link || body.url || body.link;

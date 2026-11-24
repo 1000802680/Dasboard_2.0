@@ -92,9 +92,9 @@ export async function onRequestPost(context) {
 
     const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
     stage = "solicitando enlace de carga a SeaTable";
-    const linkResponse = await fetch(`${server}/api/v2.1/dtable/app-upload-link/`, {
+    const linkResponse = await fetchWithTimeout(`${server}/api/v2.1/dtable/app-upload-link/`, {
       headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" },
-    });
+    }, 12_000);
     const uploadInfo = await linkResponse.json().catch(() => ({}));
     if (!linkResponse.ok || !uploadInfo.upload_link) throw new Error(`SeaTable no pudo preparar la carga de imágenes (HTTP ${linkResponse.status}).`);
 
@@ -111,7 +111,7 @@ export async function onRequestPost(context) {
       uploadForm.append("replace", "0");
       const uploadUrl = new URL(uploadInfo.upload_link);
       uploadUrl.searchParams.set("ret-json", "1");
-      const uploadResponse = await fetch(uploadUrl, { method: "POST", body: uploadForm, headers: { Accept: "application/json" } });
+      const uploadResponse = await fetchWithTimeout(uploadUrl, { method: "POST", body: uploadForm, headers: { Accept: "application/json" } }, 25_000);
       const uploadText = await uploadResponse.text();
       let uploadBody = {};
       try { uploadBody = JSON.parse(uploadText); } catch (_) { uploadBody = uploadText; }
@@ -259,4 +259,17 @@ function pathToImagePath(value) {
 
 function json(body, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`SeaTable no respondió durante ${Math.round(timeoutMs / 1000)} segundos.`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
