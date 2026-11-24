@@ -693,7 +693,9 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   }
   const ageMs = Date.now() - Number(metadata.updatedAt || 0);
   const revision = await readDashboardSnapshotRevision(sharedCache, env);
-  const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision && ageMs >= 30_000);
+  // Si una escritura invalidó el snapshot y no se pudo propagar, reconciliarla
+  // en el siguiente sondeo en vez de esperar otros 30 segundos.
+  const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
   const stale = ageMs >= 60_000 || changedWhileEditing;
   const refreshing = stale ? await scheduleDashboardBackgroundRefresh(env, context, sharedCache, cacheKey) : false;
   const version = String(metadata.revision || metadata.contentHash || "");
@@ -748,7 +750,13 @@ export async function updateDashboardRow(env, tableName, rowId, values) {
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no guardó los cambios en ${tableName} (HTTP ${response.status}). Verifica que SEATABLE_API_TOKEN tenga permiso de lectura y escritura.${detail ? ` ${detail}` : ""}`);
   }
-  await invalidateDashboardSnapshot(env);
+  try {
+    const published = await publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues);
+    if (!published) await invalidateDashboardSnapshot(env);
+  } catch (error) {
+    console.warn("No se pudo propagar el cambio a la copia del dashboard:", error?.message || error);
+    await invalidateDashboardSnapshot(env);
+  }
   return body;
 }
 
@@ -772,8 +780,8 @@ export async function createDashboardRow(env, tableName, values, context = null)
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
   }
-  await invalidateDashboardSnapshot(env);
   const snapshotUpdate = publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body))
+    .then(async (published) => { if (!published) await invalidateDashboardSnapshot(env); })
     .catch((error) => console.warn("No se pudo propagar la nueva OPA a la copia compartida:", error?.message || error));
   if (typeof context?.waitUntil === "function") context.waitUntil(snapshotUpdate);
   else await snapshotUpdate;
@@ -801,7 +809,7 @@ async function publishCreatedDashboardRecord(env, tableName, canonicalValues, ro
     snapshot = { records: local.records, duplicateRecords: local.duplicateRecords || local.records, tableNames: local.tableNames || [], revision: local.revision || "", updatedAt: local.updatedAt || 0 };
   }
   if (!snapshot) snapshot = await readDurableDashboardSnapshot(env);
-  if (!snapshot || !Array.isArray(snapshot.records)) return;
+  if (!snapshot || !Array.isArray(snapshot.records)) return false;
 
   const createdAt = new Date().toISOString();
   const internalRow = toInternalRecord({
@@ -837,9 +845,70 @@ async function publishCreatedDashboardRecord(env, tableName, canonicalValues, ro
         headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
       }));
       await writeSharedDashboardMetadata(cache, env, updated);
+      await cache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision: updated.revision, updatedAt: now }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+      }));
     } catch (_) {}
   }
   await writeDurableDashboardSnapshot(env, updated);
+  return true;
+}
+
+async function publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues) {
+  const cacheKey = dashboardDataCacheKey(env);
+  const cache = getSharedDashboardCache(env);
+  let snapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
+  if (!snapshot && globalThis.__dashboardRowsCache?.key === cacheKey) {
+    const local = globalThis.__dashboardRowsCache;
+    snapshot = { records: local.records, duplicateRecords: local.duplicateRecords || local.records, tableNames: local.tableNames || [], revision: local.revision || "", updatedAt: local.updatedAt || 0 };
+  }
+  if (!snapshot) snapshot = await readDurableDashboardSnapshot(env);
+  if (!snapshot || !Array.isArray(snapshot.records)) return false;
+
+  const columns = getColumnMap(env);
+  const internalUpdates = {};
+  for (const [columnName, value] of Object.entries(canonicalValues || {})) {
+    const key = Object.keys(columns).find((candidate) => normalizeHeader(columns[candidate]) === normalizeHeader(columnName));
+    if (key) internalUpdates[key] = value;
+  }
+  const matchesRow = (record) => String(record.H || "") === String(tableName) && String(record._id || "") === String(rowId);
+  const previousRows = snapshot.duplicateRecords || snapshot.records;
+  const duplicateRecords = previousRows.map((record) => matchesRow(record)
+    ? { ...record, ...internalUpdates, _mtime: new Date().toISOString() }
+    : record);
+  if (!duplicateRecords.some(matchesRow) && !snapshot.records.some(matchesRow)) return false;
+
+  const withoutOpa = snapshot.records.filter((record) => !String(record.O || "").trim());
+  const latest = new Map();
+  for (const record of duplicateRecords) {
+    const opa = String(record.O || "").trim();
+    if (!opa) continue;
+    const key = String(record.P || "").trim().toLocaleUpperCase() + "\u0000" + opa;
+    const current = latest.get(key);
+    if (!current || activityTime(record) >= activityTime(current)) latest.set(key, record);
+  }
+  const now = Date.now();
+  const updated = {
+    records: [...latest.values(), ...withoutOpa],
+    duplicateRecords,
+    tableNames: Array.from(new Set([...(snapshot.tableNames || []), tableName])),
+    revision: String(now) + "-" + Math.random().toString(36).slice(2),
+    updatedAt: now,
+  };
+  globalThis.__dashboardRowsCache = { key: cacheKey, ...updated, expiresAt: now + 60_000 };
+  if (cache) {
+    try {
+      await cache.put(dashboardCacheRequest(env), new Response(JSON.stringify(updated), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+      }));
+      await writeSharedDashboardMetadata(cache, env, updated);
+      await cache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision: updated.revision, updatedAt: now }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+      }));
+    } catch (_) {}
+  }
+  await writeDurableDashboardSnapshot(env, updated);
+  return true;
 }
 
 async function invalidateDashboardSnapshot(env) {
@@ -976,7 +1045,7 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
     // the snapshot advance during continuous team activity without launching a
     // full-table scan for each individual save; direct SeaTable edits are still
     // caught by the 60 second periodic refresh.
-    const isStale = forceRefresh || ageMs >= 60_000 || (changedWhileEditing && ageMs >= 30_000);
+    const isStale = forceRefresh || ageMs >= 60_000 || changedWhileEditing;
     const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
     if (isStale && !lock && context && typeof context.waitUntil === "function") {
       const pending = globalThis.__dashboardBackgroundRefresh;

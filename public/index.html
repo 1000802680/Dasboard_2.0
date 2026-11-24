@@ -6014,12 +6014,12 @@
         const latestStage = ['F8','F7','F6','F5','F4','F3','F2','F1'].find(function(key) { return registro[key]; });
         if (latestStage) registro.E = _estadosOpcionesDefault[Number(latestStage.slice(1)) - 1] || '';
       }
-      const existingIndex = datos.findIndex(function(item) {
-        return (rowIdServidor && String(item._id || '') === rowIdServidor && String(item.H || '') === tabla) ||
-          (String(item.H || '') === tabla && String(item.O || '').trim() === numeroOPA);
+      // Una misma OPA puede tener varias filas (por ejemplo, sub-OPAs).
+      // Agregar una no debe reemplazar la fila anterior en la copia local.
+      const yaEstaLaFila = rowIdServidor && datos.some(function(item) {
+        return String(item._id || '') === rowIdServidor && String(item.H || '') === tabla;
       });
-      if (existingIndex >= 0) datos[existingIndex] = registro;
-      else datos.push(registro);
+      if (!yaEstaLaFila) datos.unshift(registro);
       try { _invalidateMemo(); } catch(_) {}
       try { _guardarCacheDashboard({ _ts: Date.now(), registros: datos }); } catch(_) {}
       try { llenarFiltroHoja(); actualizarListasYDashboard(); } catch(_) {}
