@@ -621,6 +621,13 @@ async function writeDurableDashboardSnapshot(env, snapshot) {
   }
 }
 
+function scheduleDurableDashboardSnapshot(context, env, snapshot) {
+  const task = writeDurableDashboardSnapshot(env, snapshot);
+  if (typeof context?.waitUntil === "function") context.waitUntil(task);
+  else return task;
+  return Promise.resolve();
+}
+
 async function readSharedDashboardSnapshot(cache, request) {
   try {
     const response = await cache.match(request);
@@ -841,7 +848,7 @@ export async function updateDashboardRow(env, tableName, rowId, values, context 
   }
   const publishUpdate = async () => {
     try {
-      const published = await publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues);
+      const published = await publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues, context);
       if (!published) await invalidateDashboardSnapshot(env);
     } catch (error) {
       console.warn("No se pudo propagar el cambio a la copia del dashboard:", error?.message || error);
@@ -874,7 +881,7 @@ export async function createDashboardRow(env, tableName, values, context = null)
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
   }
-  await publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body))
+  await publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body), context)
     .then(async (published) => { if (!published) await invalidateDashboardSnapshot(env); })
     .catch((error) => console.warn("No se pudo propagar la nueva OPA a la copia compartida:", error?.message || error));
   return body;
@@ -892,7 +899,7 @@ function extractCreatedRowId(body) {
   return String(candidates.find((value) => value != null && String(value).trim()) || "").trim();
 }
 
-async function publishCreatedDashboardRecord(env, tableName, canonicalValues, rowId) {
+async function publishCreatedDashboardRecord(env, tableName, canonicalValues, rowId, context = null) {
   const cacheKey = dashboardDataCacheKey(env);
   const cache = getSharedDashboardCache(env);
   let snapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
@@ -942,11 +949,11 @@ async function publishCreatedDashboardRecord(env, tableName, canonicalValues, ro
       }));
     } catch (_) {}
   }
-  await writeDurableDashboardSnapshot(env, updated);
+  await scheduleDurableDashboardSnapshot(context, env, updated);
   return true;
 }
 
-async function publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues) {
+async function publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues, context = null) {
   const cacheKey = dashboardDataCacheKey(env);
   const cache = getSharedDashboardCache(env);
   let snapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
@@ -1001,7 +1008,7 @@ async function publishUpdatedDashboardRecord(env, tableName, rowId, canonicalVal
   }
   // Cache API acelera la región actual; R2 permite que las demás regiones
   // reciban la fila actualizada al siguiente sondeo, sin reescanear SeaTable.
-  await writeDurableDashboardSnapshot(env, updated);
+  await scheduleDurableDashboardSnapshot(context, env, updated);
   return true;
 }
 
