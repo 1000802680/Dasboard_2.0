@@ -5376,52 +5376,26 @@
 
 
     function procesarDatos() {
+      // Lee el DOM una vez por filtrado; no repitas consultas para cada una de las miles de filas.
+      const hoja = limpiarTexto(document.getElementById('filtroHoja').value);
+      const proyecto = limpiarTexto(document.getElementById('filtroProyecto').value);
+      const producto = limpiarTexto(document.getElementById('filtroProducto').value);
+      const claveProducto = _claveOpcionProducto(producto);
+      const opa = limpiarTexto(document.getElementById('filtroOPA').value);
+      const estado = estadoSeleccionado ? normalizarEstado(estadoSeleccionado) : '';
 
       datosFiltrados = datos.filter(function(x) {
-
-        const hoja =
-          limpiarTexto(document.getElementById('filtroHoja').value);
-
-        const proyecto =
-          limpiarTexto(document.getElementById('filtroProyecto').value);
-
-        const producto =
-          limpiarTexto(document.getElementById('filtroProducto').value);
-
-        const opa =
-          limpiarTexto(document.getElementById('filtroOPA').value);
-
-        if (hoja !== '' && limpiarTexto(x.H) !== hoja) {
-          return false;
-        }
-
-        if (proyecto !== '' && limpiarTexto(x.P) !== proyecto) {
-          return false;
-        }
-
-        if (producto !== '' && _claveOpcionProducto(x.T) !== _claveOpcionProducto(producto)) {
-          return false;
-        }
-
-        if (opa !== '' && limpiarTexto(x.O) !== opa) {
-          return false;
-        }
-
-        if (
-          estadoSeleccionado !== '' &&
-          normalizarEstado(x.E) !== normalizarEstado(estadoSeleccionado)
-        ) {
-          return false;
-        }
-
+        if (hoja !== '' && limpiarTexto(x.H) !== hoja) return false;
+        if (proyecto !== '' && limpiarTexto(x.P) !== proyecto) return false;
+        if (producto !== '' && _claveOpcionProducto(x.T) !== claveProducto) return false;
+        if (opa !== '' && limpiarTexto(x.O) !== opa) return false;
+        if (estado !== '' && normalizarEstado(x.E) !== estado) return false;
         return true;
-
       });
 
       // Los filtros modifican el universo de OPAs; no reutilizar conteos memoizados.
       _invalidateMemo();
       actualizarTablaRegistrosBase();
-
     }
 
     function _dashboardFechaISOEnZona(fecha) {
@@ -9020,7 +8994,7 @@
         } else if (tabKey === 'registros') {
           if (tRegistros) tRegistros.classList.add('active');
           // Aplicar en memoria los filtros vigentes; cambiar de pestaña no consulta SeaTable.
-          try { procesarDatos(); actualizarTablaRegistrosBase(); } catch(_) {}
+          try { procesarDatos(); } catch(_) {}
         }
       } catch(err) {
         try { console.error('cambiarTab error:', err && err.message ? err.message : err); } catch(_) {}
