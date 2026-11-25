@@ -743,13 +743,17 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
   const stale = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
   if (stale) {
-    const refresh = await requestDashboardRefresh(env);
-    refreshing = refresh.refreshing;
-    if (!refreshing) {
-      metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || metadata;
-      revision = await readDashboardSnapshotRevision(sharedCache, env);
-      ageMs = Date.now() - Number(metadata.updatedAt || 0);
-      refreshing = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || Boolean(revision && String(metadata.revision || "") !== revision);
+    const mutationPending = sharedCache && await sharedCache.match(dashboardCacheRequest(env, "mutation-pending"));
+    if (mutationPending) refreshing = true;
+    else {
+      const refresh = await requestDashboardRefresh(env);
+      refreshing = refresh.refreshing;
+      if (!refreshing) {
+        metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || metadata;
+        revision = await readDashboardSnapshotRevision(sharedCache, env);
+        ageMs = Date.now() - Number(metadata.updatedAt || 0);
+        refreshing = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || Boolean(revision && String(metadata.revision || "") !== revision);
+      }
     }
   }
   const version = String(metadata.revision || metadata.contentHash || "");
@@ -855,9 +859,26 @@ export async function updateDashboardRow(env, tableName, rowId, values, context 
       await invalidateDashboardSnapshot(env);
     }
   };
-  // Confirmar el guardado solo después de publicar la edición en la copia que
-  // consultan el dashboard y las demás regiones. waitUntil podía ser cancelado.
-  await publishUpdate();
+  if (typeof context?.waitUntil === "function") {
+    // No bloquear las ediciones y cargas de fotos serializando toda la copia
+    // del dashboard. El marcador ligero despierta el sondeo; la fila se publica
+    // en segundo plano y, si falla, el sondeo reconstruye desde SeaTable.
+    await setDashboardMutationPending(env, true);
+    await invalidateDashboardSnapshot(env);
+    context.waitUntil((async () => {
+      try {
+        const published = await publishUpdatedDashboardRecord(env, tableName, rowId, canonicalValues);
+        if (!published) await invalidateDashboardSnapshot(env);
+      } catch (error) {
+        console.warn("No se pudo propagar el cambio a la copia del dashboard:", error?.message || error);
+        await invalidateDashboardSnapshot(env);
+      } finally {
+        await setDashboardMutationPending(env, false);
+      }
+    })());
+  } else {
+    await publishUpdate();
+  }
   return body;
 }
 
@@ -881,9 +902,23 @@ export async function createDashboardRow(env, tableName, values, context = null)
     const detail = String(body.error_msg || body.error || body.detail || body.message || "").trim().slice(0, 240);
     throw new Error(`SeaTable no creó el registro (HTTP ${response.status}). Verifica que el token permita escritura.${detail ? ` ${detail}` : ""}`);
   }
-  await publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body), context)
-    .then(async (published) => { if (!published) await invalidateDashboardSnapshot(env); })
-    .catch((error) => console.warn("No se pudo propagar la nueva OPA a la copia compartida:", error?.message || error));
+  const publishCreated = async () => {
+    try {
+      const published = await publishCreatedDashboardRecord(env, tableName, canonicalValues, extractCreatedRowId(body));
+      if (!published) await invalidateDashboardSnapshot(env);
+    } catch (error) {
+      console.warn("No se pudo propagar la nueva OPA a la copia compartida:", error?.message || error);
+      await invalidateDashboardSnapshot(env);
+    }
+  };
+  if (typeof context?.waitUntil === "function") {
+    await setDashboardMutationPending(env, true);
+    await invalidateDashboardSnapshot(env);
+    context.waitUntil((async () => {
+      try { await publishCreated(); }
+      finally { await setDashboardMutationPending(env, false); }
+    })());
+  } else await publishCreated();
   return body;
 }
 
@@ -1030,6 +1065,21 @@ async function invalidateDashboardSnapshot(env) {
   try {
     await sharedCache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision, updatedAt }), {
       headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+    }));
+  } catch (_) {}
+}
+
+async function setDashboardMutationPending(env, pending) {
+  const cache = getSharedDashboardCache(env);
+  if (!cache) return;
+  const request = dashboardCacheRequest(env, "mutation-pending");
+  try {
+    if (!pending) {
+      await cache.delete(request);
+      return;
+    }
+    await cache.put(request, new Response(JSON.stringify({ startedAt: Date.now() }), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=45" },
     }));
   } catch (_) {}
 }
