@@ -35,11 +35,13 @@ const DASHBOARD_DATA_VERSION = "all-rows-v3-search-duplicates";
 // Reconciliar ediciones hechas directamente en SeaTable, sin escanear toda la
 // base en cada sondeo ligero del dashboard.
 // Los cambios hechos desde la aplicación se publican en Cache API al guardar.
-// La reconciliación completa solo hace falta para ediciones directas en SeaTable;
-// cinco minutos evita escanear todas las hojas repetidamente bajo carga.
-const DASHBOARD_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
+// Las ediciones directas en SeaTable se detectan mediante consultas incrementales
+// de _mtime; la lectura completa queda para arranque en frío o acción manual.
 const DASHBOARD_REFRESH_LEASE_MS = 150_000;
 const DASHBOARD_MUTATION_LEASE_MS = 180_000;
+const DASHBOARD_DELTA_CHECK_MS = 10_000;
+const DASHBOARD_DELTA_LEASE_MS = 90_000;
+const DASHBOARD_DELTA_OVERLAP_MS = 2_000;
 
 function dashboardDataCacheKey(env) {
   return [DASHBOARD_DATA_VERSION, env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
@@ -199,7 +201,7 @@ async function forEachSeaTableRow(env, onRow, knownTableNames = null) {
   const pageSize = 1000;
   // Las hojas son independientes; limitamos la concurrencia para acelerar la
   // carga sin disparar cientos de solicitudes a SeaTable.
-  const maxConcurrentTables = Math.min(12, tableNames.length);
+  const maxConcurrentTables = Math.min(6, tableNames.length);
   let nextTableIndex = 0;
   async function readTableWithRowsAPI(tableName) {
     const tableRows = [];
@@ -361,6 +363,12 @@ function activityTime(record) {
     if (Number.isFinite(stageAt) && stageAt > latestStage) latestStage = stageAt;
   }
   return latestStage;
+}
+
+function dashboardRecordsEqual(a, b) {
+  if (!a || !b) return false;
+  const stable = (record) => JSON.stringify(Object.keys(record).sort().map((key) => [key, record[key]]));
+  return stable(a) === stable(b);
 }
 
 export async function loadDashboardRecords(env, { forceRefresh = false, tableNames = null, includeDuplicates = false } = {}) {
@@ -683,6 +691,7 @@ async function writeSharedDashboardMetadata(cache, env, snapshot) {
     recordCount: Array.isArray(snapshot.records) ? snapshot.records.length : Number(snapshot.recordCount) || 0,
     updatedAt: Number(snapshot.updatedAt) || Date.now(),
     revision: String(snapshot.revision || ""),
+    tableNames: Array.isArray(snapshot.tableNames) ? snapshot.tableNames : [],
   };
   try {
     await cache.put(dashboardSnapshotMetadataRequest(env), new Response(JSON.stringify(metadata), {
@@ -760,41 +769,228 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   }
   if (!metadata) {
     const refresh = await requestDashboardRefresh(env);
-    if (refresh.refreshing) return { etag: "snapshot-v4-pending", totalRegistros: 0, updatedAt: 0, refreshing: true };
+    if (refresh.refreshing) return { etag: "snapshot-v5-pending", totalRegistros: 0, updatedAt: 0, refreshing: true };
     metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || await readDashboardDurableMetadataCached(env);
     if (!metadata) throw new Error("SeaTable terminó la lectura, pero no publicó la copia del dashboard.");
   }
   let revision = await readDashboardSnapshotRevision(sharedCache, env);
-  let ageMs = Date.now() - Number(metadata.updatedAt || 0);
-  let refreshing = false;
   const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
-  const stale = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
-  if (stale) {
-    const mutationPending = await hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS);
-    if (mutationPending) refreshing = true;
-    else if (changedWhileEditing) {
-      // Una revisión nueva indica una mutación de la app que no alcanzó a
-      // publicarse. Reconcíliala una vez vencido el marcador de mutación.
-      const refresh = await requestDashboardRefresh(env);
-      refreshing = refresh.refreshing;
-      if (!refreshing) {
-        metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || metadata;
-        revision = await readDashboardSnapshotRevision(sharedCache, env);
-        ageMs = Date.now() - Number(metadata.updatedAt || 0);
-        refreshing = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || Boolean(revision && String(metadata.revision || "") !== revision);
-      }
-    }
-    // La edad sola no dispara una lectura completa desde una solicitud de
-    // polling. Los cambios de la app actualizan revisión al guardar; una
-    // reconciliación por edad se reserva para el botón manual.
+  const mutationPending = await hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS);
+  // El sondeo nunca vuelve a leer miles de filas. Consulta solo las filas
+  // modificadas en SeaTable y publica una nueva copia cuando encuentra deltas.
+  // Si una escritura está terminando, el siguiente sondeo la recogerá.
+  if (!mutationPending) {
+    await refreshDashboardDelta(env, { force: changedWhileEditing });
+    metadata = await readSharedDashboardMetadata(sharedCache, env)
+      || globalThis.__dashboardSnapshotMetadata
+      || metadata;
+    revision = await readDashboardSnapshotRevision(sharedCache, env);
   }
   const version = String(metadata.revision || metadata.contentHash || "");
   return {
-    etag: `snapshot-v4-${Number(metadata.recordCount) || 0}-${Number(metadata.updatedAt) || 0}-${version}`,
+    etag: `snapshot-v5-${Number(metadata.recordCount) || 0}-${Number(metadata.updatedAt) || 0}-${version || revision}`,
     totalRegistros: Number(metadata.recordCount) || 0,
     updatedAt: Number(metadata.updatedAt) || 0,
-    refreshing,
+    // No representar una consulta incremental como una sincronización global;
+    // así no queda el indicador atascado si Cloudflare cancela un request.
+    refreshing: false,
   };
+}
+
+async function refreshDashboardDelta(env, { force = false } = {}) {
+  const cacheKey = dashboardDataCacheKey(env);
+  const cache = getSharedDashboardCache(env);
+  if (cache && await hasActiveDashboardMarker(cache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS)) return false;
+  let metadata = cache ? await readSharedDashboardMetadata(cache, env) : null;
+  let snapshot = null;
+  if (globalThis.__dashboardRowsCache?.key === cacheKey) {
+    const local = globalThis.__dashboardRowsCache;
+    snapshot = { records: local.records, duplicateRecords: local.duplicateRecords || local.records,
+      tableNames: local.tableNames || [], revision: local.revision || "", updatedAt: Number(local.updatedAt || 0) };
+  }
+  let tableNames = metadata?.tableNames;
+  if (!Array.isArray(tableNames) || !tableNames.length) {
+    if (!snapshot) snapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
+    tableNames = snapshot?.tableNames || [];
+    if (cache && tableNames.length && metadata) {
+      metadata = { ...metadata, tableNames };
+      await writeSharedDashboardMetadata(cache, env, metadata);
+    }
+  }
+  if (!tableNames.length || (snapshot && !Array.isArray(snapshot.records))) return false;
+
+  const stateRequest = cache ? dashboardCacheRequest(env, "incremental-state") : null;
+  const lockRequest = cache ? dashboardCacheRequest(env, "incremental-lock") : null;
+  const now = Date.now();
+  if (cache) {
+    const stateResponse = await cache.match(stateRequest);
+    const state = stateResponse ? await stateResponse.json().catch(() => ({})) : {};
+    if (!force && now - Number(state.checkedAt || 0) < DASHBOARD_DELTA_CHECK_MS) return false;
+    if (await hasActiveDashboardMarker(cache, env, "incremental-lock", DASHBOARD_DELTA_LEASE_MS)) return false;
+  }
+
+  const lease = { startedAt: now, leaseId: `${now}-${Math.random().toString(36).slice(2)}` };
+  if (cache) {
+    await cache.put(lockRequest, new Response(JSON.stringify(lease), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `public, max-age=${Math.ceil(DASHBOARD_DELTA_LEASE_MS / 1000)}` },
+    }));
+    const acquired = await cache.match(lockRequest);
+    const currentLease = acquired ? await acquired.json().catch(() => ({})) : {};
+    if (currentLease.leaseId !== lease.leaseId) return false;
+  }
+
+  try {
+    const stateResponse = cache ? await cache.match(stateRequest) : null;
+    const state = stateResponse ? await stateResponse.json().catch(() => ({})) : {};
+    // Cada pestaña guarda su propio cursor de inicio. Así se captura una edición
+    // hecha mientras se consulta otra hoja y no se repiten minutos de cambios.
+    const checkedAtByTable = { ...(state.checkedAtByTable || {}) };
+    const defaultCursor = Number(state.checkedAt || metadata?.updatedAt || snapshot?.updatedAt || 0);
+    const changedByTable = await readChangedSeaTableRows(env, tableNames, checkedAtByTable, defaultCursor);
+    for (const result of changedByTable) checkedAtByTable[result.tableName] = result.checkedAt;
+    let changedRows = changedByTable.flatMap(({ tableName, rows }) => rows.map((row) => ({ row, tableName })));
+    // Como usamos una ventana de solapamiento, SeaTable puede devolver varias
+    // veces una fila reciente. No reescribir el snapshot si su contenido no cambió.
+    if (!changedRows.length) {
+      if (cache) await cache.put(stateRequest, new Response(JSON.stringify({ checkedAt: now, checkedAtByTable }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+      }));
+      return false;
+    }
+    if (!snapshot) snapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
+    if (!snapshot || !Array.isArray(snapshot.records)) return false;
+    const beforeRows = [
+      ...(snapshot.duplicateRecords || snapshot.records),
+      ...snapshot.records.filter((record) => !String(record.O || "").trim()),
+    ];
+    const beforeById = new Map(beforeRows.map((record) => [`${record.H || ""}\u0000${record._id || ""}`, record]));
+    changedRows = changedRows.filter(({ row, tableName }) => {
+      if (!row._id) return false;
+      const incoming = toInternalRecord(row, tableName, getSourceKeyMap(row, getColumnMap(env)));
+      const previous = beforeById.get(`${tableName}\u0000${row._id}`);
+      return !previous || !dashboardRecordsEqual(previous, incoming);
+    });
+    if (changedRows.length) {
+      // Si alguien publicó una fila durante la consulta a SeaTable, partir de
+      // la copia más nueva para no sobrescribir ese cambio con una versión vieja.
+      const latestSnapshot = cache ? await readSharedDashboardSnapshot(cache, dashboardCacheRequest(env)) : null;
+      if (latestSnapshot && latestSnapshot.revision !== snapshot.revision) snapshot = latestSnapshot;
+      const allRows = [
+        ...(snapshot.duplicateRecords || snapshot.records),
+        ...snapshot.records.filter((record) => !String(record.O || "").trim()),
+      ];
+      const currentById = new Map(allRows.map((record) => [`${record.H || ""}\u0000${record._id || ""}`, record]));
+      changedRows = changedRows.filter(({ row, tableName }) => {
+        const incoming = toInternalRecord(row, tableName, getSourceKeyMap(row, getColumnMap(env)));
+        const current = currentById.get(`${tableName}\u0000${row._id}`);
+        return !current || (activityTime(incoming) >= activityTime(current) && !dashboardRecordsEqual(current, incoming));
+      });
+      if (!changedRows.length) {
+        if (cache) await cache.put(stateRequest, new Response(JSON.stringify({ checkedAt: now, checkedAtByTable }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+        }));
+        return false;
+      }
+      const changedIds = new Set(changedRows.filter(({ row }) => row._id)
+        .map(({ row, tableName }) => `${tableName}\u0000${row._id}`));
+      const nextRows = allRows.filter((record) => !changedIds.has(`${record.H || ""}\u0000${record._id || ""}`));
+      for (const { row, tableName } of changedRows) {
+        if (!row._id) continue;
+        nextRows.push(toInternalRecord(row, tableName, getSourceKeyMap(row, getColumnMap(env))));
+      }
+      const duplicateRecords = nextRows.filter((record) => String(record.O || "").trim());
+      const records = deduplicateLatestOPA(duplicateRecords)
+        .concat(nextRows.filter((record) => !String(record.O || "").trim()));
+      const updatedAt = Date.now();
+      const updated = {
+        records, duplicateRecords,
+        tableNames,
+        revision: `${updatedAt}-${Math.random().toString(36).slice(2)}`,
+        updatedAt,
+      };
+      globalThis.__dashboardRowsCache = { key: cacheKey, ...updated, expiresAt: updatedAt + 60_000 };
+      if (cache) {
+        await cache.put(dashboardCacheRequest(env), new Response(JSON.stringify(updated), {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+        }));
+        await writeSharedDashboardMetadata(cache, env, updated);
+        await cache.put(dashboardCacheRequest(env, "revision"), new Response(JSON.stringify({ revision: updated.revision, updatedAt }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+        }));
+      }
+      await scheduleDurableDashboardSnapshot(null, env, updated);
+    }
+    if (cache) await cache.put(stateRequest, new Response(JSON.stringify({ checkedAt: now, checkedAtByTable }), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+    }));
+    return changedRows.length > 0;
+  } catch (error) {
+    console.warn("No se pudo consultar el delta de SeaTable:", error?.message || error);
+    // No marcar el cursor como actualizado; el siguiente sondeo reintentará.
+    return false;
+  } finally {
+    if (cache) {
+      const response = await cache.match(lockRequest);
+      const current = response ? await response.json().catch(() => ({})) : {};
+      if (current.leaseId === lease.leaseId) await cache.delete(lockRequest).catch(() => {});
+    }
+  }
+}
+
+async function readChangedSeaTableRows(env, tableNames, checkedAtByTable, defaultCursor) {
+  assertConfig(env);
+  const token = await getBaseToken(env);
+  const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
+  const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
+  await discoverTableNames(env, token);
+  const tables = globalThis.__seatableMetadataCache?.tables || [];
+  const columnMap = getColumnMap(env);
+  const readTable = async (tableName) => {
+    const checkedAt = Date.now();
+    const metadata = tables.find((table) => table.name === tableName);
+    const byName = new Map();
+    for (const column of metadata?.columns || []) {
+      for (const candidate of [column.name, column.key]) {
+        const normalized = normalizeHeader(candidate);
+        if (normalized && !byName.has(normalized)) byName.set(normalized, candidate);
+      }
+    }
+    const selected = new Set(["_id", "_ctime", "_mtime"]);
+    for (const configuredName of Object.values(columnMap)) {
+      const actualName = byName.get(normalizeHeader(configuredName));
+      if (actualName) selected.add(actualName);
+    }
+    const projection = metadata?.columns?.length
+      ? [...selected].map((column) => "`" + String(column).replace(/`/g, "``") + "`").join(", ")
+      : "*";
+    const quotedTable = `\`${String(tableName).replace(/`/g, "``")}\``;
+    const rows = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const response = await fetchWithTimeout(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sql: `SELECT ${projection} FROM ${quotedTable} WHERE \`_mtime\` >= ? LIMIT ${pageSize} OFFSET ${offset}`,
+          parameters: [new Date(Math.max(0, Number(checkedAtByTable[tableName] || defaultCursor || 0) - DASHBOARD_DELTA_OVERLAP_MS)).toISOString()],
+          convert_keys: true,
+        }),
+      }, 8_000);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`SeaTable no pudo consultar cambios en "${tableName}" (HTTP ${response.status}).`);
+      const page = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
+      if (!Array.isArray(page)) throw new Error(`SeaTable devolvió un formato inesperado para los cambios de "${tableName}".`);
+      rows.push(...page);
+      if (page.length < pageSize) break;
+      if (offset + page.length >= 10_000) throw new Error(`Hay más de 10.000 cambios recientes en "${tableName}"; se requiere una actualización manual completa.`);
+    }
+    return { tableName, rows, checkedAt };
+  };
+  const results = [];
+  for (let index = 0; index < tableNames.length; index += 8) {
+    results.push(...await Promise.all(tableNames.slice(index, index + 8).map(readTable)));
+  }
+  return results;
 }
 
 // Inicia una lectura manual sin volver a descargar el snapshot completo en la
@@ -1227,9 +1423,14 @@ export async function refreshForNewTables(env, context = null) {
   let cached = globalThis.__dashboardRowsCache;
   const cacheKey = dashboardDataCacheKey(env);
   const sharedCache = getSharedDashboardCache(env);
-  const shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
+  let shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
 
   if (shared) {
+    // En la carga de cualquier pestaña, trae primero los cambios recientes de
+    // SeaTable. La consulta incremental está limitada por un lease de 10 s.
+    if (await refreshDashboardDelta(env)) {
+      shared = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) || shared;
+    }
     const durableSnapshot = await refreshSharedSnapshotFromDurable(env, sharedCache, shared.updatedAt);
     const current = durableSnapshot || shared;
     const revision = await readDashboardSnapshotRevision(sharedCache, env);
@@ -1237,12 +1438,9 @@ export async function refreshForNewTables(env, context = null) {
 
     // Las mutaciones de la aplicación ya publican su fila en la copia común.
     // Esta lectura entrega la copia compartida sin bloquear la navegación.
-    const changedWhileEditing = String(current.revision || "") !== revision;
-    const [lock, mutationPending] = await Promise.all([
-      hasActiveDashboardMarker(sharedCache, env, "refresh-lock", DASHBOARD_REFRESH_LEASE_MS),
-      hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS),
-    ]);
-    return { records: current.records, updatedAt: Number(current.updatedAt || 0), refreshing: changedWhileEditing || lock || mutationPending };
+    // La copia compartida sigue siendo utilizable mientras el próximo sondeo
+    // aplica las filas modificadas. No bloquear la navegación por un lease.
+    return { records: current.records, updatedAt: Number(current.updatedAt || 0), refreshing: false };
   }
 
   // La memoria del isolate y Cache API pueden estar vacías en una región nueva.
@@ -1269,11 +1467,7 @@ export async function refreshForNewTables(env, context = null) {
   // A Cache API snapshot can be absent in a newly routed isolate/colo even
   // though this isolate already has usable rows. Keep those rows visible.
   if (cached?.key === cacheKey) {
-    const refreshLock = await hasActiveDashboardMarker(sharedCache, env, "refresh-lock", DASHBOARD_REFRESH_LEASE_MS);
-    const revision = await readDashboardSnapshotRevision(sharedCache, env);
-    const mutationPending = await hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS);
-    const changedWhileEditing = Boolean(revision && String(cached.revision || "") !== revision);
-    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: changedWhileEditing || refreshLock || mutationPending };
+    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: false };
   }
 
   // Cold start for a region with no shared or isolate snapshot: one full read

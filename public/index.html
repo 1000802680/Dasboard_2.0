@@ -3865,7 +3865,7 @@
     </div>
 
     <div class="footer" id="footerSyncInfo">
-      Dashboard COL-FT-001 · Sincronización automática cada 30s · SeaTable
+      Dashboard COL-FT-001 · Sincronización automática cada 10s · SeaTable
     </div>
 
   </div> <!-- cierra tab-dashboard (contenido original) -->
@@ -4704,7 +4704,7 @@
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 30000;  // Reduce a la mitad las consultas automáticas; los guardados siguen publicando cambios al instante.
+    const POLL_INTERVAL_MS      = 10000;  // Consultar deltas de SeaTable cada 10 s; no volver a descargar todas las filas.
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
@@ -13040,9 +13040,9 @@
 
 
     /* ============================================================
-       🏃 POLLING CADA 30 SEGUNDOS (checksum ligero → ETag diff)
+       🏃 POLLING CADA 10 SEGUNDOS (checksum ligero → ETag diff)
        Flujo óptimo:
-         Paso 1 (30s): obtenerChecksumDashboard() → revisa SeaTable y actualiza la caché vencida.
+         Paso 1 (10s): obtenerChecksumDashboard() → consulta solo las filas modificadas.
            Si ETag NO cambió → TODO LISTO, no hacemos nada más.
            Si ETag cambió     → Paso 2.
          Paso 2: recargar datos completos + análisis + re-render.

@@ -31,7 +31,7 @@ export async function onRequestPost(context) {
           ok: true,
           registros,
           totalRegistros: refresh.totalRegistros,
-          etag: `snapshot-v4-${refresh.totalRegistros}-${refresh.updatedAt}`,
+          etag: `snapshot-v5-${refresh.totalRegistros}-${refresh.updatedAt}`,
           actualizandoEnSegundoPlano: refresh.refreshing,
           actualizado: !refresh.refreshing,
           fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
@@ -47,7 +47,7 @@ export async function onRequestPost(context) {
           value = {
             registros: [],
             totalRegistros: refresh.totalRegistros,
-            etag: `snapshot-v4-${refresh.totalRegistros}-${refresh.updatedAt}`,
+            etag: `snapshot-v5-${refresh.totalRegistros}-${refresh.updatedAt}`,
             fechaActualizacion: new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }),
             actualizandoEnSegundoPlano: refresh.refreshing,
             actualizado: !refresh.refreshing,
