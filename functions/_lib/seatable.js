@@ -1429,7 +1429,13 @@ export async function refreshForNewTables(env, context = null) {
     // En la carga de cualquier pestaña, trae primero los cambios recientes de
     // SeaTable. La consulta incremental está limitada por un lease de 10 s.
     if (await refreshDashboardDelta(env)) {
-      shared = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) || shared;
+      const updatedLocal = globalThis.__dashboardRowsCache;
+      if (updatedLocal?.key === cacheKey && updatedLocal.updatedAt > Number(shared.updatedAt || 0)) {
+        shared = { records: updatedLocal.records, duplicateRecords: updatedLocal.duplicateRecords,
+          tableNames: updatedLocal.tableNames, revision: updatedLocal.revision, updatedAt: updatedLocal.updatedAt };
+      } else {
+        shared = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) || shared;
+      }
     }
     const durableSnapshot = await refreshSharedSnapshotFromDurable(env, sharedCache, shared.updatedAt);
     const current = durableSnapshot || shared;
