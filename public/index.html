@@ -5419,7 +5419,7 @@
       // Los filtros modifican el universo de OPAs; no reutilizar conteos memoizados.
       _invalidateMemo();
       const registrosTab = document.getElementById('tab-registros');
-      if (registrosTab && registrosTab.classList.contains('active')) actualizarTablaRegistrosBase();
+      if (registrosTab && registrosTab.classList.contains('active')) _registrosProgramarRender();
     }
 
     function _dashboardFechaISOEnZona(fecha) {
@@ -6083,18 +6083,44 @@
       return true;
     }
 
+    let _registrosFiltrosOrigen = null;
+    let _registrosFiltrosValores = null;
+    let _registrosFilasOrigen = null;
+    let _registrosFilasClave = '';
+    let _registrosFilasCache = null;
+    let _registrosRenderTimer = null;
+    let _registrosRenderRevision = 0;
+
+    function _registrosProgramarRender() {
+      const revision = ++_registrosRenderRevision;
+      if (_registrosRenderTimer) clearTimeout(_registrosRenderTimer);
+      // Deja que el navegador pinte primero el cambio de pestaña/filtro.
+      _registrosRenderTimer = setTimeout(function() {
+        _registrosRenderTimer = null;
+        const tab = document.getElementById('tab-registros');
+        if (revision === _registrosRenderRevision && tab && tab.classList.contains('active')) actualizarTablaRegistrosBase();
+      }, 0);
+    }
+
     function _registrosActualizarFiltrosDesplegables() {
+      const origen = Array.isArray(datosFiltrados) ? datosFiltrados : [];
+      if (_registrosFiltrosOrigen === origen && _registrosFiltrosValores) return;
       const valoresPorColumna = {
         O: { todos: 'Todas las OPAs' }, P: { todos: 'Todos los proyectos' }, T: { todos: 'Todos los tipos' },
         TE: { todos: 'Todos los tipos específicos' }, E: { todos: 'Todos los estados' }
       };
-      const origen = Array.isArray(datosFiltrados) ? datosFiltrados : [];
+      const valoresCalculados = {};
+      Object.keys(valoresPorColumna).forEach(function(columna) {
+        valoresCalculados[columna] = Array.from(new Set(origen.map(function(row) { return limpiarTexto(row && row[columna]); }).filter(Boolean)))
+          .sort(function(a,b) { return a.localeCompare(b, 'es', { sensitivity: 'base', numeric: columna === 'O' }); });
+      });
+      _registrosFiltrosOrigen = origen;
+      _registrosFiltrosValores = valoresCalculados;
       Object.keys(valoresPorColumna).forEach(function(columna) {
         const select = document.querySelector('#registros-base-table [data-filter-column="' + columna + '"]');
         if (!select) return;
         const seleccionado = String(select.value || '');
-        const valores = Array.from(new Set(origen.map(function(row) { return limpiarTexto(row && row[columna]); }).filter(Boolean)))
-          .sort(function(a,b) { return a.localeCompare(b, 'es', { sensitivity: 'base', numeric: columna === 'O' }); });
+        const valores = valoresCalculados[columna];
         select.innerHTML = '<option value="">' + escapeHTML(valoresPorColumna[columna].todos) + '</option>' + valores.map(function(valor) {
           return '<option value="' + escapeAttr(valor) + '">' + escapeHTML(valor) + '</option>';
         }).join('');
@@ -6105,14 +6131,14 @@
     function filtrarColumnaRegistrosBase(input) {
       if (input && input.dataset && input.dataset.filterColumn) {
         paginaRegistrosBase = 1;
-        actualizarTablaRegistrosBase();
+        _registrosProgramarRender();
       }
     }
 
     function limpiarFiltrosColumnasRegistrosBase() {
       document.querySelectorAll('#registros-base-table .registro-col-filter').forEach(function(input) { input.value = ''; });
       paginaRegistrosBase = 1;
-      actualizarTablaRegistrosBase();
+      _registrosProgramarRender();
     }
 
     function _registrosTextoFiltro(valor) {
@@ -6165,20 +6191,28 @@
       const filtrosColumna = Array.from(document.querySelectorAll('#registros-base-table .registro-col-filter')).map(function(input) {
         return { columna: input.dataset.filterColumn, valor: input.value, exacto: input.tagName === 'SELECT' };
       }).filter(function(item) { return String(item.valor || '').trim() !== ''; });
-      const rows = Array.isArray(datosFiltrados) ? datosFiltrados.filter(function(row) {
-        return String(row && row.O || '').trim() !== '';
-      }).filter(function(row) {
-        return filtrosColumna.every(function(item) { return _registrosCoincideFiltroColumna(row, item.columna, item.valor, item.exacto); });
-      }) : [];
-      rows.sort(function(a, b) {
-        const fechaA = Date.parse(String(a && (a._ctime || a._mtime) || '')) || 0;
-        const fechaB = Date.parse(String(b && (b._ctime || b._mtime) || '')) || 0;
-        if (fechaA !== fechaB) return fechaB - fechaA;
-        const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
-        if (proyecto) return proyecto;
-        const hoja = compararTexto(limpiarTexto(a.H), limpiarTexto(b.H));
-        return hoja || compararOPA(limpiarTexto(a.O), limpiarTexto(b.O));
-      });
+      const origen = Array.isArray(datosFiltrados) ? datosFiltrados : [];
+      const claveFiltros = JSON.stringify(filtrosColumna);
+      let rows = _registrosFilasOrigen === origen && _registrosFilasClave === claveFiltros ? _registrosFilasCache : null;
+      if (!rows) {
+        rows = origen.filter(function(row) {
+          return String(row && row.O || '').trim() !== '' && filtrosColumna.every(function(item) {
+            return _registrosCoincideFiltroColumna(row, item.columna, item.valor, item.exacto);
+          });
+        });
+        rows.sort(function(a, b) {
+          const fechaA = Date.parse(String(a && (a._ctime || a._mtime) || '')) || 0;
+          const fechaB = Date.parse(String(b && (b._ctime || b._mtime) || '')) || 0;
+          if (fechaA !== fechaB) return fechaB - fechaA;
+          const proyecto = compararTexto(limpiarTexto(a.P), limpiarTexto(b.P));
+          if (proyecto) return proyecto;
+          const hoja = compararTexto(limpiarTexto(a.H), limpiarTexto(b.H));
+          return hoja || compararOPA(limpiarTexto(a.O), limpiarTexto(b.O));
+        });
+        _registrosFilasOrigen = origen;
+        _registrosFilasClave = claveFiltros;
+        _registrosFilasCache = rows;
+      }
       const total = rows.length;
       const maxPagina = Math.max(1, Math.ceil(total / REGISTROS_POR_PAGINA));
       paginaRegistrosBase = Math.min(paginaRegistrosBase, maxPagina);
@@ -9164,8 +9198,9 @@
           }
         } else if (tabKey === 'registros') {
           if (tRegistros) tRegistros.classList.add('active');
-          // Aplicar en memoria los filtros vigentes; cambiar de pestaña no consulta SeaTable.
-          try { procesarDatos(); } catch(_) {}
+          // El dashboard ya mantiene datosFiltrados al actualizar datos y filtros.
+          // No vuelvas a recorrer miles de filas dentro del clic de navegación.
+          _registrosProgramarRender();
         }
       } catch(err) {
         try { console.error('cambiarTab error:', err && err.message ? err.message : err); } catch(_) {}
