@@ -42,6 +42,7 @@ const DASHBOARD_MUTATION_LEASE_MS = 180_000;
 const DASHBOARD_DELTA_CHECK_MS = 10_000;
 const DASHBOARD_DELTA_LEASE_MS = 90_000;
 const DASHBOARD_DELTA_OVERLAP_MS = 2_000;
+const DASHBOARD_DELTA_BOOTSTRAP_MS = 7 * 24 * 60 * 60_000;
 
 function dashboardDataCacheKey(env) {
   return [DASHBOARD_DATA_VERSION, env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
@@ -464,6 +465,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
 
   const promise = (async () => {
     const scanRevision = await readDashboardSnapshotRevision(sharedCache, env);
+    const scanStartedAt = Date.now();
     const columnMap = getColumnMap(env);
     const schemaByTable = new Map();
     const latest = new Map();
@@ -506,7 +508,11 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
           // is controlled by updatedAt/revision below, not by Cache API expiry.
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
         }));
-        await writeSharedDashboardMetadata(sharedCache, env, { records, revision: scanRevision, updatedAt });
+        await writeSharedDashboardMetadata(sharedCache, env, { records, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
+        await sharedCache.put(dashboardCacheRequest(env, "incremental-state-v2"), new Response(JSON.stringify({
+          checkedAt: updatedAt,
+          checkedAtByTable: Object.fromEntries(detectedTableNames.map((tableName) => [tableName, scanStartedAt])),
+        }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" } }));
       } catch (_) {}
     }
     await writeDurableDashboardSnapshot(env, { records, duplicateRecords: opaRecords, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
@@ -819,7 +825,7 @@ async function refreshDashboardDelta(env, { force = false } = {}) {
   }
   if (!tableNames.length || (snapshot && !Array.isArray(snapshot.records))) return false;
 
-  const stateRequest = cache ? dashboardCacheRequest(env, "incremental-state") : null;
+  const stateRequest = cache ? dashboardCacheRequest(env, "incremental-state-v2") : null;
   const lockRequest = cache ? dashboardCacheRequest(env, "incremental-lock") : null;
   const now = Date.now();
   if (cache) {
@@ -845,7 +851,13 @@ async function refreshDashboardDelta(env, { force = false } = {}) {
     // Cada pestaña guarda su propio cursor de inicio. Así se captura una edición
     // hecha mientras se consulta otra hoja y no se repiten minutos de cambios.
     const checkedAtByTable = { ...(state.checkedAtByTable || {}) };
-    const defaultCursor = Number(state.checkedAt || metadata?.updatedAt || snapshot?.updatedAt || 0);
+    const hasCompleteCursor = tableNames.every((tableName) => Number(checkedAtByTable[tableName] || 0) > 0);
+    // En la primera ejecución tras esta mejora, retroceder siete días para
+    // recuperar cambios que una copia antigua pudo dejar fuera. Las lecturas
+    // completas nuevas inicializan cursores exactos y ya no usan este respaldo.
+    const defaultCursor = hasCompleteCursor
+      ? Number(state.checkedAt || metadata?.updatedAt || snapshot?.updatedAt || 0)
+      : Math.max(0, Number(metadata?.updatedAt || snapshot?.updatedAt || 0) - DASHBOARD_DELTA_BOOTSTRAP_MS);
     const changedByTable = await readChangedSeaTableRows(env, tableNames, checkedAtByTable, defaultCursor);
     for (const result of changedByTable) checkedAtByTable[result.tableName] = result.checkedAt;
     let changedRows = changedByTable.flatMap(({ tableName, rows }) => rows.map((row) => ({ row, tableName })));
@@ -1426,6 +1438,9 @@ export async function refreshForNewTables(env, context = null) {
   let shared = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
 
   if (shared) {
+    globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records,
+      duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames,
+      revision: shared.revision || "", updatedAt: Number(shared.updatedAt || 0), expiresAt: Date.now() + 60_000 };
     // En la carga de cualquier pestaña, trae primero los cambios recientes de
     // SeaTable. La consulta incremental está limitada por un lease de 10 s.
     if (await refreshDashboardDelta(env)) {
