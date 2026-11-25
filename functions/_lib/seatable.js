@@ -821,13 +821,38 @@ export async function requestDashboardRefresh(env, context = null) {
     }
   }
 
-  const state = { key: cacheKey, startedAt: Date.now() };
+  // Las llamadas de polling y el botón manual pueden llegar a la vez desde
+  // muchos usuarios. Antes cada isolate veía su candado local vacío y todos
+  // iniciaban un escaneo completo de SeaTable. Publica un lease compartido
+  // también para las lecturas forzadas; los demás usuarios conservan su copia
+  // mientras un solo lector intenta actualizarla.
+  const state = { key: cacheKey, startedAt: Date.now(), leaseId: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
   globalThis.__dashboardRefreshRequest = state;
+  const lockRequest = sharedCache ? dashboardCacheRequest(env, "refresh-lock") : null;
   try {
+    if (sharedCache) {
+      await sharedCache.put(lockRequest, new Response(JSON.stringify({ startedAt: state.startedAt, leaseId: state.leaseId }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `public, max-age=${Math.ceil(DASHBOARD_REFRESH_LEASE_MS / 1000)}` },
+      }));
+      // Cede si otra solicitud alcanzó a publicar su lease al mismo tiempo.
+      const acquired = await sharedCache.match(lockRequest);
+      const lock = acquired ? await acquired.json().catch(() => ({})) : {};
+      if (lock.leaseId !== state.leaseId) {
+        if (globalThis.__dashboardRefreshRequest === state) globalThis.__dashboardRefreshRequest = null;
+        return { totalRegistros: Number(metadata?.recordCount || 0), updatedAt: Number(metadata?.updatedAt || 0), refreshing: true };
+      }
+    }
     const records = await loadDashboardRecords(env, { forceRefresh: true });
     const refreshed = globalThis.__dashboardRowsCache;
     return { totalRegistros: records.length, updatedAt: Number(refreshed?.updatedAt || Date.now()), refreshing: false };
   } finally {
+    if (sharedCache) {
+      try {
+        const response = await sharedCache.match(lockRequest);
+        const lock = response ? await response.json().catch(() => ({})) : {};
+        if (lock.leaseId === state.leaseId) await sharedCache.delete(lockRequest);
+      } catch (_) {}
+    }
     if (globalThis.__dashboardRefreshRequest === state) globalThis.__dashboardRefreshRequest = null;
   }
 }
