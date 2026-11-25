@@ -38,6 +38,8 @@ const DASHBOARD_DATA_VERSION = "all-rows-v3-search-duplicates";
 // La reconciliación completa solo hace falta para ediciones directas en SeaTable;
 // cinco minutos evita escanear todas las hojas repetidamente bajo carga.
 const DASHBOARD_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
+const DASHBOARD_REFRESH_LEASE_MS = 150_000;
+const DASHBOARD_MUTATION_LEASE_MS = 180_000;
 
 function dashboardDataCacheKey(env) {
   return [DASHBOARD_DATA_VERSION, env.SEATABLE_BASE_UUID, env.SEATABLE_VIEW_NAME || "*", env.SEATABLE_COLUMN_MAP || "default"].join("|");
@@ -650,6 +652,31 @@ async function readSharedDashboardMetadata(cache, env) {
   } catch (_) { return null; }
 }
 
+// Cache API entries can outlive a request that was terminated by a CPU limit.
+// Treat refresh/mutation markers as leases, not permanent truth: a crashed
+// Pages Function must not leave every browser reporting "sync in progress".
+async function hasActiveDashboardMarker(cache, env, suffix, maxAgeMs) {
+  if (!cache) return false;
+  const request = dashboardCacheRequest(env, suffix);
+  try {
+    const response = await cache.match(request);
+    if (!response) return false;
+    const marker = await response.json().catch(() => ({}));
+    const startedAt = Number(marker.startedAt || 0);
+    const age = Date.now() - startedAt;
+    if (!startedAt || age < 0 || age >= maxAgeMs) {
+      await cache.delete(request).catch(() => {});
+      return false;
+    }
+    return true;
+  } catch (_) {
+    // A bad marker must not keep the dashboard stuck; the cache snapshot is
+    // still available while a later request decides whether a refresh is due.
+    try { await cache.delete(request); } catch (_) {}
+    return false;
+  }
+}
+
 async function writeSharedDashboardMetadata(cache, env, snapshot) {
   if (!cache || typeof cache.put !== "function") return;
   const metadata = {
@@ -743,7 +770,7 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
   const stale = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
   if (stale) {
-    const mutationPending = sharedCache && await sharedCache.match(dashboardCacheRequest(env, "mutation-pending"));
+    const mutationPending = await hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS);
     if (mutationPending) refreshing = true;
     else if (changedWhileEditing) {
       // Una revisión nueva indica una mutación de la app que no alcanzó a
@@ -785,19 +812,12 @@ export async function requestDashboardRefresh(env, context = null) {
   if (!metadata) metadata = await readDurableDashboardMetadata(env);
 
   const active = globalThis.__dashboardRefreshRequest;
-  if (active?.key === cacheKey && Date.now() - Number(active.startedAt || 0) < 150_000) {
+  if (active?.key === cacheKey && Date.now() - Number(active.startedAt || 0) < DASHBOARD_REFRESH_LEASE_MS) {
     return { totalRegistros: Number(metadata?.recordCount || 0), updatedAt: Number(metadata?.updatedAt || 0), refreshing: true };
   }
-  const lockRequest = dashboardCacheRequest(env, "refresh-lock");
   if (sharedCache) {
-    const lockResponse = await sharedCache.match(lockRequest);
-    if (lockResponse) {
-      const lock = await lockResponse.json().catch(() => ({}));
-      if (Date.now() - Number(lock.startedAt || Date.now()) < 150_000) {
-        return { totalRegistros: Number(metadata?.recordCount || 0), updatedAt: Number(metadata?.updatedAt || 0), refreshing: true };
-      }
-      // Recupera un lease abandonado por una tarea de fondo cancelada.
-      try { await sharedCache.delete(lockRequest); } catch (_) {}
+    if (await hasActiveDashboardMarker(sharedCache, env, "refresh-lock", DASHBOARD_REFRESH_LEASE_MS)) {
+      return { totalRegistros: Number(metadata?.recordCount || 0), updatedAt: Number(metadata?.updatedAt || 0), refreshing: true };
     }
   }
 
@@ -1193,9 +1213,11 @@ export async function refreshForNewTables(env, context = null) {
     // Las mutaciones de la aplicación ya publican su fila en la copia común.
     // Esta lectura entrega la copia compartida sin bloquear la navegación.
     const changedWhileEditing = String(current.revision || "") !== revision;
-    const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
-    const mutationPending = await sharedCache.match(dashboardCacheRequest(env, "mutation-pending"));
-    return { records: current.records, updatedAt: Number(current.updatedAt || 0), refreshing: changedWhileEditing || !!lock || !!mutationPending };
+    const [lock, mutationPending] = await Promise.all([
+      hasActiveDashboardMarker(sharedCache, env, "refresh-lock", DASHBOARD_REFRESH_LEASE_MS),
+      hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS),
+    ]);
+    return { records: current.records, updatedAt: Number(current.updatedAt || 0), refreshing: changedWhileEditing || lock || mutationPending };
   }
 
   // La memoria del isolate y Cache API pueden estar vacías en una región nueva.
@@ -1222,11 +1244,11 @@ export async function refreshForNewTables(env, context = null) {
   // A Cache API snapshot can be absent in a newly routed isolate/colo even
   // though this isolate already has usable rows. Keep those rows visible.
   if (cached?.key === cacheKey) {
-    const refreshLock = sharedCache ? await sharedCache.match(dashboardCacheRequest(env, "refresh-lock")) : null;
+    const refreshLock = await hasActiveDashboardMarker(sharedCache, env, "refresh-lock", DASHBOARD_REFRESH_LEASE_MS);
     const revision = await readDashboardSnapshotRevision(sharedCache, env);
-    const mutationPending = sharedCache ? await sharedCache.match(dashboardCacheRequest(env, "mutation-pending")) : null;
+    const mutationPending = await hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS);
     const changedWhileEditing = Boolean(revision && String(cached.revision || "") !== revision);
-    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: changedWhileEditing || !!refreshLock || !!mutationPending };
+    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: changedWhileEditing || refreshLock || mutationPending };
   }
 
   // Cold start for a region with no shared or isolate snapshot: one full read
