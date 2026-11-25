@@ -745,7 +745,9 @@ export async function getDashboardSnapshotStatus(env, context = null) {
   if (stale) {
     const mutationPending = sharedCache && await sharedCache.match(dashboardCacheRequest(env, "mutation-pending"));
     if (mutationPending) refreshing = true;
-    else {
+    else if (changedWhileEditing) {
+      // Una revisión nueva indica una mutación de la app que no alcanzó a
+      // publicarse. Reconcíliala una vez vencido el marcador de mutación.
       const refresh = await requestDashboardRefresh(env);
       refreshing = refresh.refreshing;
       if (!refreshing) {
@@ -755,6 +757,9 @@ export async function getDashboardSnapshotStatus(env, context = null) {
         refreshing = ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || Boolean(revision && String(metadata.revision || "") !== revision);
       }
     }
+    // La edad sola no dispara una lectura completa desde una solicitud de
+    // polling. Los cambios de la app actualizan revisión al guardar; una
+    // reconciliación por edad se reserva para el botón manual.
   }
   const version = String(metadata.revision || metadata.contentHash || "");
   return {
@@ -1148,39 +1153,32 @@ export async function getDashboardFileDownloadLink(env, path) {
   const now = Date.now();
   const linkCache = globalThis.__dashboardImageLinkCache || (globalThis.__dashboardImageLinkCache = new Map());
   const cachedLink = linkCache.get(cacheKey);
-  if (cachedLink?.promise) return cachedLink.promise;
   if (cachedLink?.expiresAt > now) return cachedLink.link;
   const authBaseMatchesDashboard = !env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_AUTH_BASE_UUID === env.SEATABLE_BASE_UUID;
   const apiToken = authBaseMatchesDashboard && env.SEATABLE_AUTH_API_TOKEN ? env.SEATABLE_AUTH_API_TOKEN : env.SEATABLE_API_TOKEN;
   if (!apiToken) throw new Error("Falta configurar el API token de SeaTable para mostrar imágenes.");
   const url = new URL(`${env.SEATABLE_SERVER_URL.replace(/\/$/, "")}/api/v2.1/dtable/app-download-link/`);
   url.searchParams.set("path", path);
-  const promise = (async () => {
-    // Las vistas previas no deben mantener abierta la carga de archivos si
-    // SeaTable tarda en generar un enlace temporal.
-    const response = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } }, 6_000);
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`SeaTable no pudo generar el enlace de la imagen (HTTP ${response.status}).`);
-    const link = body.download_link || body.url || body.link;
-    if (!link) throw new Error("SeaTable no devolvió el enlace temporal de la imagen.");
-    // Los enlaces de descarga de SeaTable son temporales; un minuto evita
-    // regenerarlos en cada render sin guardar una URL vencida demasiado tiempo.
-    linkCache.set(cacheKey, { link, expiresAt: Date.now() + 60_000 });
-    if (linkCache.size > 2_000) {
-      const cleanupTime = Date.now();
-      for (const [key, entry] of linkCache) {
-        if (entry.expiresAt <= cleanupTime && !entry.promise) linkCache.delete(key);
-        if (linkCache.size <= 1_500) break;
-      }
+  // No guardar promesas de red en globalThis: otro request de Pages puede
+  // heredar una promesa ligada al request que generó el enlace.
+  const response = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } }, 6_000);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`SeaTable no pudo generar el enlace de la imagen (HTTP ${response.status}).`);
+  const link = body.download_link || body.url || body.link;
+  if (!link) throw new Error("SeaTable no devolvió el enlace temporal de la imagen.");
+  // Los enlaces de descarga son temporales; solo se conserva el valor resuelto.
+  linkCache.set(cacheKey, { link, expiresAt: Date.now() + 60_000 });
+  if (linkCache.size > 2_000) {
+    const cleanupTime = Date.now();
+    for (const [key, entry] of linkCache) {
+      if (entry.expiresAt <= cleanupTime) linkCache.delete(key);
+      if (linkCache.size <= 1_500) break;
     }
-    return link;
-  })();
-  linkCache.set(cacheKey, { promise, expiresAt: now + 30_000 });
-  try { return await promise; }
-  catch (error) { linkCache.delete(cacheKey); throw error; }
+  }
+  return link;
 }
 
-export async function refreshForNewTables(env, context = null, { forceRefresh = false } = {}) {
+export async function refreshForNewTables(env, context = null) {
   let cached = globalThis.__dashboardRowsCache;
   const cacheKey = dashboardDataCacheKey(env);
   const sharedCache = getSharedDashboardCache(env);
@@ -1194,15 +1192,10 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
 
     // Las mutaciones de la aplicación ya publican su fila en la copia común.
     // Esta lectura entrega la copia compartida sin bloquear la navegación.
-    const ageMs = Date.now() - Number(current.updatedAt || 0);
     const changedWhileEditing = String(current.revision || "") !== revision;
-    // Bound refresh frequency independently of the number of writes. This lets
-    // the snapshot advance during continuous team activity without launching a
-    // full-table scan for each individual save; direct SeaTable edits are still
-    // reconciled by the periodic snapshot refresh.
-    const isStale = forceRefresh || ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS || changedWhileEditing;
     const lock = await sharedCache.match(dashboardCacheRequest(env, "refresh-lock"));
-    return { records: current.records, updatedAt: Number(current.updatedAt || 0), refreshing: isStale || !!lock };
+    const mutationPending = await sharedCache.match(dashboardCacheRequest(env, "mutation-pending"));
+    return { records: current.records, updatedAt: Number(current.updatedAt || 0), refreshing: changedWhileEditing || !!lock || !!mutationPending };
   }
 
   // La memoria del isolate y Cache API pueden estar vacías en una región nueva.
@@ -1229,10 +1222,11 @@ export async function refreshForNewTables(env, context = null, { forceRefresh = 
   // A Cache API snapshot can be absent in a newly routed isolate/colo even
   // though this isolate already has usable rows. Keep those rows visible.
   if (cached?.key === cacheKey) {
-    const ageMs = Date.now() - Number(cached.updatedAt || 0);
-    const isStale = forceRefresh || ageMs >= DASHBOARD_SNAPSHOT_MAX_AGE_MS;
     const refreshLock = sharedCache ? await sharedCache.match(dashboardCacheRequest(env, "refresh-lock")) : null;
-    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: isStale || !!refreshLock };
+    const revision = await readDashboardSnapshotRevision(sharedCache, env);
+    const mutationPending = sharedCache ? await sharedCache.match(dashboardCacheRequest(env, "mutation-pending")) : null;
+    const changedWhileEditing = Boolean(revision && String(cached.revision || "") !== revision);
+    return { records: cached.records, updatedAt: Number(cached.updatedAt || 0), refreshing: changedWhileEditing || !!refreshLock || !!mutationPending };
   }
 
   // Cold start for a region with no shared or isolate snapshot: one full read

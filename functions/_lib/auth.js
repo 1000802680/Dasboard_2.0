@@ -159,7 +159,6 @@ function authUsersRowsCacheKey(env) {
 function invalidateAuthUsersRowsCache(env) {
   const key = authUsersRowsCacheKey(env);
   globalThis.__dashboardAuthUsersRowsCache?.delete(key);
-  globalThis.__dashboardAuthUsersRowsPending?.delete(key);
   const userPrefix = `${env.SEATABLE_AUTH_BASE_UUID || env.SEATABLE_BASE_UUID || ""}|`;
   const userCache = globalThis.__dashboardAuthUserCache;
   if (userCache) {
@@ -175,14 +174,13 @@ async function authUsersRows(env) {
   const cache = globalThis.__dashboardAuthUsersRowsCache || (globalThis.__dashboardAuthUsersRowsCache = new Map());
   const cached = cache.get(key);
   if (cached?.expiresAt > now) return cached.rows;
-  const pending = globalThis.__dashboardAuthUsersRowsPending || (globalThis.__dashboardAuthUsersRowsPending = new Map());
-  if (pending.has(key)) return pending.get(key);
-  const promise = allRows(env, USERS_TABLE).then((rows) => {
-    cache.set(key, { rows, expiresAt: Date.now() + AUTH_USERS_ROWS_CACHE_TTL_MS });
-    return rows;
-  }).finally(() => pending.delete(key));
-  pending.set(key, promise);
-  return promise;
+  // Nunca compartas una promesa de fetch entre solicitudes de Workers: una
+  // promesa ligada al ciclo de vida de otra solicitud puede fallar al resolver.
+  // Se comparte solo el resultado ya resuelto; solicitudes simultáneas hacen
+  // su lectura y luego reutilizan la caché normal.
+  const rows = await allRows(env, USERS_TABLE);
+  cache.set(key, { rows, expiresAt: Date.now() + AUTH_USERS_ROWS_CACHE_TTL_MS });
+  return rows;
 }
 
 function normalizeUser(row) {
