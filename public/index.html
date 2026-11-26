@@ -3865,7 +3865,7 @@
     </div>
 
     <div class="footer" id="footerSyncInfo">
-      Dashboard COL-FT-001 · Sincronización automática cada 10s · SeaTable
+      Dashboard COL-FT-001 · Revisión de cambios cada 30s · SeaTable
     </div>
 
   </div> <!-- cierra tab-dashboard (contenido original) -->
@@ -4704,7 +4704,7 @@
     /* ============================================================
        ✨ NUEVO: POLLING CADA 2 SEGUNDOS + ETAG + ANALISIS
     ============================================================ */
-    const POLL_INTERVAL_MS      = 10000;  // Consultar deltas de SeaTable cada 10 s; no volver a descargar todas las filas.
+    const POLL_INTERVAL_MS      = 30000;  // Consultar solo la revisión compartida cada 30 s; nunca sondear SeaTable en segundo plano.
     const ETAG_STORAGE_KEY      = 'DASH_COL_FT001_ETAG_V1';
     const ANALISIS_STORAGE_KEY  = 'DASH_COL_FT001_ANALISIS_V1';
 
@@ -5186,7 +5186,7 @@
         try { actualizarSyncStatus('Copia local · ' + _timestampHumano(Number(snapshot._ts || 0)) + ' (sincronizando...)', true); } catch (_) {}
       }).catch(function() {});
 
-      try { actualizarSyncStatus('Sincronizando con SeaTable...', false); } catch(_) {}
+      try { actualizarSyncStatus('Cargando copia compartida...', false); } catch(_) {}
       try { _cargarFromServer(true); }
       catch (e) {
         try {
@@ -5216,9 +5216,8 @@
 
     function _cargarFromServer(mostrarErrores) {
       let terminado = false;
-      // Timeout 50s: Apps Script permite 6 min. No matar la petición a 12s cuando hay
-      // 5000+ filas y hojas. Si hay caché se pinta ANTES en cargarDatos(), así el usuario
-      // nunca ve pantalla en blanco mientras espera.
+      // La carga normal sirve el snapshot compartido, no escanea SeaTable.
+      // Si el servidor tarda, conservamos la copia local en vez de bloquear la interfaz.
       let tiempo = setTimeout(function() {
         if (terminado) return;
         terminado = true;
@@ -5247,7 +5246,7 @@
           }
           try { actualizarSyncStatus('Timeout de conexión · usa copia local', true); } catch(_) {}
         } catch(_) {}
-      }, 170000);
+      }, 30000);
 
       const onDone = function() {
         clearTimeout(tiempo);
@@ -5285,7 +5284,7 @@
               actualizarSyncStatus(
                 refreshPending
                   ? 'SeaTable respondió · terminando de sincronizar los cambios · se conserva la última copia confirmada'
-                  : 'Conectado a la hoja · datos actualizados ' + _timestampHumano(serverTs),
+                  : 'Copia compartida · actualizada ' + _timestampHumano(serverTs),
                 refreshPending
               );
             } catch(_) {}
@@ -13040,9 +13039,9 @@
 
 
     /* ============================================================
-       🏃 POLLING CADA 10 SEGUNDOS (checksum ligero → ETag diff)
-       Flujo óptimo:
-         Paso 1 (10s): obtenerChecksumDashboard() → consulta solo las filas modificadas.
+       🏃 POLLING LIGERO (checksum de la copia → ETag diff)
+       Flujo:
+         Paso 1 (30s): obtenerChecksumDashboard() → lee solo metadatos de la copia compartida.
            Si ETag NO cambió → TODO LISTO, no hacemos nada más.
            Si ETag cambió     → Paso 2.
          Paso 2: recargar datos completos + análisis + re-render.
@@ -13108,14 +13107,13 @@
         _pollingProgramarSiguiente();
       };
 
-      // El sondeo puede mantener abierta la petición mientras SeaTable termina
-      // una lectura completa; el bridge la corta a los 180 s.
+      // El checksum no consulta SeaTable ni realiza una lectura de todas las filas.
       const tiempo = setTimeout(function(){
         if (!terminado.valor) {
           onDone(true);
           try { actualizarSyncStatus('Cloudflare o SeaTable no respondió a tiempo · se conserva la copia local · nuevo intento en ' + Math.min(120, Math.round(POLL_INTERVAL_MS * Math.pow(2, Math.min(_pollingFallos - 1, 4)) / 1000)) + 's', true); } catch(_){}
         }
-      }, 185000);
+      }, 15000);
 
       google.script.run
         .withSuccessHandler(function(resp){
@@ -13137,7 +13135,7 @@
           if (estabaPendiente && !_dashboardRefreshPending) {
             try { const me = document.getElementById('mensajeError'); if (me) me.style.display = 'none'; } catch(_) {}
             try {
-              actualizarSyncStatus('Conectado a la hoja · sincronización terminada · ' + _timestampHumano(Number(resp.updatedAt || Date.now())), false);
+              actualizarSyncStatus('Copia compartida · actualización terminada · ' + _timestampHumano(Number(resp.updatedAt || Date.now())), false);
             } catch(_) {}
             // Si el checksum no cambió (por ejemplo, un campo fuera de la
             // proyección del dashboard), vuelve a confirmar la copia servida

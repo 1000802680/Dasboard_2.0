@@ -32,11 +32,9 @@ const DEFAULT_COLUMNS = {
 
 const EMPTY_OPA = new Set(["", "N/A", "NA", "N.A.", "-", "SIN OPA", "NINGUNO", "NINGUNA"]);
 const DASHBOARD_DATA_VERSION = "all-rows-v3-search-duplicates";
-// Reconciliar ediciones hechas directamente en SeaTable, sin escanear toda la
-// base en cada sondeo ligero del dashboard.
-// Los cambios hechos desde la aplicación se publican en Cache API al guardar.
-// Las ediciones directas en SeaTable se detectan mediante consultas incrementales
-// de _mtime; la lectura completa queda para arranque en frío o acción manual.
+// Las escrituras hechas desde la aplicación se publican en la copia compartida.
+// La base no se sondea en segundo plano: las lecturas completas se hacen al
+// pedir explícitamente «Actualizar datos» y las búsquedas consultan solo su OPA.
 const DASHBOARD_REFRESH_LEASE_MS = 150_000;
 const DASHBOARD_MUTATION_LEASE_MS = 180_000;
 const DASHBOARD_DELTA_CHECK_MS = 10_000;
@@ -509,10 +507,6 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" },
         }));
         await writeSharedDashboardMetadata(sharedCache, env, { records, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
-        await sharedCache.put(dashboardCacheRequest(env, "incremental-state-v2"), new Response(JSON.stringify({
-          checkedAt: updatedAt,
-          checkedAtByTable: Object.fromEntries(detectedTableNames.map((tableName) => [tableName, scanStartedAt])),
-        }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" } }));
       } catch (_) {}
     }
     await writeDurableDashboardSnapshot(env, { records, duplicateRecords: opaRecords, tableNames: detectedTableNames, revision: scanRevision, updatedAt });
@@ -525,41 +519,78 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
   return await promise;
 }
 
-// Busca dentro de la copia compartida del dashboard. La copia se actualiza
-// con el sondeo periódico del dashboard, sin hacer una consulta a SeaTable
-// por cada búsqueda.
+// Consulta la OPA solicitada directamente en SeaTable. Esto muestra el estado
+// actual incluso si el snapshot general aún no se ha actualizado, y devuelve
+// todas las filas duplicadas de todas las hojas.
 export async function searchDashboardRecordsByOPA(env, query) {
-  const cacheKey = dashboardDataCacheKey(env);
-  let records = globalThis.__dashboardRowsCache?.key === cacheKey
-    ? (globalThis.__dashboardRowsCache.duplicateRecords || globalThis.__dashboardRowsCache.records)
-    : null;
+  assertConfig(env);
+  const needle = String(query || "").trim();
+  if (!needle) return [];
 
-  // La búsqueda no debe iniciar un escaneo completo de SeaTable en una
-  // instancia fría. Usa el snapshot compartido si ya existe; el dashboard
-  // sigue siendo responsable de crearlo y renovarlo.
-  if (!Array.isArray(records)) {
-    const sharedCache = getSharedDashboardCache(env);
-    const snapshot = sharedCache ? await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) : null;
-    if (snapshot) {
-      records = snapshot.duplicateRecords || snapshot.records;
-      globalThis.__dashboardRowsCache = {
-        key: cacheKey,
-        records: snapshot.records,
-        duplicateRecords: records,
-        tableNames: snapshot.tableNames,
-        revision: snapshot.revision || "",
-        updatedAt: snapshot.updatedAt,
-        expiresAt: Date.now() + 60_000,
-      };
-    }
+  const token = await getBaseToken(env);
+  const tableNames = await discoverTableNames(env, token);
+  const metadataTables = globalThis.__seatableMetadataCache?.tables || [];
+  const columns = getColumnMap(env);
+  const baseId = encodeURIComponent(env.SEATABLE_BASE_UUID);
+  const server = env.SEATABLE_SERVER_URL.replace(/\/$/, "");
+  const results = [];
+
+  // SeaTable limita la concurrencia; esta búsqueda solo lee los campos de
+  // la ficha e incluye estado y adjuntos para reflejar la fila actual.
+  for (let start = 0; start < tableNames.length; start += 5) {
+    const batch = tableNames.slice(start, start + 5);
+    const batchResults = await Promise.all(batch.map(async (tableName) => {
+      const table = metadataTables.find((item) => item.name === tableName);
+      const byName = new Map();
+      for (const column of table?.columns || []) {
+        for (const candidate of [column.name, column.key]) {
+          const normalized = normalizeHeader(candidate);
+          if (normalized && !byName.has(normalized)) byName.set(normalized, candidate);
+        }
+      }
+      const opaColumn = byName.get(normalizeHeader(columns.O));
+      if (!opaColumn && Array.isArray(table?.columns)) return [];
+      const searchColumn = opaColumn || columns.O;
+      const selected = new Set(["_id", "_ctime", "_mtime"]);
+      for (const configuredName of Object.values(columns)) {
+        const actualName = byName.get(normalizeHeader(configuredName));
+        if (actualName) selected.add(actualName);
+      }
+      selected.add(searchColumn);
+      const projection = [...selected].map((column) => "`" + String(column).replace(/`/g, "``") + "`").join(", ");
+      const quotedTable = "`" + String(tableName).replace(/`/g, "``") + "`";
+      const rows = [];
+      const pageSize = 10_000;
+      for (let offset = 0; ; offset += pageSize) {
+        const response = await fetchWithTimeout(`${server}/api-gateway/api/v2/dtables/${baseId}/sql/`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sql: `SELECT ${projection} FROM ${quotedTable} WHERE \`${String(searchColumn).replace(/`/g, "``")}\` = ? LIMIT ${pageSize} OFFSET ${offset}`,
+            parameters: [needle],
+            convert_keys: true,
+          }),
+        }, 8_000);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(`SeaTable no pudo buscar en la hoja «${tableName}» (HTTP ${response.status}).`);
+        const page = Array.isArray(body) ? body : [body.results, body.rows, body.data].find(Array.isArray);
+        if (!Array.isArray(page)) throw new Error(`SeaTable devolvió un formato inesperado al buscar en «${tableName}».`);
+        rows.push(...page);
+        if (page.length < pageSize) break;
+        if (offset + page.length >= 100_000) throw new Error(`La búsqueda de la hoja «${tableName}» supera el límite de seguridad.`);
+      }
+      const sourceKeys = new Map(Object.entries(columns).map(([internal, external]) => [normalizeHeader(external), internal]));
+      const sourceKeyMap = [];
+      for (const key of Object.keys(rows[0] || {})) {
+        const internal = sourceKeys.get(normalizeHeader(key));
+        if (internal) sourceKeyMap.push([key, internal]);
+      }
+      return rows.map((row) => toInternalRecord(row, tableName, sourceKeyMap));
+    }));
+    for (const rows of batchResults) results.push(...rows);
   }
-  if (!Array.isArray(records)) {
-    throw new Error("La copia del dashboard todavía no está disponible en esta región. Abre Dashboard o pulsa «Actualizar datos» y vuelve a buscar.");
-  }
-  const needle = String(query || "").trim().toLocaleLowerCase();
-  return records
-    .filter((record) => String(record.O || "").trim().toLocaleLowerCase() === needle)
-    .sort((a, b) => String(activityTime(b)).localeCompare(String(activityTime(a))));
+
+  return results.sort((a, b) => activityTime(b) - activityTime(a));
 }
 
 function getSharedDashboardCache(env) {
@@ -779,22 +810,9 @@ export async function getDashboardSnapshotStatus(env, context = null) {
     metadata = await readSharedDashboardMetadata(sharedCache, env) || globalThis.__dashboardSnapshotMetadata || await readDashboardDurableMetadataCached(env);
     if (!metadata) throw new Error("SeaTable terminó la lectura, pero no publicó la copia del dashboard.");
   }
-  let revision = await readDashboardSnapshotRevision(sharedCache, env);
-  const changedWhileEditing = Boolean(revision && String(metadata.revision || "") !== revision);
-  const mutationPending = await hasActiveDashboardMarker(sharedCache, env, "mutation-pending", DASHBOARD_MUTATION_LEASE_MS);
-  // El sondeo nunca vuelve a leer miles de filas. Consulta solo las filas
-  // modificadas en SeaTable y publica una nueva copia cuando encuentra deltas.
-  // Si una escritura está terminando, el siguiente sondeo la recogerá.
-  if (!mutationPending) {
-    await refreshDashboardDelta(env, { force: changedWhileEditing });
-    metadata = await readSharedDashboardMetadata(sharedCache, env)
-      || globalThis.__dashboardSnapshotMetadata
-      || metadata;
-    revision = await readDashboardSnapshotRevision(sharedCache, env);
-  }
   const version = String(metadata.revision || metadata.contentHash || "");
   return {
-    etag: `snapshot-v5-${Number(metadata.recordCount) || 0}-${Number(metadata.updatedAt) || 0}-${version || revision}`,
+    etag: `snapshot-v5-${Number(metadata.recordCount) || 0}-${Number(metadata.updatedAt) || 0}-${version}`,
     totalRegistros: Number(metadata.recordCount) || 0,
     updatedAt: Number(metadata.updatedAt) || 0,
     // No representar una consulta incremental como una sincronización global;
@@ -1441,17 +1459,6 @@ export async function refreshForNewTables(env, context = null) {
     globalThis.__dashboardRowsCache = { key: cacheKey, records: shared.records,
       duplicateRecords: shared.duplicateRecords || shared.records, tableNames: shared.tableNames,
       revision: shared.revision || "", updatedAt: Number(shared.updatedAt || 0), expiresAt: Date.now() + 60_000 };
-    // En la carga de cualquier pestaña, trae primero los cambios recientes de
-    // SeaTable. La consulta incremental está limitada por un lease de 10 s.
-    if (await refreshDashboardDelta(env)) {
-      const updatedLocal = globalThis.__dashboardRowsCache;
-      if (updatedLocal?.key === cacheKey && updatedLocal.updatedAt > Number(shared.updatedAt || 0)) {
-        shared = { records: updatedLocal.records, duplicateRecords: updatedLocal.duplicateRecords,
-          tableNames: updatedLocal.tableNames, revision: updatedLocal.revision, updatedAt: updatedLocal.updatedAt };
-      } else {
-        shared = await readSharedDashboardSnapshot(sharedCache, dashboardCacheRequest(env)) || shared;
-      }
-    }
     const durableSnapshot = await refreshSharedSnapshotFromDurable(env, sharedCache, shared.updatedAt);
     const current = durableSnapshot || shared;
     const revision = await readDashboardSnapshotRevision(sharedCache, env);

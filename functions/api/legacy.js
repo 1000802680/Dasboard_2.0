@@ -123,22 +123,13 @@ export async function onRequestPost(context) {
         const user = await getAuthenticatedUser(sessionToken, env);
         if (!user) return Response.json({ ok: false, error: "Inicia sesión para ver las fotos de producto." }, { status: 401, headers: { "Cache-Control": "no-store" } });
         const requested = Array.isArray(targets) ? targets.slice(0, 100) : [];
-        // Reutiliza el snapshot compartido del dashboard. Consultar una fila
-        // de SeaTable por cada resultado al abrir Registros generaba decenas
-        // de solicitudes por usuario y saturaba la base con el equipo conectado.
-        await loadDashboardRecords(env);
-        const snapshot = globalThis.__dashboardRowsCache;
-        const snapshotRows = snapshot?.duplicateRecords || snapshot?.records || [];
-        const allowedTables = new Set(snapshot?.tableNames || []);
+        // Los adjuntos se leen desde la fila actual de SeaTable, igual que
+        // el estado y el resto de datos que devuelve la búsqueda de una OPA.
+        const allowedTables = new Set(await discoverTableNames(env));
         const imagenesPorFila = {};
         const normalizedTargets = [];
         const rowRequests = new Map();
         const freshRows = new Map();
-        const snapshotRowsById = new Map();
-        for (const record of snapshotRows) {
-          const rowKey = `${String(record.H || "").trim()}\u001f${String(record._id || "").trim()}`;
-          if (String(record._id || "").trim()) snapshotRowsById.set(rowKey, record);
-        }
         for (const target of requested) {
           const table = String(target?.hoja || "").trim();
           const rowId = String(target?.rowId || "").trim();
@@ -152,45 +143,16 @@ export async function onRequestPost(context) {
             tipoProducto: String(target?.tipoProducto || ""), tipoProductoEspecifico: String(target?.tipoProductoEspecifico || ""),
             territorio: String(target?.territorio || ""), subOpa: String(target?.subOpa || ""), personaje: String(target?.personaje || ""),
           });
-          const cachedRow = snapshotRowsById.get(rowKey);
-          if (cachedRow) {
-            const current = freshRows.get(rowKey);
-            if (!current) freshRows.set(rowKey, cachedRow);
-          } else if (!rowRequests.has(rowKey)) rowRequests.set(rowKey, { table, rowId });
+          if (!rowRequests.has(rowKey)) rowRequests.set(rowKey, { table, rowId });
         }
-        // Solo consultar SeaTable cuando un ID no está en el snapshot; en la
-        // gran mayoría de aperturas no se hacen lecturas individuales por fila.
-        const staleRows = [];
         const rowErrors = new Map();
-        await mapWithConcurrency([...rowRequests.entries()], 8, async ([rowKey, item]) => {
+        await mapWithConcurrency([...rowRequests.entries()], 6, async ([rowKey, item]) => {
           try {
             freshRows.set(rowKey, await getDashboardRow(env, item.table, item.rowId));
           } catch (error) {
-            if (/HTTP 404/.test(String(error?.message || error))) staleRows.push({ rowKey, ...item });
-            else rowErrors.set(rowKey, String(error?.message || error || "No se pudo leer la fila."));
+            rowErrors.set(rowKey, String(error?.message || error || "No se pudo leer la fila actual en SeaTable."));
           }
         });
-        // Una fila eliminada o recreada puede dejar un ID viejo en la copia del
-        // navegador. Refresca solo en ese caso y busca la fila por sus datos.
-        if (staleRows.length) {
-          try {
-            const currentRecords = await loadDashboardRecords(env, { forceRefresh: true, includeDuplicates: true });
-            for (const stale of staleRows) {
-              const target = normalizedTargets.find((item) => item.rowKey === stale.rowKey);
-              const normalize = (value) => String(value || "").trim().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLocaleUpperCase().replace(/[^A-Z0-9]/g, "");
-              const matches = currentRecords.filter((record) => {
-                if (String(record.H || "").trim() !== stale.table) return false;
-                if (target?.numeroOPA && normalize(record.O) !== normalize(target.numeroOPA)) return false;
-                const identity = [["P", target?.proyecto], ["T", target?.tipoProducto], ["TE", target?.tipoProductoEspecifico], ["TR", target?.territorio], ["SO", target?.subOpa], ["PJ", target?.personaje]];
-                return identity.every(([key, expected]) => !String(expected || "").trim() || normalize(record[key]) === normalize(expected));
-              });
-              if (matches.length === 1 && String(matches[0]._id || "").trim()) freshRows.set(stale.rowKey, matches[0]);
-              else rowErrors.set(stale.rowKey, matches.length ? "Hay varias filas coincidentes; vuelve a buscar la OPA." : "No se encontró la fila actualizada en SeaTable.");
-            }
-          } catch (error) {
-            for (const stale of staleRows) rowErrors.set(stale.rowKey, String(error?.message || error || "No se pudo actualizar la lista de filas."));
-          }
-        }
         const imageTasks = [];
         for (const target of normalizedTargets) {
           const row = freshRows.get(target.rowKey);
