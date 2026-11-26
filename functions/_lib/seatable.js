@@ -524,7 +524,7 @@ export async function loadDashboardRecords(env, { forceRefresh = false, tableNam
 // todas las filas duplicadas de todas las hojas.
 export async function searchDashboardRecordsByOPA(env, query) {
   assertConfig(env);
-  const needle = String(query || "").trim();
+  const needle = String(query || "").trim().toLocaleLowerCase();
   if (!needle) return [];
 
   const token = await getBaseToken(env);
@@ -566,7 +566,7 @@ export async function searchDashboardRecordsByOPA(env, query) {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
           body: JSON.stringify({
-            sql: `SELECT ${projection} FROM ${quotedTable} WHERE \`${String(searchColumn).replace(/`/g, "``")}\` = ? LIMIT ${pageSize} OFFSET ${offset}`,
+            sql: `SELECT ${projection} FROM ${quotedTable} WHERE LOWER(TRIM(\`${String(searchColumn).replace(/`/g, "``")}\`)) = ? LIMIT ${pageSize} OFFSET ${offset}`,
             parameters: [needle],
             convert_keys: true,
           }),
