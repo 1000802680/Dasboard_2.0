@@ -1,4 +1,4 @@
-import { discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardWorkspaceId, loadDashboardRecords, updateDashboardRow } from "../_lib/seatable.js";
+import { discoverTableNames, getDashboardColumnName, getDashboardColumnType, getDashboardFileDownloadLink, getDashboardRow, getDashboardWorkspaceId, searchDashboardRecordsByOPA, updateDashboardRow } from "../_lib/seatable.js";
 import { getAuthenticatedUser, recordBusinessAudit } from "../_lib/auth.js";
 
 const MAX_IMAGES = 6;
@@ -65,9 +65,9 @@ export async function onRequestPost(context) {
       if (!currentRowMatches(currentRow)) throw new Error("La fila identificada no coincide con la OPA solicitada (HTTP 404).");
     } catch (error) {
       if (!/HTTP 404/.test(String(error?.message || error))) throw error;
-      // Un formulario recién guardado o una búsqueda puede traer un ID que
-      // SeaTable no reconoce. Releer la base y recuperar una coincidencia única.
-      const records = await loadDashboardRecords(env, { forceRefresh: true, includeDuplicates: true });
+      // Un formulario recién guardado puede traer un ID que SeaTable no reconoce.
+      // Buscar la OPA directamente evita cargar y recorrer las miles de filas.
+      const records = await searchDashboardRecordsByOPA(env, expectedOPA);
       let candidates = records.filter((record) =>
         String(record.H || "").trim() === tableName &&
         normalizeIdentity(record.O) === normalizeIdentity(expectedOPA)
@@ -151,8 +151,11 @@ export async function onRequestPost(context) {
     });
     if (typeof context?.waitUntil === "function") context.waitUntil(auditTask);
     else await auditTask;
-    stage = "preparando la vista previa de las fotos";
-    const images = await Promise.all(latestMerged.map(async (item) => {
+    // El formulario de alta solo necesita confirmar el valor guardado. No
+    // solicitar enlaces de vista previa aquí reduce llamadas a SeaTable y CPU.
+    const deferPreviews = String(form.get("deferPreviews") || "") === "1";
+    stage = deferPreviews ? "finalizando la carga" : "preparando la vista previa de las fotos";
+    const images = deferPreviews ? [] : await Promise.all(latestMerged.map(async (item) => {
       const path = typeof item === "string" ? item : String(item.url || item.path || "");
       const name = typeof item === "string" ? item.split("/").pop() : item.name || path.split("/").pop();
       if (/^https?:\/\//i.test(path)) return { name, url: path, attachmentKey: path };
