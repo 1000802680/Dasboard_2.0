@@ -4322,14 +4322,16 @@
       </div>
       <div class="panel" style="padding:0;overflow:hidden;">
         <div style="overflow:auto;max-height:72vh;">
-          <table id="registros-base-table" class="opa-table" style="width:100%;min-width:1530px;">
+          <table id="registros-base-table" class="opa-table" style="width:100%;min-width:1960px;">
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
-              <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Tipo de producto específico</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
+              <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Tipo de producto específico</th><th>Nombre de producto en OPA</th><th>Personaje</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
             </tr><tr class="registro-filtros">
               <th><input type="search" class="registro-col-filter" data-filter-column="O" aria-label="Buscar una OPA exacta" placeholder="Pegar OPA…" autocomplete="off" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
               <th><select class="registro-col-filter" data-filter-column="P" aria-label="Filtrar proyecto" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los proyectos</option></select></th>
               <th><select class="registro-col-filter" data-filter-column="T" aria-label="Filtrar tipo de producto" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los tipos</option></select></th>
               <th><select class="registro-col-filter" data-filter-column="TE" aria-label="Filtrar tipo específico" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los tipos específicos</option></select></th>
+              <th><select class="registro-col-filter" data-filter-column="NP" aria-label="Filtrar nombre de producto en OPA" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los nombres de producto</option></select></th>
+              <th><select class="registro-col-filter" data-filter-column="PJ" aria-label="Filtrar personaje" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los personajes</option></select></th>
               <th><select class="registro-col-filter" data-filter-column="FOTOS" aria-label="Filtrar fotos" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todas las fotos</option><option value="Con fotos">Con fotos</option><option value="Sin fotos">Sin fotos</option></select></th>
               <th><select class="registro-col-filter" data-filter-column="E" aria-label="Filtrar estado" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los estados</option></select></th>
               <th><input class="registro-col-filter" data-filter-column="FECHAS" aria-label="Filtrar fechas de etapas" placeholder="Filtrar fecha…" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
@@ -6150,7 +6152,8 @@
       if (_registrosFiltrosOrigen === origen && _registrosFiltrosValores) return;
       const valoresPorColumna = {
         P: { todos: 'Todos los proyectos' }, T: { todos: 'Todos los tipos' },
-        TE: { todos: 'Todos los tipos específicos' }, E: { todos: 'Todos los estados' }
+        TE: { todos: 'Todos los tipos específicos' }, NP: { todos: 'Todos los nombres de producto' },
+        PJ: { todos: 'Todos los personajes' }, E: { todos: 'Todos los estados' }
       };
       const valoresCalculados = {};
       Object.keys(valoresPorColumna).forEach(function(columna) {
@@ -6266,7 +6269,7 @@
       if (contador) contador.textContent = total.toLocaleString() + (total === 1 ? ' registro' : ' registros');
       if (info) info.textContent = total ? 'Mostrando ' + (desde + 1).toLocaleString() + '–' + Math.min(desde + REGISTROS_POR_PAGINA, total).toLocaleString() + ' de ' + total.toLocaleString() + ' · Página ' + paginaRegistrosBase + ' de ' + maxPagina : 'No hay registros para los filtros seleccionados.';
       if (!pagina.length) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#64748b;">No hay registros para los filtros seleccionados.</td></tr>';
         return;
       }
       const puedeEditar = !!(_authSesionActual && _authSesionActual.token && (!_authSesionActual.permisos || _authSesionActual.permisos.cambiar_estado !== false) && !window.CLOUD_READ_ONLY);
@@ -6321,6 +6324,8 @@
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':P') + '">' + escapeHTML(row.P || '—') + '</span>' + lapiz('P','Proyecto','📁') + '</td>' +
           '<td style="min-width:170px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':T') + '">' + escapeHTML(row.T || '—') + '</span>' + lapiz('T','Tipo de producto','🏷️') + '</td>' +
           '<td style="min-width:190px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':TE') + '">' + escapeHTML(row.TE || '—') + '</span>' + lapiz('TE','Tipo de producto específico','🔎') + '</td>' +
+          '<td style="min-width:220px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':NP') + '">' + escapeHTML(row.NP || '—') + '</span>' + lapiz('NP','Nombre de producto en OPA','📝') + '</td>' +
+          '<td style="min-width:180px;padding:10px;border-bottom:1px solid #e2e8f0;"><span data-opa-field="' + escapeAttr(dataId + ':PJ') + '">' + escapeHTML(row.PJ || '—') + '</span>' + lapiz('PJ','Personaje','🧍') + '</td>' +
           '<td style="min-width:150px;max-width:220px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:flex;flex-wrap:wrap;align-items:center;">' + photos + '</div></td>' +
           '<td style="min-width:210px;padding:10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + estado + '</td>' +
           '<td style="min-width:650px;padding:8px;border-bottom:1px solid #e2e8f0;"><div style="display:grid;grid-template-columns:repeat(3,minmax(145px,1fr));gap:6px;">' + dateCards + '</div></td>' +
