@@ -4284,7 +4284,7 @@
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc;"><tr>
               <th>Número de OPA</th><th>Proyecto</th><th>Tipo de producto</th><th>Tipo de producto específico</th><th>Fotos del producto</th><th>Estado plataforma</th><th>Fechas de etapas</th>
             </tr><tr class="registro-filtros">
-              <th><select class="registro-col-filter" data-filter-column="O" aria-label="Filtrar número de OPA" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todas las OPAs</option></select></th>
+              <th><input type="search" class="registro-col-filter" data-filter-column="O" aria-label="Buscar una OPA exacta" placeholder="Pegar OPA…" autocomplete="off" oninput="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"></th>
               <th><select class="registro-col-filter" data-filter-column="P" aria-label="Filtrar proyecto" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los proyectos</option></select></th>
               <th><select class="registro-col-filter" data-filter-column="T" aria-label="Filtrar tipo de producto" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los tipos</option></select></th>
               <th><select class="registro-col-filter" data-filter-column="TE" aria-label="Filtrar tipo específico" onchange="filtrarColumnaRegistrosBase(this)" onclick="event.stopPropagation()"><option value="">Todos los tipos específicos</option></select></th>
@@ -6104,7 +6104,7 @@
       const origen = Array.isArray(datosFiltrados) ? datosFiltrados : [];
       if (_registrosFiltrosOrigen === origen && _registrosFiltrosValores) return;
       const valoresPorColumna = {
-        O: { todos: 'Todas las OPAs' }, P: { todos: 'Todos los proyectos' }, T: { todos: 'Todos los tipos' },
+        P: { todos: 'Todos los proyectos' }, T: { todos: 'Todos los tipos' },
         TE: { todos: 'Todos los tipos específicos' }, E: { todos: 'Todos los estados' }
       };
       const valoresCalculados = {};
@@ -6187,7 +6187,7 @@
       // Registros de base solo muestra filas que tienen número de OPA.
       // La carga general también contiene filas vacías de algunas hojas.
       const filtrosColumna = Array.from(document.querySelectorAll('#registros-base-table .registro-col-filter')).map(function(input) {
-        return { columna: input.dataset.filterColumn, valor: input.value, exacto: input.tagName === 'SELECT' };
+        return { columna: input.dataset.filterColumn, valor: input.value, exacto: input.dataset.filterColumn === 'O' || input.tagName === 'SELECT' };
       }).filter(function(item) { return String(item.valor || '').trim() !== ''; });
       const origen = Array.isArray(datosFiltrados) ? datosFiltrados : [];
       const claveFiltros = JSON.stringify(filtrosColumna);
