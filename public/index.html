@@ -136,6 +136,20 @@
         0 6px 16px -2px rgba(0,0,0,.2);
     }
 
+    .header-logo-img.primavera-logo,
+    .header-logo-img.primavera-logo:hover {
+      width: 230px;
+      height: 116px;
+      min-height: 0;
+      max-width: 230px;
+      object-fit: contain;
+      background: transparent;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
     .header-logo {
       width: 52px;
       height: 52px;
@@ -2719,6 +2733,8 @@
         min-height: 88px;
         max-width: 200px;
       }
+      .header-logo-img.primavera-logo,
+      .header-logo-img.primavera-logo:hover { width:200px;height:88px;max-width:200px; }
     }
 
     @media(max-width:700px) {
@@ -2747,6 +2763,8 @@
         min-height: 74px;
         max-width: 280px;
       }
+      .header-logo-img.primavera-logo,
+      .header-logo-img.primavera-logo:hover { width:280px;height:74px;max-width:280px; }
 
       .header h1 { font-size: 21px; }
       .header p { font-size: 12.5px; }
@@ -3318,8 +3336,8 @@
 
       <div class="header-left">
         <img
-          class="header-logo-img"
-          src="https://http2.mlstatic.com/D_NQ_NP_822327-MLA74975909937_032024-O.webp"
+          class="header-logo-img primavera-logo"
+          src="/primavera-logo.png"
           alt="Primavera"
           onerror="this.style.display='none';"
         />
