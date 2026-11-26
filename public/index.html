@@ -4426,6 +4426,7 @@
        Abre cuando se da click en el lápiz de cualquier celda editable.
   ========================================================= -->
   <div id="modal-editar-campo"
+       onkeydown="_ecManejarEnter(event)"
        style="position:fixed;inset:0;z-index:30001;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.62);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);padding:20px;">
     <div style="width:min(480px,100%);max-height:92vh;background:rgba(255,255,255,.98);border-radius:18px;box-shadow:0 22px 60px rgba(15,23,42,.3);border:1px solid rgba(30,64,175,.08);display:flex;flex-direction:column;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 20px;border-bottom:1px solid rgba(148,163,184,.22);">
@@ -4460,7 +4461,7 @@
             Cancelar
           </button>
           <button id="ec-btn-guardar" class="btn-primary" onclick="_ecGuardar()" style="flex:1;justify-content:center;margin:0;">
-            💾 Guardar
+            💾 Guardar · Enter
           </button>
         </div>
       </div>
@@ -12995,6 +12996,14 @@
       try { const m = document.getElementById('modal-editar-campo'); if (m) m.style.display = 'none'; } catch(_) {}
     }
 
+    function _ecManejarEnter(event) {
+      if (!event || event.key !== 'Enter') return;
+      const target = event.target;
+      if (target && target.closest && target.closest('button')) return;
+      event.preventDefault();
+      _ecGuardar();
+    }
+
     function _ecSetStatus(texto, tipo) {
       try {
         const el = document.getElementById('ec-status');
@@ -13014,6 +13023,7 @@
         if (!_authSesionActual || !_authSesionActual.token) { _ecCerrar(); _authAbrirModal(); return; }
         const inp = document.getElementById('ec-input-valor');
         const btn = document.getElementById('ec-btn-guardar');
+        if (btn && btn.disabled) return;
         const nuevoValor = String(inp && inp.value !== undefined ? inp.value : '').trim();
         if (_ecActual.campoClave === 'SO' && _opaSubOpaItems(nuevoValor).length > 10) return _ecSetStatus('Puedes asociar máximo 10 sub-OPAs al mismo número de OPA.', 'error');
         _ecSetStatus('⌛ Guardando ' + _ecActual.label + ' en SeaTable...', 'info');
