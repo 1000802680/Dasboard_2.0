@@ -4368,6 +4368,7 @@
        MODAL CAMBIAR ESTADO DESDE BÚSQUEDA OPA
   ========================================================= -->
   <div id="modal-cambiar-estado"
+       onkeydown="_ceManejarEnter(event)"
        style="position:fixed;inset:0;z-index:30000;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.62);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);padding:20px;">
     <div style="width:min(560px,100%);max-height:94vh;background:#fff;border-radius:20px;box-shadow:0 26px 76px rgba(15,23,42,.34);border:1px solid #dbeafe;display:flex;flex-direction:column;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 22px;background:linear-gradient(120deg,#eff6ff 0%,#fff 72%);border-bottom:1px solid #dbeafe;">
@@ -4397,13 +4398,10 @@
         <div style="margin-bottom:18px;padding:14px;border:1px solid #e2e8f0;border-radius:15px;background:linear-gradient(135deg,#f8fbff,#fff);">
           <label for="ce-input-fecha" style="display:flex;align-items:center;gap:7px;font-size:12px;color:#334155;font-weight:850;margin-bottom:8px;">
             <span style="display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:7px;background:#dcfce7;color:#15803d;">2</span>
-            Fecha del cambio (escribe la fecha de la etapa en formato <b>dd/mm/aaaa</b>)
+            Fecha del cambio (calendario; Enter para guardar)
           </label>
-          <div style="position:relative;">
-            <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#15803d;font-weight:800;">📅</span>
-            <input type="text" id="ce-input-fecha" placeholder="Ej: 23/09/2026"
-              style="width:100%;padding:12px 12px 12px 40px;border-radius:12px;border:1.5px solid #bbf7d0;background:#f0fdf4;color:#14532d;font-weight:750;font-size:14px;outline:none;box-sizing:border-box;" />
-          </div>
+          <input type="date" id="ce-input-fecha"
+            style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #bbf7d0;background:#f0fdf4;color:#14532d;font-weight:750;font-size:14px;outline:none;box-sizing:border-box;" />
           <div style="display:flex;align-items:flex-start;gap:6px;margin-top:8px;font-size:11px;color:#64748b;font-weight:550;line-height:1.45;">
             <span style="color:#16a34a;">●</span>
             Esta fecha se escribirá directamente en la hoja en la columna de la etapa (F1..F8 o la detectada para el estado).
@@ -4415,7 +4413,7 @@
             Cancelar
           </button>
           <button id="ce-btn-guardar" class="btn-primary" onclick="_ceGuardar()" style="flex:1;justify-content:center;margin:0;border-radius:12px;box-shadow:0 5px 13px rgba(37,99,235,.2);">
-            💾 Guardar cambios
+            💾 Guardar cambios · Enter
           </button>
         </div>
       </div>
@@ -4508,19 +4506,19 @@
       <!-- Body LOGIN -->
       <div id="auth-tab-login" style="padding:18px 20px 22px 20px;overflow:auto;min-height:280px;">
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Nombre de usuario</label>
-        <input type="text" id="auth-login-username" name="dashboard-login-id" autocomplete="new-password" autocapitalize="none" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')"
+        <input type="text" id="auth-login-username" name="dashboard-login-id" autocomplete="new-password" autocapitalize="none" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')" onkeydown="_authLoginEnter(event, 'username')"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:14px;"
           placeholder="Tu usuario"
           onfocus="this.style.borderColor='#1e40af';this.style.boxShadow='0 0 0 3px rgba(30,64,175,.10)';"
           onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none';" />
         <label style="display:block;margin-bottom:5px;font-weight:700;font-size:12.5px;color:#334155;">Contraseña</label>
-        <input type="password" id="auth-login-password" name="dashboard-login-secret" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"
+        <input type="password" id="auth-login-password" name="dashboard-login-secret" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" onkeydown="_authLoginEnter(event, 'password')"
           style="width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;font-size:13.5px;outline:none;box-sizing:border-box;margin-bottom:18px;"
           placeholder="••••••••"
           onfocus="this.style.borderColor='#1e40af';this.style.boxShadow='0 0 0 3px rgba(30,64,175,.10)';"
           onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none';" />
         <button class="btn-primary" onclick="_loginSubmit()" style="width:100%;justify-content:center;">
-          Iniciar sesión
+          Iniciar sesión · Enter
         </button>
         <button type="button" onclick="_authOlvidoContrasena()" style="display:block;margin:12px 0 0 auto;border:0;background:transparent;color:#1d4ed8;font-weight:700;font-size:12px;cursor:pointer;">
           ¿Olvidaste tu contraseña?
@@ -10431,6 +10429,16 @@
       } catch(err) { _authSetStatus('Error: ' + String(err && err.message || err), 'error'); }
     }
 
+    function _authLoginEnter(event, field) {
+      if (!event || event.key !== 'Enter') return;
+      event.preventDefault();
+      if (field === 'username') {
+        const password = document.getElementById('auth-login-password');
+        if (password && !password.value) { password.focus(); return; }
+      }
+      _loginSubmit();
+    }
+
     function _registroSubmit() {
       try {
         const u = document.getElementById('auth-reg-user');
@@ -12652,7 +12660,7 @@
             const d = String(ahora.getDate()).padStart(2,'0');
             const mm = String(ahora.getMonth() + 1).padStart(2,'0');
             const yy = String(ahora.getFullYear());
-            inpF.value = d + '/' + mm + '/' + yy;
+            inpF.value = yy + '-' + mm + '-' + d;
           } catch(_) { inpF.value = ''; }
         }
         if (m) m.style.display = 'flex';
@@ -12696,6 +12704,14 @@
       } catch(_) {}
     }
 
+    function _ceManejarEnter(event) {
+      if (!event || event.key !== 'Enter') return;
+      const target = event.target;
+      if (target && target.closest && target.closest('button')) return;
+      event.preventDefault();
+      _ceGuardar();
+    }
+
     function _ceSetStatus(texto, tipo) {
       try {
         const el = document.getElementById('ce-status');
@@ -12713,9 +12729,10 @@
       try {
         if (!_ceActual) return;
         if (!_authSesionActual || !_authSesionActual.token) { _ceCerrar(); _authAbrirModal(); return; }
+        const btn = document.getElementById('ce-btn-guardar');
+        if (btn && btn.disabled) return;
         const sel = document.getElementById('ce-select-estado');
         const inpF = document.getElementById('ce-input-fecha');
-        const btn = document.getElementById('ce-btn-guardar');
         const nuevoEstado = String(sel && sel.value ? sel.value : '').trim();
         const fechaElegida = String(inpF && inpF.value ? inpF.value : '').trim();
         if (!nuevoEstado) { _ceSetStatus('⚠️ Selecciona un nuevo estado.', 'error'); return; }
