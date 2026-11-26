@@ -4070,22 +4070,28 @@
     <section class="seg-week-panel" id="seg-week-panel" aria-labelledby="seg-week-title">
       <div class="seg-week-header">
         <div>
-          <h2 id="seg-week-title" style="margin:0;color:#14213d;font-size:17px;font-weight:850;">Seguimiento semanal del proceso</h2>
-          <div style="margin-top:4px;color:#64748b;font-size:12px;">OPAs únicas con actividad durante la semana y avance registrado por etapa.</div>
+          <h2 id="seg-week-title" style="margin:0;color:#14213d;font-size:17px;font-weight:850;">Seguimiento del proceso por período</h2>
+          <div style="margin-top:4px;color:#64748b;font-size:12px;">El resumen y el seguimiento diario usan las mismas fechas y el mismo conteo.</div>
         </div>
-        <label style="display:flex;align-items:center;gap:9px;color:#475569;font-size:12px;font-weight:800;">Semana
-          <select id="seg-week-filter" class="seg-week-select" aria-label="Seleccionar semana" onchange="_renderResumenSemanal()"><option value="">Sin semanas con actividad</option></select>
-        </label>
+        <div style="display:flex;align-items:end;gap:9px;flex-wrap:wrap;">
+          <label style="display:grid;gap:4px;color:#475569;font-size:11px;font-weight:800;">Desde
+            <input id="seg-week-from" class="seg-week-select" type="date" aria-label="Fecha desde">
+          </label>
+          <label style="display:grid;gap:4px;color:#475569;font-size:11px;font-weight:800;">Hasta
+            <input id="seg-week-to" class="seg-week-select" type="date" aria-label="Fecha hasta">
+          </label>
+          <button type="button" class="btn-primary" onclick="aplicarFiltroPeriodoAnalisis()" style="margin:0;min-height:40px;">Aplicar fechas</button>
+        </div>
       </div>
       <div class="seg-week-body">
         <div class="ad-cards" style="margin-bottom:0;">
-          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#eff6ff;color:#2563eb;">📌</span>OPAs con actividad</div><div class="ad-card-value" id="seg-week-total">0</div><div class="ad-card-sub">OPAs únicas creadas o con una etapa fechada en la semana</div></div>
-          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#ecfdf5;color:#059669;">🚀</span>Activas</div><div class="ad-card-value" id="seg-week-active">0</div><div class="ad-card-sub">Con actividad esa semana y estado actual no terminal</div></div>
-          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#dcfce7;color:#15803d;">✅</span>Cerradas</div><div class="ad-card-value" id="seg-week-closed">0</div><div class="ad-card-sub">Fecha de aprobación/cierre (F8) en la semana</div></div>
-          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#fff1f2;color:#dc2626;">⛔</span>Canceladas</div><div class="ad-card-value" id="seg-week-cancelled">0</div><div class="ad-card-sub">Estado actual cancelado y última modificación en la semana</div></div>
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#eff6ff;color:#2563eb;">📌</span>OPAs con movimiento</div><div class="ad-card-value" id="seg-week-total">0</div><div class="ad-card-sub">Total idéntico al seguimiento diario para este período</div></div>
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#ecfdf5;color:#059669;">🚀</span>Activas</div><div class="ad-card-value" id="seg-week-active">0</div><div class="ad-card-sub">Movimiento con estado actual en proceso</div></div>
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#dcfce7;color:#15803d;">✅</span>Cerradas</div><div class="ad-card-value" id="seg-week-closed">0</div><div class="ad-card-sub">Movimiento con estado actual aprobada / cerrada</div></div>
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#fff1f2;color:#dc2626;">⛔</span>Canceladas</div><div class="ad-card-value" id="seg-week-cancelled">0</div><div class="ad-card-sub">Movimiento con estado actual cancelado</div></div>
         </div>
         <div id="seg-week-stages" class="seg-week-stages" aria-live="polite"></div>
-        <p class="seg-week-note">Cada OPA se cuenta una vez en los totales. Las etapas cuentan OPAs distintas con su fecha F1–F8 dentro de la semana; una OPA puede aparecer en varias etapas si avanzó más de una. SeaTable no guarda una fecha separada de cancelación: ese indicador usa la última modificación de la fila.</p>
+        <p id="seg-week-status" class="seg-week-note" aria-live="polite">El período respeta la fecha de movimiento y el estado actual que aparecen en el Seguimiento Diario.</p>
       </div>
     </section>
     <div class="bars-tooltip" id="seg-bars-tooltip" style="position:fixed;pointer-events:none;z-index:9999;background:rgba(15,23,42,.96);color:#fff;padding:8px 11px;border-radius:9px;font-size:12px;font-weight:600;display:none;"></div>
@@ -4747,6 +4753,8 @@
 
     /* ---- Pestaña Análisis por Días (globals) ---- */
     let _ad_rangoDias = 30;            // default 30 días atras
+    let _ad_fechaDesde = '';
+    let _ad_fechaHasta = '';
     let _ad_estructura = null;         // cache {opas: {fecha, [estadoIdx] Set, totales, etc}}
     let _ad_memoSignature = '';        // invalidar al cambiar filtros/datos
     const _SIN_FECHA_KEY = '__SIN_FECHA__';
@@ -9249,6 +9257,12 @@
     function cambiarRangoDias(n) {
       try {
         _ad_rangoDias = (n == null ? 0 : Number(n || 0));
+        _ad_fechaDesde = '';
+        _ad_fechaHasta = '';
+        const fechaDesde = document.getElementById('seg-week-from');
+        const fechaHasta = document.getElementById('seg-week-to');
+        if (fechaDesde) fechaDesde.value = '';
+        if (fechaHasta) fechaHasta.value = '';
         const btns = document.querySelectorAll('.ad-filtro-btn');
         btns.forEach(function(b) {
           try {
@@ -9263,6 +9277,27 @@
       } catch(err) {
         try { console.error('cambiarRangoDias error:', err && err.message ? err.message : err); } catch(_) {}
       }
+    }
+
+    function aplicarFiltroPeriodoAnalisis() {
+      const desdeInput = document.getElementById('seg-week-from');
+      const hastaInput = document.getElementById('seg-week-to');
+      const status = document.getElementById('seg-week-status');
+      const desde = String(desdeInput && desdeInput.value || '').trim();
+      const hasta = String(hastaInput && hastaInput.value || '').trim();
+      if (!desde || !hasta) {
+        if (status) status.textContent = 'Selecciona las dos fechas para aplicar el período.';
+        return;
+      }
+      if (desde > hasta) {
+        if (status) status.textContent = 'La fecha “Desde” debe ser anterior o igual a “Hasta”.';
+        return;
+      }
+      _ad_fechaDesde = desde;
+      _ad_fechaHasta = hasta;
+      _ad_rangoDias = 0;
+      document.querySelectorAll('.ad-filtro-btn').forEach(function(button) { button.classList.remove('active'); });
+      actualizarAnalisisPorDiasPaginado();
     }
 
 
@@ -9553,6 +9588,7 @@
           if (elConF) elConF.textContent = '0';
           if (elSinF) elSinF.textContent = (est.totalOPAs || 0).toLocaleString();
           if (elDiaTop) elDiaTop.textContent = '—';
+          try { _renderResumenSemanal(est, []); } catch(_) {}
           const msgBox = document.createElement('div');
           msgBox.className = 'ad-empty-msg';
           msgBox.innerHTML =
@@ -9617,12 +9653,14 @@
           ? formatearFechaHumana(est.diaMasActivo.fecha) + ' · ' + est.diaMasActivo.total
           : '—');
 
-        // ———— 4. Filtrar por rango últimos N días ————
+        // ———— 4. Filtrar la misma estructura diaria por fechas o rango rápido ————
         const rangoDias = _ad_rangoDias;
+        const rangoPersonalizado = !!(_ad_fechaDesde && _ad_fechaHasta);
         let keysFiltradas = est.keysOrdenadas.slice();
         let sinFechaRowKey = null;
         keysFiltradas = keysFiltradas.filter(function(k) {
           if (k === _SIN_FECHA_KEY) { sinFechaRowKey = k; return false; }
+          if (rangoPersonalizado) return /^\d{4}\-\d{2}\-\d{2}$/.test(k) && k >= _ad_fechaDesde && k <= _ad_fechaHasta;
           if (rangoDias === 0) return true;
           const m = k.match(/^(\d{4})\-(\d{2})\-(\d{2})$/);
           if (!m) return false;
@@ -9644,9 +9682,10 @@
           const td = document.createElement('td');
           td.colSpan = (N_EST + 2);
           td.className = 'ad-empty-msg';
-          td.innerHTML =
-            '<strong>Sin fechas en el rango de los últimos ' + Number(rangoDias).toLocaleString() + ' días.</strong>' +
-            'Cambia el filtro de rango a <b>"Todos"</b> para incluir todos los días históricos, o <b>"Últimos 90 días"</b> para rango amplio.';
+          td.innerHTML = rangoPersonalizado
+            ? '<strong>Sin movimientos entre las fechas seleccionadas.</strong> Ajusta el período para consultar otros días.'
+            : '<strong>Sin fechas en el rango de los últimos ' + Number(rangoDias).toLocaleString() + ' días.</strong>' +
+              'Cambia el filtro de rango a <b>"Todos"</b> para incluir todos los días históricos, o <b>"Últimos 90 días"</b> para rango amplio.';
           tr.appendChild(td);
           tbR.appendChild(tr);
           tfR.innerHTML = '';
@@ -9659,7 +9698,7 @@
             if (avTot) avTot.textContent = '0';
           } catch(_) {}
           try { _renderChartsAnalisisDias([], est); } catch(_) {}
-          try { _renderResumenSemanal(); } catch(_) {}
+          try { _renderResumenSemanal(est, []); } catch(_) {}
           return;
         }
 
@@ -9714,7 +9753,7 @@
         //      Ej: OPA 041477 con F4=21/septiembre se registra el 21/sep, no en etapas anteriores.
         try { _renderSeguimientoDiarioOPAs(keysFiltradas, est); } catch(_) {}
         try { _renderSeguimientoGraficas(keysFiltradas, est); } catch(_) {}
-        try { _renderResumenSemanal(); } catch(_) {}
+        try { _renderResumenSemanal(est, keysFiltradas); } catch(_) {}
 
       } catch(err) {
         try { console.error('actualizarAnalisisPorDiasPaginado error:', err && err.message ? err.message : err); } catch(_) {}
@@ -10091,91 +10130,51 @@
       } catch(err) { try { console.warn('_renderSeguimientoGraficas err:', err.message || err); } catch(_) {} }
     }
 
-    function _renderResumenSemanal() {
+    function _renderResumenSemanal(est, keysFiltradas) {
       try {
-        const select = document.getElementById('seg-week-filter');
+        est = est || _ad_estructura || _buildAnalisisDiasEstructura();
+        const desdeInput = document.getElementById('seg-week-from');
+        const hastaInput = document.getElementById('seg-week-to');
         const stageWrap = document.getElementById('seg-week-stages');
-        if (!select || !stageWrap) return;
-        const rows = Array.isArray(datosFiltrados) ? datosFiltrados : (Array.isArray(datos) ? datos : []);
-        const stageFields = [
-          ['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],['F4','Pre-producción aprobada'],
-          ['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],['F8','Aprobada / cerrada']
-        ];
-        const groups = new Map();
-        const weekStartFor = function(iso) {
-          const match = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-          if (!match) return '';
-          const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-          const day = date.getUTCDay() || 7;
-          date.setUTCDate(date.getUTCDate() - day + 1);
-          return date.toISOString().slice(0, 10);
-        };
-        const stamp = function(value) { const date = _normFechaVal(value); return date || ''; };
-        rows.forEach(function(row) {
-          if (!row) return;
-          const opa = normalizarOPA(row.O || '');
-          if (!opa) return;
-          const table = String(row.H || '').trim();
-          const key = table + '|' + opa;
-          let item = groups.get(key);
-          if (!item) { item = { stages:{}, state:'', modified:'', created:'' }; groups.set(key, item); }
-          stageFields.forEach(function(pair) {
-            const value = stamp(row[pair[0]]);
-            if (value && (!item.stages[pair[0]] || value > item.stages[pair[0]])) item.stages[pair[0]] = value;
-          });
-          const modified = stamp(row._mtime || row.MT);
-          if (modified && (!item.modified || modified >= item.modified)) {
-            item.modified = modified;
-            item.state = buscarEstadoCoincidencia(limpiarTexto(row.E || '')) || limpiarTexto(row.E || '');
-          } else if (!item.state && row.E) item.state = buscarEstadoCoincidencia(limpiarTexto(row.E)) || limpiarTexto(row.E);
-          const created = stamp(row._ctime || row.CT);
-          if (created && (!item.created || created < item.created)) item.created = created;
+        if (!desdeInput || !hastaInput || !stageWrap || !est || !est.fechasMap) return;
+        const dateKeys = (keysFiltradas || est.keysOrdenadas || []).filter(function(key) {
+          return key !== _SIN_FECHA_KEY && /^\d{4}\-\d{2}\-\d{2}$/.test(key);
         });
-
-        const availableWeeks = new Set();
-        groups.forEach(function(item) {
-          Object.keys(item.stages).forEach(function(field) { const week = weekStartFor(item.stages[field]); if (week) availableWeeks.add(week); });
-          const createdWeek = weekStartFor(item.created); if (createdWeek) availableWeeks.add(createdWeek);
-          if (item.state === 'Cancelado') { const modifiedWeek = weekStartFor(item.modified); if (modifiedWeek) availableWeeks.add(modifiedWeek); }
-        });
-        const weeks = Array.from(availableWeeks).sort().reverse();
-        const previous = select.value;
-        const labelWeek = function(start) {
-          const d = new Date(start + 'T00:00:00Z');
-          const end = new Date(d.getTime()); end.setUTCDate(end.getUTCDate() + 6);
-          return _fechaLarga(start) + ' – ' + _fechaLarga(end.toISOString().slice(0,10));
-        };
-        select.innerHTML = weeks.length ? weeks.map(function(week) {
-          return '<option value="' + escapeAttr(week) + '">Semana del ' + escapeHTML(labelWeek(week)) + '</option>';
-        }).join('') : '<option value="">Sin semanas con actividad</option>';
-        const selectedWeek = weeks.indexOf(previous) >= 0 ? previous : (weeks[0] || '');
-        select.value = selectedWeek;
-        const counts = new Array(stageFields.length).fill(0);
-        const touched = new Set();
-        let active = 0, closed = 0, cancelled = 0;
-        if (selectedWeek) {
-          groups.forEach(function(item, key) {
-            const hadStageActivity = stageFields.some(function(pair) { return weekStartFor(item.stages[pair[0]]) === selectedWeek; });
-            const createdThisWeek = weekStartFor(item.created) === selectedWeek;
-            const isCancelled = item.state === 'Cancelado';
-            const isClosed = item.state === 'Aprobada / Cerrada' || item.state === 'Aprobada / cerrada';
-            const cancelledThisWeek = isCancelled && weekStartFor(item.modified) === selectedWeek;
-            if (hadStageActivity || createdThisWeek || cancelledThisWeek) touched.add(key);
-            if (!isCancelled && !isClosed && (hadStageActivity || createdThisWeek)) active++;
-            if (weekStartFor(item.stages.F8) === selectedWeek) closed++;
-            if (cancelledThisWeek) cancelled++;
-            stageFields.forEach(function(pair, index) {
-              if (weekStartFor(item.stages[pair[0]]) === selectedWeek) counts[index]++;
-            });
-          });
+        // Al abrir el análisis, los campos muestran el mismo rango actualmente
+        // aplicado al seguimiento diario; no se transforma en filtro personalizado
+        // hasta que el usuario pulse "Aplicar fechas".
+        if (!desdeInput.value && !hastaInput.value && dateKeys.length) {
+          const ordered = dateKeys.slice().sort();
+          desdeInput.value = ordered[0];
+          hastaInput.value = ordered[ordered.length - 1];
         }
+        const first = desdeInput.value ? desdeInput.value.split('-').reverse().join('/') : '—';
+        const last = hastaInput.value ? hastaInput.value.split('-').reverse().join('/') : '—';
+        const status = document.getElementById('seg-week-status');
+        if (status) status.textContent = dateKeys.length
+          ? 'Período aplicado al seguimiento diario: ' + first + ' a ' + last + '. El total coincide con las OPAs con movimiento de ese seguimiento.'
+          : 'No hay OPAs con movimiento en el período seleccionado.';
+        const counts = new Array(ESTADOS_ORDEN.length).fill(0);
+        const N_EST = (est && est.N_EST) || ESTADOS_ORDEN.length;
+        dateKeys.forEach(function(dateKey) {
+          const bucket = est.fechasMap.get(dateKey);
+          if (!bucket) return;
+          // Usa los mismos sets OPA×estado×día que alimentan la tabla y las gráficas diarias.
+          for (let idx = 0; idx < Math.min(N_EST, counts.length); idx++) {
+            if (bucket[idx]) counts[idx] += bucket[idx].size;
+          }
+        });
+        const total = counts.reduce(function(sum, value) { return sum + value; }, 0);
+        const active = counts.slice(0, 7).reduce(function(sum, value) { return sum + value; }, 0);
+        const closed = counts[7] || 0;
+        const cancelled = counts[8] || 0;
         const setCount = function(id, value) { const node = document.getElementById(id); if (node) node.textContent = Number(value || 0).toLocaleString('es-CO'); };
-        setCount('seg-week-total', touched.size);
+        setCount('seg-week-total', total);
         setCount('seg-week-active', active);
         setCount('seg-week-closed', closed);
         setCount('seg-week-cancelled', cancelled);
-        stageWrap.innerHTML = stageFields.map(function(pair, index) {
-          return '<div class="seg-week-stage"><span style="color:#52657f;font-size:11px;font-weight:800;text-transform:uppercase;">' + escapeHTML(pair[1]) + '</span><strong>' + counts[index].toLocaleString('es-CO') + '</strong></div>';
+        stageWrap.innerHTML = ESTADOS_ORDEN.map(function(state, index) {
+          return '<div class="seg-week-stage"><span style="color:#52657f;font-size:11px;font-weight:800;text-transform:uppercase;">' + escapeHTML(state) + '</span><strong>' + counts[index].toLocaleString('es-CO') + '</strong></div>';
         }).join('');
       } catch(error) { try { console.warn('_renderResumenSemanal:', error && error.message || error); } catch(_) {} }
     }
