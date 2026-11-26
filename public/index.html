@@ -2515,6 +2515,14 @@
     #tab-analisis-dias .analisis-daily-table tbody tr { transition:background .15s ease; }
     #tab-analisis-dias .analisis-daily-table tbody tr:hover td { background:#f5f8ff; }
     #tab-analisis-dias .analisis-daily-table tbody tr:last-child td { border-bottom:0; }
+    #tab-analisis-dias .seg-week-panel { margin:0 0 18px;overflow:hidden;border:1px solid #dbe5f1;border-radius:20px;background:linear-gradient(135deg,#fff,#f8fbff);box-shadow:0 10px 28px rgba(15,23,42,.065); }
+    #tab-analisis-dias .seg-week-header { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:18px 22px;border-bottom:1px solid #e5edf7;background:linear-gradient(115deg,#eff6ff,#fff 60%,#f5f3ff); }
+    #tab-analisis-dias .seg-week-select { min-width:220px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#1e293b;font:inherit;font-weight:700; }
+    #tab-analisis-dias .seg-week-body { padding:16px 18px 20px; }
+    #tab-analisis-dias .seg-week-stages { display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:14px; }
+    #tab-analisis-dias .seg-week-stage { padding:12px 14px;border:1px solid #dbe5f1;border-radius:12px;background:#fff; }
+    #tab-analisis-dias .seg-week-stage strong { display:block;margin-top:5px;font-size:21px;color:#1d4ed8;font-variant-numeric:tabular-nums; }
+    #tab-analisis-dias .seg-week-note { margin:12px 2px 0;color:#64748b;font-size:11.5px;line-height:1.45; }
     @media (max-width:700px) { #tab-analisis-dias .ad-filtro-dias { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%; } #tab-analisis-dias .ad-filtro-btn { padding:9px 7px;font-size:11px; } #tab-analisis-dias #seg-panel-diario > .panel-title { align-items:flex-start;flex-direction:column; } #tab-analisis-dias .analisis-daily-table-wrap { padding:0 10px 12px; } }
     .ad-table-wrap {
       max-height: 580px;
@@ -4059,6 +4067,27 @@
         </div>
       </div>
     </div>
+    <section class="seg-week-panel" id="seg-week-panel" aria-labelledby="seg-week-title">
+      <div class="seg-week-header">
+        <div>
+          <h2 id="seg-week-title" style="margin:0;color:#14213d;font-size:17px;font-weight:850;">Seguimiento semanal del proceso</h2>
+          <div style="margin-top:4px;color:#64748b;font-size:12px;">OPAs únicas con actividad durante la semana y avance registrado por etapa.</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:9px;color:#475569;font-size:12px;font-weight:800;">Semana
+          <select id="seg-week-filter" class="seg-week-select" aria-label="Seleccionar semana" onchange="_renderResumenSemanal()"><option value="">Sin semanas con actividad</option></select>
+        </label>
+      </div>
+      <div class="seg-week-body">
+        <div class="ad-cards" style="margin-bottom:0;">
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#eff6ff;color:#2563eb;">📌</span>OPAs con actividad</div><div class="ad-card-value" id="seg-week-total">0</div><div class="ad-card-sub">OPAs únicas creadas o con una etapa fechada en la semana</div></div>
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#ecfdf5;color:#059669;">🚀</span>Activas</div><div class="ad-card-value" id="seg-week-active">0</div><div class="ad-card-sub">Con actividad esa semana y estado actual no terminal</div></div>
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#dcfce7;color:#15803d;">✅</span>Cerradas</div><div class="ad-card-value" id="seg-week-closed">0</div><div class="ad-card-sub">Fecha de aprobación/cierre (F8) en la semana</div></div>
+          <div class="ad-card"><div class="ad-card-title"><span class="ad-card-icon" style="background:#fff1f2;color:#dc2626;">⛔</span>Canceladas</div><div class="ad-card-value" id="seg-week-cancelled">0</div><div class="ad-card-sub">Estado actual cancelado y última modificación en la semana</div></div>
+        </div>
+        <div id="seg-week-stages" class="seg-week-stages" aria-live="polite"></div>
+        <p class="seg-week-note">Cada OPA se cuenta una vez en los totales. Las etapas cuentan OPAs distintas con su fecha F1–F8 dentro de la semana; una OPA puede aparecer en varias etapas si avanzó más de una. SeaTable no guarda una fecha separada de cancelación: ese indicador usa la última modificación de la fila.</p>
+      </div>
+    </section>
     <div class="bars-tooltip" id="seg-bars-tooltip" style="position:fixed;pointer-events:none;z-index:9999;background:rgba(15,23,42,.96);color:#fff;padding:8px 11px;border-radius:9px;font-size:12px;font-weight:600;display:none;"></div>
 
     <!-- ===== TABLA MATRIZ: FECHA × 8 ESTADOS + TOTAL ===== -->
@@ -9149,6 +9178,12 @@
 
     function cambiarTab(tabKey) {
       try {
+        if (tabKey === 'dias') {
+          const permisosAnalisis = _authSesionActual && _authSesionActual.permisos;
+          const puedeVerAnalisis = !!(_authSesionActual && _authSesionActual.logueado) &&
+            (!permisosAnalisis || permisosAnalisis.ver_analisis !== false);
+          if (!puedeVerAnalisis) { try { _aplicarPermisosUI(); } catch(_) {} return; }
+        }
         if (tabKey !== 'dashboard') {
           window.__dashboardVistaPendiente = true;
           _dashboardRenderRevision++;
@@ -9624,6 +9659,7 @@
             if (avTot) avTot.textContent = '0';
           } catch(_) {}
           try { _renderChartsAnalisisDias([], est); } catch(_) {}
+          try { _renderResumenSemanal(); } catch(_) {}
           return;
         }
 
@@ -9678,6 +9714,7 @@
         //      Ej: OPA 041477 con F4=21/septiembre se registra el 21/sep, no en etapas anteriores.
         try { _renderSeguimientoDiarioOPAs(keysFiltradas, est); } catch(_) {}
         try { _renderSeguimientoGraficas(keysFiltradas, est); } catch(_) {}
+        try { _renderResumenSemanal(); } catch(_) {}
 
       } catch(err) {
         try { console.error('actualizarAnalisisPorDiasPaginado error:', err && err.message ? err.message : err); } catch(_) {}
@@ -10052,6 +10089,95 @@
           _renderBarsSeguimientoDiario(dias);
         } catch(_) {}
       } catch(err) { try { console.warn('_renderSeguimientoGraficas err:', err.message || err); } catch(_) {} }
+    }
+
+    function _renderResumenSemanal() {
+      try {
+        const select = document.getElementById('seg-week-filter');
+        const stageWrap = document.getElementById('seg-week-stages');
+        if (!select || !stageWrap) return;
+        const rows = Array.isArray(datosFiltrados) ? datosFiltrados : (Array.isArray(datos) ? datos : []);
+        const stageFields = [
+          ['F1','Concepto enviado'],['F2','Concepto aprobado'],['F3','Pre-producción enviada'],['F4','Pre-producción aprobada'],
+          ['F5','Fotos de producción enviadas'],['F6','Fotos de producción aprobadas'],['F7','Muestras finales enviadas'],['F8','Aprobada / cerrada']
+        ];
+        const groups = new Map();
+        const weekStartFor = function(iso) {
+          const match = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!match) return '';
+          const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+          const day = date.getUTCDay() || 7;
+          date.setUTCDate(date.getUTCDate() - day + 1);
+          return date.toISOString().slice(0, 10);
+        };
+        const stamp = function(value) { const date = _normFechaVal(value); return date || ''; };
+        rows.forEach(function(row) {
+          if (!row) return;
+          const opa = normalizarOPA(row.O || '');
+          if (!opa) return;
+          const table = String(row.H || '').trim();
+          const key = table + '|' + opa;
+          let item = groups.get(key);
+          if (!item) { item = { stages:{}, state:'', modified:'', created:'' }; groups.set(key, item); }
+          stageFields.forEach(function(pair) {
+            const value = stamp(row[pair[0]]);
+            if (value && (!item.stages[pair[0]] || value > item.stages[pair[0]])) item.stages[pair[0]] = value;
+          });
+          const modified = stamp(row._mtime || row.MT);
+          if (modified && (!item.modified || modified >= item.modified)) {
+            item.modified = modified;
+            item.state = buscarEstadoCoincidencia(limpiarTexto(row.E || '')) || limpiarTexto(row.E || '');
+          } else if (!item.state && row.E) item.state = buscarEstadoCoincidencia(limpiarTexto(row.E)) || limpiarTexto(row.E);
+          const created = stamp(row._ctime || row.CT);
+          if (created && (!item.created || created < item.created)) item.created = created;
+        });
+
+        const availableWeeks = new Set();
+        groups.forEach(function(item) {
+          Object.keys(item.stages).forEach(function(field) { const week = weekStartFor(item.stages[field]); if (week) availableWeeks.add(week); });
+          const createdWeek = weekStartFor(item.created); if (createdWeek) availableWeeks.add(createdWeek);
+          if (item.state === 'Cancelado') { const modifiedWeek = weekStartFor(item.modified); if (modifiedWeek) availableWeeks.add(modifiedWeek); }
+        });
+        const weeks = Array.from(availableWeeks).sort().reverse();
+        const previous = select.value;
+        const labelWeek = function(start) {
+          const d = new Date(start + 'T00:00:00Z');
+          const end = new Date(d.getTime()); end.setUTCDate(end.getUTCDate() + 6);
+          return _fechaLarga(start) + ' – ' + _fechaLarga(end.toISOString().slice(0,10));
+        };
+        select.innerHTML = weeks.length ? weeks.map(function(week) {
+          return '<option value="' + escapeAttr(week) + '">Semana del ' + escapeHTML(labelWeek(week)) + '</option>';
+        }).join('') : '<option value="">Sin semanas con actividad</option>';
+        const selectedWeek = weeks.indexOf(previous) >= 0 ? previous : (weeks[0] || '');
+        select.value = selectedWeek;
+        const counts = new Array(stageFields.length).fill(0);
+        const touched = new Set();
+        let active = 0, closed = 0, cancelled = 0;
+        if (selectedWeek) {
+          groups.forEach(function(item, key) {
+            const hadStageActivity = stageFields.some(function(pair) { return weekStartFor(item.stages[pair[0]]) === selectedWeek; });
+            const createdThisWeek = weekStartFor(item.created) === selectedWeek;
+            const isCancelled = item.state === 'Cancelado';
+            const isClosed = item.state === 'Aprobada / Cerrada' || item.state === 'Aprobada / cerrada';
+            const cancelledThisWeek = isCancelled && weekStartFor(item.modified) === selectedWeek;
+            if (hadStageActivity || createdThisWeek || cancelledThisWeek) touched.add(key);
+            if (!isCancelled && !isClosed && (hadStageActivity || createdThisWeek)) active++;
+            if (weekStartFor(item.stages.F8) === selectedWeek) closed++;
+            if (cancelledThisWeek) cancelled++;
+            stageFields.forEach(function(pair, index) {
+              if (weekStartFor(item.stages[pair[0]]) === selectedWeek) counts[index]++;
+            });
+          });
+        }
+        const setCount = function(id, value) { const node = document.getElementById(id); if (node) node.textContent = Number(value || 0).toLocaleString('es-CO'); };
+        setCount('seg-week-total', touched.size);
+        setCount('seg-week-active', active);
+        setCount('seg-week-closed', closed);
+        setCount('seg-week-cancelled', cancelled);
+        stageWrap.innerHTML = stageFields.map(function(pair, index) {
+          return '<div class="seg-week-stage"><span style="color:#52657f;font-size:11px;font-weight:800;text-transform:uppercase;">' + escapeHTML(pair[1]) + '</span><strong>' + counts[index].toLocaleString('es-CO') + '</strong></div>';
+        }).join('');
+      } catch(error) { try { console.warn('_renderResumenSemanal:', error && error.message || error); } catch(_) {} }
     }
 
     /* ============================================================
@@ -10817,12 +10943,12 @@
         if (recoveryButton) recoveryButton.style.display = esAdmin ? '' : 'none';
 
         // REGLAS TABS (segun peticion usuario):
-        //   Dashboard + Analisis por Dias: SIEMPRE visibles (incluso invitados sin login)
+        //   Dashboard: visible para invitados. Análisis: requiere sesión y permiso ver_analisis.
         //   Busqueda OPA: BOTON tab SÓLO visible SI INICIÓ SESIÓN (ademas de permiso ver_busqueda)
         //   Historial Auditoría: BOTÓN tab SÓLO visible para ADMIN (haySesion + panel_admin=true o rol=ADMINISTRADOR)
         const tabs = [
           { id: 'tab-dashboard', perm: 'ver_dashboard', btn: 'btn-tab-dashboard',  soloSesion: false, soloAdmin: false },
-          { id: 'tab-analisis-dias', perm: 'ver_analisis', btn: 'btn-tab-analisis', soloSesion: false, soloAdmin: false },
+          { id: 'tab-analisis-dias', perm: 'ver_analisis', btn: 'btn-tab-analisis', soloSesion: true, soloAdmin: false },
           { id: 'tab-busqueda',      perm: 'ver_busqueda', btn: 'btn-tab-busqueda',  soloSesion: true,  soloAdmin: false },
           { id: 'tab-historial',     perm: 'panel_admin',  btn: 'btn-tab-historial', soloSesion: true,  soloAdmin: true  }
         ];
@@ -10845,8 +10971,14 @@
           // NUNCA ocultar el cont del tab de busqueda ni historial (dentro mostrarán el cartel de bloqueo / contenido)
           if (t.id === 'tab-busqueda' && cont) cont.style.display = '';
           else if (t.id === 'tab-historial' && cont) cont.style.display = '';
-          else if (!permitidoBtn && cont) cont.style.display = 'none';
+          else if (cont) cont.style.display = permitidoBtn ? '' : 'none';
           if (permitidoBtn && !primeraVisibleBtn) primeraVisibleBtn = t.id;
+        }
+        if ((!haySesion || (p && p.ver_analisis === false))) {
+          const activeTabButton = document.querySelector('.app-tabs .tab-btn.active');
+          if (activeTabButton && activeTabButton.getAttribute('data-tab') === 'dias') {
+            try { cambiarTab('dashboard'); } catch(_) {}
+          }
         }
 
         // ============================================================
